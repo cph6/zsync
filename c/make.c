@@ -16,18 +16,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
-#include "libzmap/zmap.h"
+#include "libzsync/zmap.h"
 
 #include "config.h"
 
 #include <arpa/inet.h>
 
-#include "zsync.h"
+#include "librcksum/rcksum.h"
 
 #include "zlib/zlib.h"
 
-#include "libhash/sha1.h"
+#include "libzsync/sha1.h"
 
 SHA1_CTX shactx;
 
@@ -48,8 +49,8 @@ static void write_block_sums(char* buf, size_t got, FILE* f)
   if (got < blocksize)
     memset(buf+got,0,blocksize-got);
   
-  r = calc_rsum_block(buf, blocksize);
-  calc_checksum(&checksum[0], buf, blocksize);
+  r = rcksum_calc_rsum_block(buf, blocksize);
+  rcksum_calc_checksum(&checksum[0], buf, blocksize);
   r.a = htons(r.a); r.b = htons(r.b);
   
   if (fwrite(&r, sizeof r, 1, f) != 1) stream_error("fwrite",f);

@@ -1,5 +1,5 @@
 /*
- *   zsync/lib - library for using the rsync algorithm to determine
+ *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
@@ -14,24 +14,20 @@
  *   COPYING file for details.
  */
 
-/* For pread/pwrite */
-#define _XOPEN_SOURCE 500
-#define _XOPEN_VERSION 500
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 
-#include "libhash/md4.h"
+#include "md4.h"
 
-#include "zsync.h"
+#include "rcksum.h"
 #include "internal.h"
 
 #define UPDATE_RSUM(a, b, oldc, newc, bshift) do { (a) += ((unsigned char)(newc)) - ((unsigned char)(oldc)); (b) += (a) - ((oldc) << (bshift)); } while (0)
 
-struct rsum  __attribute__((pure)) calc_rsum_block(const unsigned char* data, size_t len)
+struct rsum  __attribute__((pure)) rcksum_calc_rsum_block(const unsigned char* data, size_t len)
 {
   register unsigned short a = 0;
   register unsigned short b = 0;
@@ -49,7 +45,7 @@ struct rsum  __attribute__((pure)) calc_rsum_block(const unsigned char* data, si
   }
 }
 
-void calc_checksum(unsigned char *c, const unsigned char* data, size_t len)
+void rcksum_calc_checksum(unsigned char *c, const unsigned char* data, size_t len)
 {
   MD4_CTX ctx;
   MD4Init(&ctx);
@@ -57,7 +53,7 @@ void calc_checksum(unsigned char *c, const unsigned char* data, size_t len)
   MD4Final(c,&ctx);
 }
 
-static void unlink_block(struct zsync_state* z, zs_blockid id)
+static void unlink_block(struct rcksum_state* z, zs_blockid id)
 {
   struct hash_entry* t = &(z->blockhashes[id]);
 
@@ -74,16 +70,24 @@ static void unlink_block(struct zsync_state* z, zs_blockid id)
   }
 }
 
-static void write_blocks(struct zsync_state* z, const unsigned char* data, zs_blockid bfrom, zs_blockid bto)
+#ifndef HAVE_PWRITE
+size_t pwrite(int d, const void* buf, size_t nbytes, off64_t offset)
 {
-  long long len = ((long long)(bto - bfrom + 1)) << z->blockshift;
-  off_t offset = ((long long)bfrom) << z->blockshift;
+  if (lseek(d, offset, SEEK_SET) == -1) return -1;
+  return write(d, buf, nbytes);
+}
+#endif
+
+static void write_blocks(struct rcksum_state* z, const unsigned char* data, zs_blockid bfrom, zs_blockid bto)
+{
+  off64_t len = ((off64_t)(bto - bfrom + 1)) << z->blockshift;
+  off64_t offset = ((off64_t)bfrom) << z->blockshift;
 
   while (len) {
     size_t l = len;
     int rc;
 
-    if ((long long)l < len) l = 0x8000000;
+    if ((off64_t)l < len) l = 0x8000000;
 
     rc = pwrite(z->fd,data,l,offset);
     
@@ -106,19 +110,19 @@ static void write_blocks(struct zsync_state* z, const unsigned char* data, zs_bl
   }
 }
 
-int read_known_data(struct zsync_state* z, unsigned char* buf, long long offset, size_t len)
+int rcksum_read_known_data(struct rcksum_state* z, unsigned char* buf, off64_t offset, size_t len)
 {
   int rc = pread(z->fd,buf,len,offset);
   return rc;
 }
 
-int submit_blocks(struct zsync_state* const z, unsigned char* data, zs_blockid bfrom, zs_blockid bto)
+int rcksum_submit_blocks(struct rcksum_state* const z, unsigned char* data, zs_blockid bfrom, zs_blockid bto)
 {
   zs_blockid x;
   unsigned char md4sum[CHECKSUM_SIZE];
 
   for (x = bfrom; x <= bto; x++) {
-    calc_checksum(&md4sum[0], data + ((x-bfrom) << z->blockshift), z->blocksize);
+    rcksum_calc_checksum(&md4sum[0], data + ((x-bfrom) << z->blockshift), z->blocksize);
     if (memcmp(&md4sum, &(z->blockhashes[x].checksum[0]), z->checksum_bytes)) {
       if (x > bfrom) /* Write any good blocks we did get */
 	write_blocks(z,data,bfrom,x-1);
@@ -129,7 +133,7 @@ int submit_blocks(struct zsync_state* const z, unsigned char* data, zs_blockid b
   return 0;
 }
 
-static int check_checksums_on_hash_chain(struct zsync_state* const z, const struct hash_entry* e, const char* data, int onlyone)
+static int check_checksums_on_hash_chain(struct rcksum_state* const z, const struct hash_entry* e, const char* data, int onlyone)
 {
   unsigned char md4sum[2][CHECKSUM_SIZE];
   signed int done_md4 = -1;
@@ -168,7 +172,7 @@ static int check_checksums_on_hash_chain(struct zsync_state* const z, const stru
       do {
 	/* We only calculate the MD4 once we need it; but need not do so twice */
 	if (check_md4 > done_md4) {
-	  calc_checksum(&md4sum[check_md4][0], data + z->blocksize*check_md4, z->blocksize);
+	  rcksum_calc_checksum(&md4sum[check_md4][0], data + z->blocksize*check_md4, z->blocksize);
 	  done_md4 = check_md4;
 	  z->stats.checksummed++; 
 	}
@@ -191,7 +195,7 @@ static int check_checksums_on_hash_chain(struct zsync_state* const z, const stru
   return got_blocks;
 }
 
-int submit_source_data(struct zsync_state* const z, unsigned char* data, size_t len, long long offset)
+int rcksum_submit_source_data(struct rcksum_state* const z, unsigned char* data, size_t len, off64_t offset)
 {
   int x = 0;
   register int bs = z->blocksize;
@@ -204,9 +208,9 @@ int submit_source_data(struct zsync_state* const z, unsigned char* data, size_t 
   }
 
   if (x || !offset) {
-    z->r[0] = calc_rsum_block(data+x, bs);
+    z->r[0] = rcksum_calc_rsum_block(data+x, bs);
     if (z->seq_matches > 1)
-      z->r[1] = calc_rsum_block(data+x+bs, bs);
+      z->r[1] = rcksum_calc_rsum_block(data+x+bs, bs);
   }
   z->skip = 0;
 
@@ -218,7 +222,7 @@ int submit_source_data(struct zsync_state* const z, unsigned char* data, size_t 
 #if 0
     {
       int k = 0;
-      struct rsum c = calc_rsum_block(data+x+bs*k, bs);
+      struct rsum c = rcksum_calc_rsum_block(data+x+bs*k, bs);
       if (c.a != z->r[k].a || c.b != z->r[k].b) {
 	fprintf(stderr,"rsum miscalc (%d) at %lld\n",k,offset+x);
 	exit(3);
@@ -265,10 +269,10 @@ int submit_source_data(struct zsync_state* const z, unsigned char* data, size_t 
 	if (z->seq_matches > 1 && blocks_matched == 1)
 	  z->r[0] = z->r[1];
 	else 
-	  z->r[0] = calc_rsum_block(data+x, bs);
+	  z->r[0] = rcksum_calc_rsum_block(data+x, bs);
 	
 	if (z->seq_matches > 1)
-	  z->r[1] = calc_rsum_block(data+x+bs, bs);
+	  z->r[1] = rcksum_calc_rsum_block(data+x+bs, bs);
 	continue;
       }
     }
@@ -285,12 +289,12 @@ int submit_source_data(struct zsync_state* const z, unsigned char* data, size_t 
   }
 }
 
-int submit_source_file(struct zsync_state* z, FILE* f)
+int rcksum_submit_source_file(struct rcksum_state* z, FILE* f)
 {
   register int bufsize = z->blocksize*16;
   char *buf = malloc(bufsize + z->context);
   int got_blocks = 0;
-  long long in = 0;
+  off64_t in = 0;
   int in_mb = 0;
 
   if (!buf) return 0;
@@ -301,7 +305,7 @@ int submit_source_file(struct zsync_state* z, FILE* f)
 
   while (!feof(f)) {
     size_t len;
-    long long start_in = in;
+    off64_t start_in = in;
 
     if (!in) {
       len = fread(buf,1,bufsize,f);
@@ -319,7 +323,7 @@ int submit_source_file(struct zsync_state* z, FILE* f)
     if (feof(f)) { /* 0 pad to complete a block */
       memset(buf+len,0,z->context); len += z->context;
     }
-    got_blocks += submit_source_data(z,buf,len,start_in);
+    got_blocks += rcksum_submit_source_data(z,buf,len,start_in);
     if (in_mb != in / 1000000) { in_mb = in / 1000000; fputc('*',stderr); }
   }
   free(buf);

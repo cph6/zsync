@@ -18,10 +18,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
 
 #include "zmap.h"
-
-#include <arpa/inet.h>
 
 struct zmapentry {
   long long inbits;
@@ -73,13 +73,14 @@ struct zmap* make_zmap(const struct gzblock* zb, int n)
 
 /* Translate into byte blocks to retrieve from the gzip file */
 
-int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int maxout, long long* byterange, int nrange, long long* lastoffset)
+off64_t* zmap_to_compressed_ranges(const struct zmap* zm, off64_t* byterange, int nrange, int* num)
 {
   int i,k;
   long long lastwroteblockstart_inbitoffset = 0;
   int k_at_last_block = -1;
+  off64_t* zbyterange = malloc(2 * 2 * nrange * sizeof *byterange);
 
-  for (i=0,k=0; i<nrange && k < maxout-10; i++) {
+  for (i=0,k=0; i<nrange; i++) {
     long long start = byterange[2*i];
     long long end = byterange[2*i+1];
     long long zstart = -1;
@@ -99,7 +100,6 @@ int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int m
 	if (lastwroteblockstart_inbitoffset != lastblockstart_inbitoffset) {
 	  /* The zbyteranges 0...k-1 have retrieved everything we need up to the start of the previous block - record this fact for the caller */
 	  k_at_last_block = k;
-	  if (lastoffset) *lastoffset = zm->e[j-1].outbytes;
 
 	  zbyterange[2*k] = lastblockstart_inbitoffset/8;
 	  zbyterange[2*k+1] = (lastblockstart_inbitoffset/8) + 200;
@@ -120,22 +120,13 @@ int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int m
     }
     if (zend == -1 || zstart == -1) {
       fprintf(stderr,"Z-Map couldn't tell us how to find %lld-%lld\n",byterange[2*i],byterange[2*i+1]);
-      return -1;
+      free(zbyterange);
+      return NULL;
     }
     zbyterange[2*k] = zstart/8;
     /* Note +9 trailing bits, the offset is to the last huffman code inside the block, and each code is at most 9 bits */
     zbyterange[2*k+1] = (zend+7)/8;
     k++;
-  }
-
-  if (i != nrange) {
-    /* We didn't get everything the caller asked for.
-     * Step back to the previous block boundary (*lastoffset indicates to the caller where this was) so that when the caller calls again with more blocks, we don't retrieve the header for this block twice.
-     */
-    k = k_at_last_block;
-  } else {
-    /* We got everything we wanted - tell the caller so */
-    if (lastoffset) *lastoffset = byterange[2*i-1]+1;
   }
 
   for (i=0; i<k-1;) {
@@ -150,7 +141,11 @@ int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int m
       k--;
     } else i++;
   }
-  return k;
+  *num = k;
+  if (k > 0) {
+    zbyterange = realloc(zbyterange, 2 * k * sizeof *zbyterange);
+  }
+  return zbyterange;
 }
 
 #include "zlib/zlib.h"

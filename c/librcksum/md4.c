@@ -27,7 +27,7 @@ static const char rcsid[] = "$OpenBSD: md4.c,v 1.6 2004/05/28 15:10:27 millert E
 #include <md4.h>
 
 /* Map Solaris endian stuff to something useful */
-#ifdef _BIG_ENDIAN
+#if defined(_BIG_ENDIAN) && !defined(_BYTE_ORDER)
 #define LITTLE_ENDIAN 0
 #define BIG_ENDIAN 1
 #define BYTE_ORDER 1

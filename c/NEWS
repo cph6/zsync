@@ -1,3 +1,7 @@
+Changes in 0.3.0
+- fix endian check in libhash (works on FreeBSD again)
+- major code reorganisation
+
 Changes in 0.2.3
 - fix crash in zsyncmake with short files
 - "negative" hash table used to speed up processing

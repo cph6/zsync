@@ -25,7 +25,7 @@ static const char rcsid[] = "$OpenBSD: sha1.c,v 1.19 2004/05/28 15:10:27 millert
 #define rol(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
 
 /* Map Solaris endian stuff to something useful */
-#ifdef _BIG_ENDIAN
+#if defined(_BIG_ENDIAN) && !defined(_BYTE_ORDER)
 #define LITTLE_ENDIAN 0
 #define BIG_ENDIAN 1
 #define BYTE_ORDER 1

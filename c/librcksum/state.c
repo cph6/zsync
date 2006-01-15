@@ -1,5 +1,5 @@
 /*
- *   zsync/lib - library for using the rsync algorithm to determine
+ *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
@@ -14,7 +14,7 @@
  *   COPYING file for details.
  */
 
-/* Effectively the constructor and destructor for the zsync object.
+/* Effectively the constructor and destructor for the rcksum object.
  * Also handles the file handles on the temporary stote.
  */
 
@@ -22,12 +22,13 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "zsync.h"
+#include "config.h"
+#include "rcksum.h"
 #include "internal.h"
 
-struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize, int rsum_bytes, int checksum_bytes, int require_consecutive_matches)
+struct rcksum_state* rcksum_init(zs_blockid nblocks, size_t blocksize, int rsum_bytes, int checksum_bytes, int require_consecutive_matches)
 {
-  struct zsync_state* z = malloc(sizeof(struct zsync_state));
+  struct rcksum_state* z = malloc(sizeof(struct rcksum_state));
 
   if (z != NULL) {
     /* Setup blocksize and shift. Size must be a power of two. */
@@ -38,7 +39,7 @@ struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize, int rsum_by
     z->seq_matches = require_consecutive_matches;
     z->context = blocksize * require_consecutive_matches;
     z->gotblocks = 0;
-    z->filename = strdup("zsync-XXXXXX");
+    z->filename = strdup("rcksum-XXXXXX");
     memset(&(z->stats),0,sizeof(z->stats));
     if (!(z->blocksize & (z->blocksize - 1)) && z->filename != NULL && z->blocks) {
       z->fd = mkstemp(z->filename);
@@ -70,21 +71,21 @@ struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize, int rsum_by
   return NULL;
 }
 
-char* zsync_filename(struct zsync_state* z)
+char* rcksum_filename(struct rcksum_state* z)
 {
   char* p = z->filename;
   z->filename = NULL;
   return p;
 }
 
-int zsync_filehandle(struct zsync_state* z)
+int rcksum_filehandle(struct rcksum_state* z)
 {
   int h = z->fd;
   z->fd = -1;
   return h;
 }
 
-void zsync_end(struct zsync_state* z) 
+void rcksum_end(struct rcksum_state* z) 
 {
   if (z->fd != -1)
     close(z->fd);

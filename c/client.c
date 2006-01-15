@@ -16,26 +16,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-
-#include <arpa/inet.h>
+#include <ctype.h>
 
 #include "config.h"
 
-#include "zsync.h"
-#include "libzmap/zmap.h"
+#include "libzsync/zsync.h"
 
 #include "http.h"
 #include "url.h"
-#include "fetch.h"
-
-long known_blocks;
-
-#include "libhash/sha1.h"
 
 void read_seed_file(struct zsync_state* z, const char* fname) {
   fprintf(stderr,"reading seed file %s: ",fname);
@@ -45,7 +37,7 @@ void read_seed_file(struct zsync_state* z, const char* fname) {
     if (!f) {
       perror("open"); fprintf(stderr,"not using seed file %s\n",fname);
     } else {
-      known_blocks += submit_source_file(z, f);
+      zsync_submit_source_file(z, f);
       if (fclose(f) != 0) {
 	perror("close");
       }
@@ -54,16 +46,7 @@ void read_seed_file(struct zsync_state* z, const char* fname) {
   fputc('\n',stderr);
 }
 
-int blocksize;
 long long http_down;
-
-long long filelen;
-char** url;
-int nurl;
-char** zurl;
-int nzurl;
-char* filename;
-char* sha1sum;
 
 static void** append_ptrlist(int *n, void** p, void* a) {
   if (!a) return p;
@@ -74,150 +57,11 @@ static void** append_ptrlist(int *n, void** p, void* a) {
   return p;
 }
 
-struct zmap* zmap;
-
-int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* source_name)
-{
-  struct zsync_state* zs = NULL;
-  zs_blockid blocks = 0;
-  int checksum_bytes = 16,rsum_bytes = 4,seq_matches=1;
-
-  for (;;) {
-    char buf[1024];
-    char *p = NULL;
-    int l;
-
-    if (fgets(buf, sizeof(buf), f) != NULL) {
-      if (buf[0] == '\n') break;
-      l = strlen(buf) - 1;
-      while (l >= 0 && (buf[l] == '\n' || buf[l] == '\r' || buf[l] == ' '))
-	buf[l--] = 0;
-
-      p = strchr(buf,':');
-    }
-    if (p && *(p+1) == ' ') {
-      *p++ = 0;
-      p++;
-      if (!strcmp(buf, "zsync")) {
-	if (!strcmp(p,"0.0.4")) {
-	  fprintf(stderr,"This version of zsync is not compatible with zsync 0.0.4 streams.\n");
-	  exit(3);
-	}
-      } else if (!strcmp(buf, "Min-Version")) {
-	if (strcmp(p,VERSION) > 0) {
-	  fprintf(stderr,"control file indicates that zsync-%s or better is required\n",p);
-	  exit(3);
-	}
-      } else if (!strcmp(buf, "Length")) {
-	filelen = atol(p);
-      } else if (!strcmp(buf, "Filename")) {
-	if (!filename) {
-	  if (strchr(buf,'/')) {
-	    fprintf(stderr,"Rejected filename specified in %s, contained path component.\n",source_name);
-	  } else {
-	    char *s = strdup(source_name);
-	    char *t = strrchr(s,'/');
-	    char *u;
-	    if (t) *t++ = 0;
-	    else t = s;
-	    u = t;
-	    while (isalnum(*u)) { u++; }
-	    *u = 0;
-	    if (strlen(t) > 0)
-	      if (!memcmp(p,t,strlen(t)))
-		filename = strdup(p);
-	    if (!filename) {
-	      fprintf(stderr,"Rejected filename specified in %s - prefix %s differed from filename %s.\n",source_name, t, p);
-	    }
-	    free(s);
-	  }
-	}
-      } else if (!strcmp(buf, "URL")) {
-	char *u = make_url_absolute(source_name,p);
-	if (!u) {
-	  fprintf(stderr,"unable to determine full URL for %s\n",p);
-	} else
-	  url = (char**)append_ptrlist(&nurl, url, u);
-      } else if (!strcmp(buf, "Z-URL")) {
-	char *u = make_url_absolute(source_name,p);
-	if (!u) {
-	  fprintf(stderr,"unable to determine full URL for %s\n",p);
-	} else
-	  zurl = (char**)append_ptrlist(&nzurl, zurl, u);
-      } else if (!strcmp(buf, "Blocksize")) {
-	blocksize = atol(p);
-	if (blocksize < 0 || (blocksize & (blocksize-1))) {
-	  fprintf(stderr,"nonsensical blocksize %d\n",blocksize); return -1;
-	}
-      } else if (!strcmp(buf, "Hash-Lengths")) {
-        if (sscanf(p,"%d,%d,%d",&seq_matches,&rsum_bytes,&checksum_bytes) != 3 || rsum_bytes < 1 || rsum_bytes > 4 || checksum_bytes < 3 || checksum_bytes > 16 || seq_matches > 2 || seq_matches < 1) {
-	  fprintf(stderr,"nonsensical hash lengths line %s\n",p);
-	  return -1;
-	}
-      } else if (blocks && !strcmp(buf,"Z-Map")) {
-	/* Obsolete, not supported, just throw away the stuff marked by the header */
-	int nzblocks = atoi(p);
-	void *d = malloc(nzblocks*8);
-	if (d) {
-	  fread(d,8,nzblocks,f);
-	  free(d);
-	}
-      } else if (blocks && !strcmp(buf,"Z-Map2")) {
-	int nzblocks;
-	struct gzblock* zblock;
-
-	nzblocks = atoi(p);
-	if (nzblocks < 0) { fprintf(stderr,"bad Z-Map line\n"); return -1; }
-
-	zblock = malloc(nzblocks * sizeof *zblock);
-	if (zblock) {
-	  if (fread(zblock,sizeof *zblock,nzblocks,f) < nzblocks) { fprintf(stderr,"premature EOF after Z-Map\n"); return -1; }
-
-	  zmap = make_zmap(zblock,nzblocks);
-	  free(zblock);
-	}
-      } else if (!strcmp(buf,"SHA-1")) {
-	sha1sum = strdup(p);
-      } else {
-	fprintf(stderr,"unrecognised tag %s - perhaps you need a newer version of zsync?\n",buf);
-	return -1;
-      }
-      if (filelen && blocksize)
-	blocks = (filelen + blocksize-1)/blocksize;
-    } else {
-      fprintf(stderr, "Bad line - not a zsync file? \"%s\"\n", buf);
-      return -1;
-    }
-  }
-  if (!filelen || !blocksize) {
-    fprintf(stderr,"Not a zsync file (looked for Blocksize and Length lines)\n");
-    return -1;
-  }
-  if (!(zs = zsync_init(blocks, blocksize, rsum_bytes, checksum_bytes, seq_matches))) {
-    exit (1);
-  }
-  {
-    zs_blockid id = 0;
-    for (;id < blocks; id++) {
-      struct rsum r = { 0,0 };
-      unsigned char checksum[CHECKSUM_SIZE];
-
-      if (fread(((char*)&r)+4-rsum_bytes,rsum_bytes,1,f) < 1 || fread((void*)&checksum,checksum_bytes,1,f) < 1) {
-	fprintf(stderr,"short read on control file; %s\n",strerror(ferror(f)));
-	return -1;
-      }
-      r.a = ntohs(r.a); r.b = ntohs(r.b);
-      add_target_block(zs, id, r, checksum);
-    }
-  }
-  *z = zs;
-  return 0;
-}
-
-void  read_zsync_control_file(const char* p, struct zsync_state** pzs)
+struct zsync_state* read_zsync_control_file(const char* p)
 {
   FILE* f;
-  char* lastpath = p;
+  struct zsync_state* zs;
+  char* lastpath = NULL;
 
   f = fopen(p,"r");
   if (!f) {
@@ -241,100 +85,151 @@ void  read_zsync_control_file(const char* p, struct zsync_state** pzs)
     }
     referer = lastpath;
   }
-  if (read_zsync_control_stream(f, pzs, lastpath) != 0) { exit(1); }
+  if ((zs = zsync_begin(f)) == NULL) { exit(1); }
   if (fclose(f) != 0) { perror("fclose"); exit(2); }
+  return zs;
+}
+
+static char* get_filename_prefix(const char* p) {
+  char* s = strdup(p);
+  char *t = strrchr(s,'/');
+  char *u;
+  if (t) *t++ = 0;
+  else t = s;
+  u = t;
+  while (isalnum(*u)) { u++; }
+  *u = 0;
+  if (*t > 0)
+    t = strdup(t);
+  else
+    t = NULL;
+  free(s);
+  return t;
+}
+
+char* get_filename(const struct zsync_state* zs, const char* source_name)
+{
+  char* p = zsync_filename(zs);
+  char* filename = NULL;
+
+  if (p) {
+    if (strchr(p,'/')) {
+      fprintf(stderr,"Rejected filename specified in %s, contained path component.\n",source_name);
+      free(p);
+    } else {
+      char *t = get_filename_prefix(source_name);
+
+      if (t && !memcmp(p,t,strlen(t)))
+	filename = p;
+      else
+	free(p);
+
+      if (t && !filename) {
+	fprintf(stderr,"Rejected filename specified in %s - prefix %s differed from filename %s.\n",source_name, t, p);
+      }
+      free(t);
+    }
+  }
+  if (!filename) {
+    filename = get_filename_prefix(source_name);
+    if (!filename) filename = strdup("zsync-download");
+  }
+  return filename;
+}
+
+#define BUFFERSIZE 8192
+
+int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type)
+{
+  int ret = 0;
+  struct range_fetch* rf;
+  unsigned char* buf;
+  int lastmegsdown = 0;
+  struct zsync_receiver* zr;
+  char *u = make_url_absolute(referer, url);
+  
+  rf = range_fetch_start(u);
+  if (!rf) { free(u); return -1; }
+
+  zr = zsync_begin_receive(z, type);
+  if (!zr) { range_fetch_end(rf); free(u); return -1; }
+  
+  fprintf(stderr,"downloading from %s:",u);
+  
+  buf = malloc(BUFFERSIZE);
+  if (!buf) { zsync_end_receive(zr); range_fetch_end(rf); free(u); return -1; }
+
+  {
+    int nrange;
+    off64_t *zbyterange;
+
+    zbyterange = zsync_needed_byte_ranges(z, &nrange, type);
+    if (!zbyterange) return 1;
+    if (nrange == 0) return 0;
+
+    range_fetch_addranges(rf, zbyterange, nrange);
+  }
+
+  {
+    int len;
+    off64_t zoffset;
+
+    while ((len = get_range_block(rf, &zoffset, buf, BUFFERSIZE)) > 0) {
+      if (zsync_receive_data(zr, buf, zoffset, len) != 0)
+	ret = 1;
+
+      {
+	int md = range_fetch_bytes_down(rf)/1000000;
+	if (md != lastmegsdown) {
+	  lastmegsdown = md; fputc('.',stderr);
+	}
+      }
+    }
+    if (len < 0) ret = -1;
+    else
+      zsync_receive_data(zr, NULL, zoffset, 0);
+  }
+
+  free(buf);
+  http_down += range_fetch_bytes_down(rf);
+  zsync_end_receive(zr);
+  range_fetch_end(rf);
+  free(u);
+  fputc('\n',stderr);
+  return ret;
 }
 
 int fetch_remaining_blocks(struct zsync_state* zs)
 {
-  zs_blockid blrange[2];
-  
-  /* Use get_needed_block_ranges with a wide range and a dummy storage area. If we get at least once range, there is still data to transfer. */
-  while (get_needed_block_ranges(zs, &blrange[0], 1, 0, 0x7fffffff) != 0) {
-    char **ptryurl = NULL;
-    int zfetch = 0;
+  int n, utype;
+  const char * const * url = zsync_get_urls(zs, &n, &utype);
+  int *status;
+  int ok_urls = n;
 
-    /* Pick a random URL from the list. Try compressed URLs first. */
-    if (zmap) {
-      int i,c;
 
-      zfetch = 1;
-      for (i=0, c=0; i<nzurl; i++)
-	if (zurl[i] != NULL) {
-	  if (!c++) ptryurl = &zurl[i];
-	  else if (!(rand() % c)) ptryurl = &zurl[i];
-	}
-    }
-    if (!ptryurl) {
-      int i,c;
+  if (!url) {
+    fprintf(stderr,"no URLs available from zsync?");
+    return 1;
+  }
+  status = calloc(n, sizeof *status);
 
-      zfetch = 0;
-      for (i=0, c=0; i<nurl; i++)
-	if (url[i] != NULL) {
-	  if (!c++) ptryurl = &url[i];
-	  else if (!(rand() % c)) ptryurl = &url[i];
-	}
-    }
-    if (!ptryurl) return 1; /* All URLs eliminated. */
+  while (zsync_status(zs) < 2 && ok_urls) {
+    /* Still need data */
+    int try = rand() % n;
 
-    if (ptryurl) {
-      int rc;
-      if (zfetch)
-	rc = fetch_remaining_blocks_zlib_http(zs,*ptryurl,zmap);
-      else
-	rc = fetch_remaining_blocks_http(zs,*ptryurl,0);
+    if (!status[try]) {
+      const char* tryurl = url[try];
+
+      int rc = fetch_remaining_blocks_http(zs,tryurl, utype);
 
       if (rc != 0) {
-	fprintf(stderr,"%s removed from list\n",*ptryurl);
-	free(*ptryurl);
-	*ptryurl = NULL;
+	fprintf(stderr,"failed to retrieve from %s\n",tryurl);
+	status[try] = 1; ok_urls--;
       }
     }
   }
+  free(status);
   return 0;
-}
-
-static int truncate_verify_close(int fh, long long filelen, const char* checksum, const char* checksum_method) {
-  if (ftruncate(fh,filelen) != 0) { perror("ftruncate"); return -1; }
-  if (lseek(fh,0,SEEK_SET) != 0) { perror("lseek"); return -1; }
-  if (checksum && !strcmp(checksum_method,"SHA-1")) {
-    SHA1_CTX shactx;
-
-    fprintf(stderr,"verifying download\n");
-    if (strlen(checksum) != SHA1_DIGEST_LENGTH*2) {
-      fprintf(stderr,"SHA-1 digest from control file is wrong length.\n");
-      return -1;
-    }
-    {
-      char buf[4096];
-      int rc;
-      
-      SHA1Init(&shactx);
-      while (0 < (rc = read(fh,buf,sizeof buf))) {
-	SHA1Update(&shactx,buf,rc);
-      }
-      if (rc < 0) { perror("read"); return -1; }
-    }
-    {
-      unsigned char digest[SHA1_DIGEST_LENGTH];
-      int i;
-
-      SHA1Final(digest, &shactx);
-
-      for (i=0; i<SHA1_DIGEST_LENGTH; i++) {
-	int j;
-	sscanf(&checksum[2*i],"%2x",&j);
-	if (j != digest[i]) {
-	  fprintf(stderr,"Checksum mismatch\n"); return 1;
-	}
-      }
-    }
-  }
-  else
-  {
-    fprintf(stderr,"Unable to verify checksum (%s), but proceeding.\n", checksum_method ? checksum_method : "no recognised checksum provided");
-  }
-  return close (fh);
 }
 
 int main(int argc, char** argv) {
@@ -342,7 +237,10 @@ int main(int argc, char** argv) {
   char *temp_file = NULL;
   char **seedfiles = NULL;
   int nseedfiles = 0;
+  char* filename = NULL;
+  long long local_used;
 
+  srand(getpid());
   {
     int opt;
     while ((opt = getopt(argc,argv,"o:i:V")) != -1) {
@@ -372,12 +270,14 @@ int main(int argc, char** argv) {
     char *pr = getenv("http_proxy");
     if (pr != NULL) set_proxy_from_string(pr);
   }
-  read_zsync_control_file(argv[optind], &zs);
-  if (filename) {
-    temp_file = malloc(strlen(filename)+6);
-    strcpy(temp_file,filename);
-    strcat(temp_file,".part");
-  }
+  if ((zs = read_zsync_control_file(argv[optind])) == NULL)
+    exit(1);
+
+  if (!filename) filename = get_filename(zs, referer);
+
+  temp_file = malloc(strlen(filename)+6);
+  strcpy(temp_file,filename);
+  strcat(temp_file,".part");
 
   {
     int i;
@@ -391,37 +291,39 @@ int main(int argc, char** argv) {
     if (!access(temp_file,R_OK)) {
       read_seed_file(zs, temp_file);
     }
-    if (!known_blocks) {
-      fputs("No relevent local data found - I would have to download the whole file. You should specify the local file is the old version of the file to download with -i (you might have to decompress it with gzip -d first). Or you just really have no data to help download the file - in which case use wget :-)",stderr);
-      exit(3);
-    } else {
-      zs_blockid blocks;
-      blocks = (filelen + blocksize - 1)/blocksize;
-      fprintf(stderr,"%d known/%d total\n",known_blocks,blocks);
+    zsync_progress(zs, &local_used, NULL);
+    if (!local_used) {
+      fputs("No relevent local data found - I will be downloading the whole file. If that's not what you want, CTRL-C out. You should specify the local file is the old version of the file to download with -i (you might have to decompress it with gzip -d first). Or perhaps you just have no data that helps download the file\n",stderr);
     }
   }
-  { /* Get the working file from libzsync */
-    char* cur_temp_file = zsync_filename(zs);
 
-    if (temp_file) {
-      rename(cur_temp_file,temp_file);
-    } else temp_file = cur_temp_file;
+  if (zsync_rename_file(zs, temp_file) != 0) {
+    perror("rename"); exit(1);
   }
+
   if (fetch_remaining_blocks(zs) != 0) {
     fprintf(stderr,"failed to retrieve all remaining blocks - no valid download URLs remain. Incomplete transfer left in %s.\n(If this is the download filename with .part appended, zsync will automatically pick this up and reuse the data it has already done if you retry in this dir.)\n",temp_file);
     exit(3);
   }
 
   {
-    int fh = zsync_filehandle(zs);
+    int r;
 
-    zsync_end(zs);
-    
-    if (truncate_verify_close(fh,filelen,sha1sum,"SHA-1") != 0) {
+    printf("verifying download...");
+    r = zsync_complete(zs);
+    switch (r) {
+    case -1:
       fprintf(stderr,"Aborting, download available in %s\n",temp_file);
       exit(2);
+    case 0:
+      printf("no recognised checksum found\n");
+      break;
+    case 1:
+      printf("checksum matches OK\n");
+      break;
     }
   }
+  zsync_end(zs);
 
   if (filename) {
     char* oldfile_backup = malloc(strlen(filename)+8);
@@ -449,6 +351,6 @@ int main(int argc, char** argv) {
     printf("No filename specified for download - completed download left in %s\n",temp_file);
   }
 
-  fprintf(stderr,"used %lld local, fetched %lld\n",((long long)known_blocks)*blocksize,http_down);
+  fprintf(stderr,"used %lld local, fetched %lld\n", local_used, http_down);
   return 0;
 }

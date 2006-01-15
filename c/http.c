@@ -195,14 +195,14 @@ struct range_fetch {
   char* cport;
 
   size_t block_left;
-  long long offset;
+  off64_t offset;
   int sd;
   char buf[4096];
   int buf_start, buf_end;
-  long long bytes_down;
+  off64_t bytes_down;
   int server_close; /* 0: can send more, 1: cannot send more (but one set of headers still to read), 2: cannot send more and all existing headers read */
 
-  long long* ranges_todo;
+  off64_t* ranges_todo;
   int nranges;
   int rangesdone;
   int rangessent;
@@ -290,10 +290,10 @@ struct range_fetch* range_fetch_start(const char* orig_url)
   return rf;
 }
 
-void range_fetch_addranges(struct range_fetch* rf, long long* ranges, int nranges)
+void range_fetch_addranges(struct range_fetch* rf, off64_t* ranges, int nranges)
 {
   int existing_ranges = rf->nranges - rf->rangesdone;
-  long long* nr = malloc(2*sizeof(*ranges)*(nranges + existing_ranges));
+  off64_t* nr = malloc(2*sizeof(*ranges)*(nranges + existing_ranges));
   
   if (!nr) return;
   /* Copy existing queue over */
@@ -313,7 +313,6 @@ void range_fetch_addranges(struct range_fetch* rf, long long* ranges, int nrange
 static void range_fetch_connect(struct range_fetch* rf)
 {
   rf->sd = connect_to(rf->chost, rf->cport);
-  if (rf->sd == -1) perror("connect");
   rf->server_close = 0;
   rf->rangessent = rf->rangesdone;
 }
@@ -417,7 +416,7 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
     buflwr(buf);
       /* buf is the header name (lower-cased), p the value */
     if (!strcmp(buf,"content-range")) {
-      unsigned long long from,to;
+      off64_t from,to;
       sscanf(p,"bytes %llu-%llu/",&from,&to);
       if (from <= to) {
 	rf->block_left = to + 1 - from;
@@ -449,7 +448,7 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
   return -1;
 }
 
-int get_range_block(struct range_fetch* rf, long long* offset, unsigned char* data, size_t dlen)
+int get_range_block(struct range_fetch* rf, off64_t* offset, unsigned char* data, size_t dlen)
 {
   size_t bytes_to_caller = 0;
 
@@ -554,7 +553,7 @@ check_boundary:
   }
 }
 
-long long range_fetch_bytes_down(const struct range_fetch* rf)
+off64_t range_fetch_bytes_down(const struct range_fetch* rf)
 { return rf->bytes_down; }
 
 void range_fetch_end(struct range_fetch* rf) {

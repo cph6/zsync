@@ -1,5 +1,5 @@
 /*
- *   zsync/lib - library for using the rsync algorithm to determine
+ *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
@@ -14,7 +14,7 @@
  *   COPYING file for details.
  */
 
-/* Internal data structures to the library. Not to be included by code outside libzsync. */
+/* Internal data structures to the library. Not to be included by code outside librcksum. */
 
 struct hash_entry {
   struct hash_entry* next;
@@ -22,7 +22,7 @@ struct hash_entry {
   unsigned char checksum[CHECKSUM_SIZE];
 };
 
-struct zsync_state {
+struct rcksum_state {
   struct rsum r[2]; /* Current rsums */
 
   zs_blockid blocks;
@@ -61,14 +61,14 @@ struct zsync_state {
 
 #define BITHASHBITS 3
 
-static inline zs_blockid get_HE_blockid(const struct zsync_state* z, const struct hash_entry* e) { return e - z->blockhashes; }
+static inline zs_blockid get_HE_blockid(const struct rcksum_state* z, const struct hash_entry* e) { return e - z->blockhashes; }
 
-void add_to_ranges(struct zsync_state* z, zs_blockid n);
-int already_got_block(struct zsync_state* z, zs_blockid n);
+void add_to_ranges(struct rcksum_state* z, zs_blockid n);
+int already_got_block(struct rcksum_state* z, zs_blockid n);
 
 struct hash_entry* calc_hash_entry(void* data, size_t len);
 
-static inline unsigned calc_rhash(const struct zsync_state* const z, const struct hash_entry* const e) {
+static inline unsigned calc_rhash(const struct rcksum_state* const z, const struct hash_entry* const e) {
   unsigned h = e[0].r.b;
   
   h ^= ((z->seq_matches > 1) ? e[1].r.b : e[0].r.a) << BITHASHBITS;
@@ -76,4 +76,4 @@ static inline unsigned calc_rhash(const struct zsync_state* const z, const struc
   return h;
 }
 
-int build_hash(struct zsync_state* z);
+int build_hash(struct rcksum_state* z);

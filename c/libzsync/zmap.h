@@ -32,5 +32,5 @@ struct zmap;
 struct z_stream_s;
 
 struct zmap* make_zmap(const struct gzblock* zb, int n);
-int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int maxout, long long* byterange, int nrange, long long* lastoffset);
+off64_t* zmap_to_compressed_ranges(const struct zmap* zm, off64_t* byterange, int nrange, int* num);
 void configure_zstream_for_zdata(const struct zmap* zm, struct z_stream_s* zs, long zoffset, long long* poutoffset);

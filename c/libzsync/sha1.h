@@ -40,7 +40,7 @@ char *SHA1End(SHA1_CTX *, char *)
 	__attribute__((__bounded__(__minbytes__,2,SHA1_DIGEST_STRING_LENGTH)));
 char *SHA1File(const char *, char *)
 	__attribute__((__bounded__(__minbytes__,2,SHA1_DIGEST_STRING_LENGTH)));
-char *SHA1FileChunk(const char *, char *, off_t, off_t)
+char *SHA1FileChunk(const char *, char *, off64_t, off64_t)
 	__attribute__((__bounded__(__minbytes__,2,SHA1_DIGEST_STRING_LENGTH)));
 char *SHA1Data(const uint8_t *, size_t, char *)
 	__attribute__((__bounded__(__string__,1,2)))

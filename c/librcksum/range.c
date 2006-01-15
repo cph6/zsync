@@ -1,5 +1,5 @@
 /*
- *   zsync/lib - library for using the rsync algorithm to determine
+ *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
@@ -18,7 +18,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "zsync.h"
+#include "config.h"
+#include "rcksum.h"
 #include "internal.h"
 
 #define calc_min_max(x, min, max) \
@@ -32,7 +33,7 @@
   (void)0
   
 
-void add_to_ranges(struct zsync_state* zs, zs_blockid x)
+void add_to_ranges(struct rcksum_state* zs, zs_blockid x)
 {
   calc_min_max(x, min, max);
 
@@ -70,15 +71,19 @@ void add_to_ranges(struct zsync_state* zs, zs_blockid x)
 #endif
 }
 
-int already_got_block(struct zsync_state* zs, zs_blockid x)
+int already_got_block(struct rcksum_state* zs, zs_blockid x)
 {
   calc_min_max(x, min, max);
 
   return (min == max);
 }
 
-int get_needed_block_ranges(const struct zsync_state* z, zs_blockid* r, int max, zs_blockid from, zs_blockid to) {
+zs_blockid* rcksum_needed_block_ranges(const struct rcksum_state* z, int* num, zs_blockid from, zs_blockid to) {
   int i,n;
+  int alloc_n = 100;
+  zs_blockid* r = malloc(2 * alloc_n * sizeof(zs_blockid));
+
+  if (!r) return NULL;
 
   if (to >= z->blocks) to = z->blocks;
   r[0] = from; r[1] = to; n = 1;
@@ -98,16 +103,32 @@ int get_needed_block_ranges(const struct zsync_state* z, zs_blockid* r, int max,
 	r[2*n-1] = z->ranges[2*i];
       } else {
 	/* In the middle of our range, split it */
-	if (n < max) {
-	  r[2*n] = z->ranges[2*i+1]+1;
-	  r[2*n+1] = r[2*n-1];
-	}
+	r[2*n] = z->ranges[2*i+1]+1;
+	r[2*n+1] = r[2*n-1];
 	r[2*n-1] = z->ranges[2*i];
-	if (n < max) n++;
+	n++;
+	if (n == alloc_n) {
+	  alloc_n += 100;
+	  zs_blockid* r2 = realloc(r, 2 * alloc_n * sizeof *r);
+	  if (!r2) { free(r); return NULL; } 
+	  r = r2;
+	}
       }
     }
   }
-  if (n == 1 && r[0] >= r[1]) return 0;
+  r = realloc(r, 2 * n * sizeof *r);
+  if (n == 1 && r[0] >= r[1]) n = 0;
+
+  *num = n;
+  return r;
+}
+
+int rcksum_blocks_todo(const struct rcksum_state* rs)
+{
+  int i, n = rs->blocks;
+  for (i = 0; i<rs->numranges; i++) {
+    n -= 1 + rs->ranges[2*i+1] - rs->ranges[2*i];
+  }
   return n;
 }
 

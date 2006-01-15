@@ -1,5 +1,5 @@
 /*
- *   zsync/lib - library for using the rsync algorithm to determine
+ *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
@@ -18,10 +18,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "zsync.h"
+#include "config.h"
+#include "rcksum.h"
 #include "internal.h"
 
-void add_target_block(struct zsync_state* z, zs_blockid b, struct rsum r, void* checksum)
+void rcksum_add_target_block(struct rcksum_state* z, zs_blockid b, struct rsum r, void* checksum)
 {
  if (b < z->blocks) {
   /* Get hash entry with checksums for this block */
@@ -38,7 +39,7 @@ void add_target_block(struct zsync_state* z, zs_blockid b, struct rsum r, void* 
  }
 }
 
-int build_hash(struct zsync_state* z)
+int build_hash(struct rcksum_state* z)
 {
   zs_blockid id;
   int i = 16;
