@@ -1,4 +1,4 @@
-.TH "zsyncmake" "1" "0.0.1" "Colin Phipps" "File Transfer"
+.TH "zsyncmake" "1" "0.2.2" "Colin Phipps" "File Transfer"
 .SH "NAME"
 .LP 
 zsyncmake \- Build control file for zsync(1)
@@ -28,7 +28,7 @@ Override the default output file name.
 Set the filename to include in the output file (this is what the file will be called when a user finished downloading it).
 .TP 
 \fB\-b\fR \fIblocksize\fR
-Specify the blocksize to the underlying rsync algorithm. A smaller blocksize may be more efficient for files where there are likely to be lots of small, scattered changes between downloads; a larger blocksize may be more efficient for files with larger blocks of contiguous new or old data. This blocksize must be a power of two \- don't use anything other than 512, 1024 or 2048 unless you know what you are doing (although in that case you probably shouldn't even think of changing it anyway :\-).
+Specify the blocksize to the underlying rsync algorithm. A smaller blocksize may be more efficient for files where there are likely to be lots of small, scattered changes between downloads; a larger blocksize may be more efficient for files with larger blocks of contiguous new or old data. This blocksize must be a power of two. The default of 1024 is sensible for most text files/source code; for small files with very scattered changes 512 might do better. For compressed files you should stick to 1024 or 2048 \- zsyncmake may fail for larger block sizes. For larger files, like ISO files, a blocksize of 4096 is recommended.
 .TP 
 \fB\-Z\fR
 zsyncmake automatically looks inside gzip compressed files and exports the underlying, uncompressed data to the zsyncmake file. In testing this has proved to provide greater download efficiency. \-Z overrides the default behaviour and treats gzip files as just binary data. Use this if it is essential that the user receives the compressed data (for instance because a cryptographic signature is available only for the compressed data). zsync is typically no use if you specify \-Z, unless the gzip file was compressed with the special \-\-rsync option to make it friendly to differential transfers.

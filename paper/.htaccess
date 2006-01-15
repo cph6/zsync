@@ -1,0 +1,3 @@
+Redirect permanent /paper/ch05.html http://zsync.moria.org.uk/paper/ch02s08.html
+Redirect permanent /paper/ch05s02.html http://zsync.moria.org.uk/paper/ch03s03.html
+Redirect gone /paper/ch05s03.html

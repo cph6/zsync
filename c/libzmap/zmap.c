@@ -194,9 +194,7 @@ void configure_zstream_for_zdata(const struct zmap* zm, z_stream* zs, long zoffs
 
   /* Work out what the decompressed data will correspond to */
   *poutoffset = zm->e[i].outbytes;
-  
 
   /* Align with the bitstream */
-  zs->total_in = zoffset; /* We are here, plus a few more bits. */
-  inflate_advance_bits(zs, zm->e[i].inbits % 8, !zm->e[i].blockcount);
+  inflate_advance(zs, zoffset, zm->e[i].inbits % 8, !zm->e[i].blockcount);
 }

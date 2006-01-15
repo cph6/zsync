@@ -1,3 +1,7 @@
+Changes in 0.2.2
+- complete support for stored blocks in gzip files
+- update block size recommendations in man page
+
 Changes in 0.2.1
 - fixed bug where zsync would loop if fed more than one local source file
 - enabled zsync to handle gzip files containing stored (uncompressed) blocks (so we should do slightly better on gzipped binaries now - but this is still incomplete and will not work for all files)
