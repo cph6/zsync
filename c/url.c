@@ -45,8 +45,8 @@ char* get_host_port(const char* url, char* hostn, int hnlen, char** port)
     p = strchr(p,'/');
     *port = malloc(p-q+1);
     if (!*port) return NULL;
-    memcpy(*port,q,p-q);
-    (*port)[p-q] = 0;
+    memcpy(*port,q+1,p-q);
+    (*port)[p-q-1] = 0;
   }
   return p;
 }

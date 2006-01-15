@@ -105,15 +105,22 @@ char *referer;
 
 int set_proxy_from_string(const char* s)
 {
-  char *p;
-  if (!memcmp(s,"http://",7))
-    s += 7;
-  proxy = strdup(s);
-  p = strchr(proxy,':');
-  if (!p) { pport = strdup("webcache"); return 1; }
-  *p++ = 0;
-  pport = strdup(p);
-  return 1;
+  if (!memcmp(s,"http://",7)) {
+    proxy = malloc(256);
+    if (!proxy) return 0;
+    if (!get_host_port(s,proxy,256,&pport))
+      return 0;
+    if (!pport) { pport = strdup("webcache"); }
+    return 1;
+  } else {
+    char *p;
+    proxy = strdup(s);
+    p = strchr(proxy,':');
+    if (!p) { pport = strdup("webcache"); return 1; }
+    *p++ = 0;
+    pport = strdup(p);
+    return 1;
+  }
 }
 
 FILE* http_open(const char* orig_url, const char* extraheader, int require_code, char** track_referer)
@@ -198,6 +205,7 @@ struct range_fetch {
   long long* ranges_todo;
   int nranges;
   int rangesdone;
+  int rangessent;
 };
 
 static int get_more_data(struct range_fetch* rf) 
@@ -293,7 +301,11 @@ void range_fetch_addranges(struct range_fetch* rf, long long* ranges, int nrange
   /* And append the new stuff */
   memcpy(&nr[2*existing_ranges], ranges, 2*sizeof(*ranges)*nranges);
 
-  rf->rangesdone = 0; rf->nranges = existing_ranges + nranges;
+  /* Move back rangessent and rangesdone to the new locations, and update the count. */
+  rf->rangessent -= rf->rangesdone;
+  rf->rangesdone = 0;
+  rf->nranges = existing_ranges + nranges;
+
   free(rf->ranges_todo);
   rf->ranges_todo = nr;
 }
@@ -303,6 +315,7 @@ static void range_fetch_connect(struct range_fetch* rf)
   rf->sd = connect_to(rf->chost, rf->cport);
   if (rf->sd == -1) perror("connect");
   rf->server_close = 0;
+  rf->rangessent = rf->rangesdone;
 }
 
 static void range_fetch_getmore(struct range_fetch* rf)
@@ -310,9 +323,9 @@ static void range_fetch_getmore(struct range_fetch* rf)
   char request[2048];
   int l;
   int max_range_per_request = 20;
-  
+
   /* Only if there's stuff queued to get */
-  if (rf->rangesdone == rf->nranges) return;
+  if (rf->rangessent == rf->nranges) return;
 
   snprintf(request,sizeof(request), 
 	   "GET %s HTTP/1.1\r\n"
@@ -325,8 +338,8 @@ static void range_fetch_getmore(struct range_fetch* rf)
 	   );
   
   /* The for loop here is just a sanity check, lastrange is the real loop control */
-  for (; rf->rangesdone < rf->nranges; ) {
-    int i = rf->rangesdone;
+  for (; rf->rangessent < rf->nranges; ) {
+    int i = rf->rangessent;
     int lastrange = 0;
 
     l = strlen(request);
@@ -334,11 +347,11 @@ static void range_fetch_getmore(struct range_fetch* rf)
     
     snprintf(request + l, sizeof(request)-l, "%lld-%lld%s", rf->ranges_todo[2*i], rf->ranges_todo[2*i+1], lastrange ? "" : ",");
 
-    rf->rangesdone++;
+    rf->rangessent++;
     if (lastrange) break;
   }
   l = strlen(request);
-  snprintf(request + l, sizeof(request)-l, "\r\n%s\r\n", rf->rangesdone == rf->nranges ? "Connection: close\r\n" : "");
+  snprintf(request + l, sizeof(request)-l, "\r\n%s\r\n", rf->rangessent == rf->nranges ? "Connection: close\r\n" : "");
   
   {
     size_t len = strlen(request);
@@ -409,6 +422,9 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
 	rf->block_left = to + 1 - from;
 	rf->offset = from;
       }
+      /* Can only have got one range. */
+      rf->rangesdone++;
+      rf->rangessent = rf->rangesdone;
     }
     if (!strcmp(buf,"connection") && !strcmp(p,"close")) {
       rf->server_close = 1;
@@ -461,7 +477,7 @@ check_boundary:
       }
 
       /* Return EOF or error to caller */
-      if (header_result <= 0) return -1;
+      if (header_result <= 0) return header_result ? -1 : 0;
       
       /* HTTP Pipelining - send next request before reading current response */
       if (!rf->server_close) range_fetch_getmore(rf);
@@ -494,6 +510,7 @@ check_boundary:
 	fprintf(stderr,"got multipart/byteranges but no Content-Range?");
 	return -1;
       }
+      rf->rangesdone++;
     }
   }
   /* Now the easy bit - we are reading a block */

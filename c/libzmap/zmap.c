@@ -97,8 +97,9 @@ int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int m
 	zstart = zm->e[j-1].inbits;
 	// fprintf(stderr,"starting range at zlib block %d offset %lld.%lld\n",j-1,zstart/8,zstart%8);
 	if (lastwroteblockstart_inbitoffset != lastblockstart_inbitoffset) {
+	  /* The zbyteranges 0...k-1 have retrieved everything we need up to the start of the previous block - record this fact for the caller */
 	  k_at_last_block = k;
-	  if (lastoffset) *lastoffset = outbyteoffset;
+	  if (lastoffset) *lastoffset = zm->e[j-1].outbytes;
 
 	  zbyterange[2*k] = lastblockstart_inbitoffset/8;
 	  zbyterange[2*k+1] = (lastblockstart_inbitoffset/8) + 200;
@@ -127,9 +128,13 @@ int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int m
     k++;
   }
 
-  /* Step back to last block boundary if needed */
-  if (i != nrange) { k = k_at_last_block; }
-  else {
+  if (i != nrange) {
+    /* We didn't get everything the caller asked for.
+     * Step back to the previous block boundary (*lastoffset indicates to the caller where this was) so that when the caller calls again with more blocks, we don't retrieve the header for this block twice.
+     */
+    k = k_at_last_block;
+  } else {
+    /* We got everything we wanted - tell the caller so */
     if (lastoffset) *lastoffset = byterange[2*i-1]+1;
   }
 

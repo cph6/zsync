@@ -69,6 +69,9 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int maxb
 	    memset(&buf[len],0,extra); len += extra;
 	  }
 	  ret |= submit_blocks(z, buf, offset/blocksize, (offset+len-1)/blocksize);
+	  if (ret != 0) {
+	    fprintf(stderr,"got bad block for %lld\n",offset);
+	  }
 	} else
 	  fprintf(stderr,"got misaligned data? %lld\n",offset);
 
@@ -80,7 +83,9 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int maxb
 	  }
 	}
       }
-      if (len == -1) ret = -1;
+      if (len == -1) {
+	ret = -1;
+      }
       free(buf);
     }
   } while (!ret && nrange);
