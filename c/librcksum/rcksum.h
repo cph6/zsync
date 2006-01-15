@@ -43,7 +43,7 @@ void rcksum_add_target_block(struct rcksum_state* z, zs_blockid b, struct rsum r
 
 int rcksum_submit_blocks(struct rcksum_state* z, unsigned char* data, zs_blockid bfrom, zs_blockid bto);
 int rcksum_submit_source_data(struct rcksum_state* z, unsigned char* data, size_t len, off64_t offset);
-int rcksum_submit_source_file(struct rcksum_state* z, FILE* f);
+int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress);
 
 /* This reads back in data which is already known. */
 int rcksum_read_known_data(struct rcksum_state* z, unsigned char* buf, off64_t offset, size_t len);

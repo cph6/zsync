@@ -1,4 +1,4 @@
-zsync 0.4.1
+zsync 0.4.2
 ===========
 
 zsync is a file transfer program. It allows you to download a file from a
@@ -123,6 +123,6 @@ providing the hosting facilities for the downloads and mailing list, and the
 compile farm for testing portability.
 
 Also, thanks to Érsek László, James Antill, saul@alien-science.org, Kent Mein,
-Marc Lehmann, Robert Lemmen, and Ricardo Correia for useful feedback and bug
-reports for previous versions.
+Marc Lehmann, Robert Lemmen, Ricardo Correia, Karl Kalleberg, Michael Stone and
+Richard Lucassen for useful feedback and bug reports for previous versions.
 

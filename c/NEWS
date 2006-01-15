@@ -1,3 +1,7 @@
+Changes in 0.4.2
+- fix CAN-2005-1849 for embedded zlib
+- obey -s flag
+
 Changes in 0.4.1
 - security fix from zlib-1.2.2
 - generate RFC 1123 date strings in HTTP requests

@@ -274,9 +274,9 @@ off64_t* zsync_needed_byte_ranges(struct zsync_state* zs, int* num, int type)
   }
 }
 
-int zsync_submit_source_file(struct zsync_state* zs, FILE* f)
+int zsync_submit_source_file(struct zsync_state* zs, FILE* f, int progress)
 {
-  return rcksum_submit_source_file(zs->rs, f);
+  return rcksum_submit_source_file(zs->rs, f, progress);
 }
 
 char* zsync_cur_filename(struct zsync_state* zs)

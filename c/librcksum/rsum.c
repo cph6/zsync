@@ -294,7 +294,7 @@ int rcksum_submit_source_data(struct rcksum_state* const z, unsigned char* data,
   }
 }
 
-int rcksum_submit_source_file(struct rcksum_state* z, FILE* f)
+int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress)
 {
   register int bufsize = z->blocksize*16;
   char *buf = malloc(bufsize + z->context);
@@ -329,7 +329,7 @@ int rcksum_submit_source_file(struct rcksum_state* z, FILE* f)
       memset(buf+len,0,z->context); len += z->context;
     }
     got_blocks += rcksum_submit_source_data(z,buf,len,start_in);
-    if (in_mb != in / 1000000) { in_mb = in / 1000000; fputc('*',stderr); }
+    if (progress && in_mb != in / 1000000) { in_mb = in / 1000000; fputc('*',stderr); }
   }
   free(buf);
   return got_blocks;

@@ -4,6 +4,6 @@ ${top_builddir}/zsyncmake -u foo -f foo ${srcdir-.}/INSTALL
 
 # Note TAB required for Solaris cksum
 x=`cksum foo.zsync | sed -e 's/[ 	][0-9].*//'`
-[ $x = 3879019095 ]
+[ $x = 3422792547 ]
 rm foo.zsync
 

@@ -48,25 +48,25 @@ void read_seed_file(struct zsync_state* z, const char* fname) {
 	cmd[j] = 0;
       }
 
-      fprintf(stderr,"reading seed %s: ",cmd);
+      if (!no_progress) fprintf(stderr,"reading seed %s: ",cmd);
       f = popen(cmd,"r");
       free(cmd);
     } 
     if (!f) {
       perror("popen"); fprintf(stderr,"not using seed file %s\n",fname);
     } else {
-      zsync_submit_source_file(z, f);
+      zsync_submit_source_file(z, f, !no_progress);
       if (pclose(f) != 0) {
 	perror("close");
       }
     }
   } else {
     FILE* f = fopen(fname,"r");
-    fprintf(stderr,"reading seed file %s: ",fname);
+    if (!no_progress) fprintf(stderr,"reading seed file %s: ",fname);
     if (!f) {
       perror("open"); fprintf(stderr,"not using seed file %s\n",fname);
     } else {
-      zsync_submit_source_file(z, f);
+      zsync_submit_source_file(z, f, !no_progress);
       if (fclose(f) != 0) {
 	perror("close");
       }
@@ -75,7 +75,7 @@ void read_seed_file(struct zsync_state* z, const char* fname) {
   {
     long long done,total;
     zsync_progress(z, &done, &total);
-    fprintf(stderr,"\rRead %s. Target %02.1f%% complete.      \n",fname,(100.0f * done)/total);
+    if (!no_progress) fprintf(stderr,"\rRead %s. Target %02.1f%% complete.      \n",fname,(100.0f * done)/total);
   }
 }
 
@@ -189,7 +189,7 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
   zr = zsync_begin_receive(z, type);
   if (!zr) { range_fetch_end(rf); free(u); return -1; }
   
-  fprintf(stderr,"downloading from %s:",u);
+  if (!no_progress) fprintf(stderr,"downloading from %s:",u);
   
   buf = malloc(BUFFERSIZE);
   if (!buf) { zsync_end_receive(zr); range_fetch_end(rf); free(u); return -1; }
@@ -212,7 +212,7 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
     off64_t zoffset;
     struct progress p = {0,0,0,0};
 
-    fputc('\n',stdout);
+    if (!no_progress) fputc('\n',stderr);
     if (!no_progress)
       do_progress(&p,calc_zsync_progress(z),range_fetch_bytes_down(rf));
 
