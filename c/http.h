@@ -29,3 +29,7 @@ void range_fetch_addranges(struct range_fetch* rf, off64_t* ranges, int nranges)
 int get_range_block(struct range_fetch* rf, off64_t* offset, unsigned char* data, size_t dlen);
 long long range_fetch_bytes_down(const struct range_fetch* rf);
 void range_fetch_end(struct range_fetch* rf);
+
+/* base64.c */
+char* base64(const char*);
+

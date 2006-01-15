@@ -76,6 +76,9 @@ FILE* http_get_stream(int fd, int* code)
   return f;
 }
 
+/* Extract the Location URL, and make it absolute using the current URL 
+ * (it ought to be absolute anyway, by the RFC, but many servers send 
+ * relative URIs). */
 char* get_location_url(FILE* f, const char* cur_url) {
   char buf[1024];
 
@@ -104,6 +107,9 @@ char* get_location_url(FILE* f, const char* cur_url) {
 
 char *proxy;
 char *pport;
+static char **auth_details;
+static int num_auth_details;
+
 char *referer;
 
 int set_proxy_from_string(const char* s)
@@ -126,6 +132,43 @@ int set_proxy_from_string(const char* s)
   }
 }
 
+void add_auth(char* host, char* user, char* pass)
+{
+  auth_details = realloc(auth_details, (num_auth_details + 1) * sizeof *auth_details);
+  auth_details[num_auth_details*3  ] = host;
+  auth_details[num_auth_details*3+1] = user;
+  auth_details[num_auth_details*3+2] = pass;
+  num_auth_details++;
+}
+
+static char* get_auth_hdr(const char* hn)
+{
+  int i;
+  for (i=0; i < num_auth_details*3; i+=3) {
+    if (!strcasecmp(auth_details[i], hn)) {
+      char *u = auth_details[i+1];
+      char *p = auth_details[i+2];
+      size_t l = strlen(u)+strlen(p)+2;
+      char *w = malloc(l);
+      char *b;
+      char *h;
+      const char* t = "Authorization: Basic %s\r\n";
+
+      // Make and encode the authorization string
+      snprintf(w,l,"%s:%s", u, p);
+      b = base64(w);
+
+      // Make the header itself
+      l = strlen(b)+strlen(t)+1;
+      h = malloc(l);
+      snprintf(h, l, t, b);
+      free(w); free(b);
+      return h;
+    }
+  }
+  return NULL;
+}
+
 static char* http_date_string(time_t t, char* const buf, const int blen)
 {
   struct tm d;
@@ -146,6 +189,7 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
   FILE* g;
   char* fname = NULL;
   char ifrange[200] = { "" };
+  char *authhdr = NULL;
   int code;
 
   if (tfname) {
@@ -195,11 +239,12 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
 
       {
 	char buf[1024];
-	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s%s%s\r\nUser-Agent: zsync/%s\r\n%s\r\n",
+	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s%s%s\r\nUser-Agent: zsync/%s\r\n%s%s\r\n",
 		 proxy ? url : p,
 		 hostn, !strcmp(port,"http") ? "" : ":", !strcmp(port,"http") ? "" : port,
 		 VERSION,
-		 ifrange[0] ? ifrange : ""
+		 ifrange[0] ? ifrange : "",
+		 authhdr ? authhdr : ""
 		 );
 	if (send(sfd,buf,strlen(buf),0) == -1) {
 	  perror("sendmsg"); close(sfd); break;
@@ -208,11 +253,19 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
       f = http_get_stream(sfd, &code);
 
       if (!f) break;
-      if (code == 301 || code == 302) {
+      if (code == 301 || code == 302 || code == 307) {
 	char *oldurl = url;
 	url = get_location_url(f, oldurl);
 	free(oldurl);
 	fclose(f); f = NULL;
+      } else if (code == 401) { // Authorization required
+	authhdr = get_auth_hdr(hostn);
+	if (authhdr) {
+	  fclose(f); f = NULL;
+	  // And go round again
+	} else {
+	  fclose(f); f = NULL; break;
+	}
       } else if (code == 412) { // Precondition (i.e. if-unmodified-since) failed
 	ifrange[0] = 0;
 	fclose(f); f = NULL; // and go round again without the conditional Range:
@@ -308,6 +361,7 @@ struct range_fetch {
   char* url;
   char hosth[256];
 
+  char* authh;
   char* chost;
   char* cport;
 
@@ -401,6 +455,8 @@ struct range_fetch* range_fetch_start(const char* orig_url)
     rf->chost = strdup(hostn);
   }
 
+  rf->authh = get_auth_hdr(hostn);
+
   rf->block_left = 0;
   rf->bytes_down = 0;
   rf->boundary = NULL;
@@ -455,9 +511,11 @@ static void range_fetch_getmore(struct range_fetch* rf)
 	   "User-Agent: zsync/" VERSION "\r\n"
 	   "Host: %s"
 	   "%s%s\r\n"
+	   "%s"
 	   "Range: bytes=",
 	   rf->url, rf->hosth,
-	   referer ? "\r\nReferer: " : "", referer ? referer : ""
+	   referer ? "\r\nReferer: " : "", referer ? referer : "",
+	   rf->authh ? rf->authh : ""
 	   );
   
   /* The for loop here is just a sanity check, lastrange is the real loop control */
@@ -516,7 +574,8 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
     if (memcmp(buf, "HTTP/1", 6) != 0 || (p = strchr(buf, ' ')) == NULL) {
       return -1;
     }
-    if ((c = atoi(p+1)) != 206) {
+    c = atoi(p+1);
+    if (c != 206) {
       fprintf(stderr,"bad status code %d\n",c);
       return -1;
     }

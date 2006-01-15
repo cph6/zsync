@@ -362,17 +362,20 @@ int main(int argc, char** argv) {
   {
     int r;
 
-    printf("verifying download...");
+    if (!no_progress)
+      printf("verifying download...");
     r = zsync_complete(zs);
     switch (r) {
     case -1:
       fprintf(stderr,"Aborting, download available in %s\n",temp_file);
       exit(2);
     case 0:
-      printf("no recognised checksum found\n");
+      if (!no_progress)
+        printf("no recognised checksum found\n");
       break;
     case 1:
-      printf("checksum matches OK\n");
+      if (!no_progress)
+        printf("checksum matches OK\n");
       break;
     }
   }
@@ -407,7 +410,8 @@ int main(int argc, char** argv) {
     printf("No filename specified for download - completed download left in %s\n",temp_file);
   }
 
-  fprintf(stderr,"used %lld local, fetched %lld\n", local_used, http_down);
+  if (!no_progress)
+    printf("used %lld local, fetched %lld\n", local_used, http_down);
   free(referer);
   free(temp_file);
   return 0;
