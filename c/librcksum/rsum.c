@@ -1,7 +1,7 @@
 /*
  *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -20,8 +20,9 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include "md4.h"
+#include "config.h"
 
+#include "md4.h"
 #include "rcksum.h"
 #include "internal.h"
 
@@ -120,6 +121,10 @@ int rcksum_submit_blocks(struct rcksum_state* const z, unsigned char* data, zs_b
 {
   zs_blockid x;
   unsigned char md4sum[CHECKSUM_SIZE];
+
+  if (!z->rsum_hash)
+    if (!build_hash(z))
+      return -1;
 
   for (x = bfrom; x <= bto; x++) {
     rcksum_calc_checksum(&md4sum[0], data + ((x-bfrom) << z->blockshift), z->blocksize);

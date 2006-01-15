@@ -1,6 +1,6 @@
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -28,12 +28,41 @@
 
 #include "http.h"
 #include "url.h"
+#include "progress.h"
 
 void read_seed_file(struct zsync_state* z, const char* fname) {
-  fprintf(stderr,"reading seed file %s: ",fname);
-  {
-    /* mmap failed, try streaming it */
+  if (zsync_hint_decompress(z) && strlen(fname) > 3 && !strcmp(fname + strlen(fname) - 3,".gz")) {
+    FILE* f;
+    {
+      char* cmd = malloc(6 + strlen(fname)*2);
+
+      if (!cmd) return;
+
+      strcpy(cmd,"zcat ");
+      {
+	int i,j;
+	for (i=0,j=5; fname[i]; i++) {
+	  if (!isalnum(fname[i])) cmd[j++] = '\\';
+	  cmd[j++] = fname[i];
+	}
+	cmd[j] = 0;
+      }
+
+      fprintf(stderr,"reading seed %s: ",cmd);
+      f = popen(cmd,"r");
+      free(cmd);
+    } 
+    if (!f) {
+      perror("popen"); fprintf(stderr,"not using seed file %s\n",fname);
+    } else {
+      zsync_submit_source_file(z, f);
+      if (pclose(f) != 0) {
+	perror("close");
+      }
+    }
+  } else {
     FILE* f = fopen(fname,"r");
+    fprintf(stderr,"reading seed file %s: ",fname);
     if (!f) {
       perror("open"); fprintf(stderr,"not using seed file %s\n",fname);
     } else {
@@ -43,7 +72,11 @@ void read_seed_file(struct zsync_state* z, const char* fname) {
       }
     }
   }
-  fputc('\n',stderr);
+  {
+    long long done,total;
+    zsync_progress(z, &done, &total);
+    fprintf(stderr,"\rRead %s. Target %02.1f%% complete.      \n",fname,(100.0f * done)/total);
+  }
 }
 
 long long http_down;
@@ -65,25 +98,17 @@ struct zsync_state* read_zsync_control_file(const char* p)
 
   f = fopen(p,"r");
   if (!f) {
+    char* fn;
     if (memcmp(p,"http://",7)) {
       perror(p); exit(2);
     }
-    f = http_open(p,NULL,200,&lastpath);
+    f = http_get(p,NULL,200,&lastpath,&fn);
     if (!f) {
       fprintf(stderr,"could not read control file from URL %s\n",p);
       exit(3);
     }
-    {
-      char buf[512];
-      do {
-	fgets(buf,sizeof(buf),f);
-	
-	if (ferror(f)) {
-	  perror("read"); exit(1);
-	}
-      } while (buf[0] != '\r' && !feof(f));
-    }
     referer = lastpath;
+    unlink(fn); free(fn);
   }
   if ((zs = zsync_begin(f)) == NULL) { exit(1); }
   if (fclose(f) != 0) { perror("fclose"); exit(2); }
@@ -137,6 +162,14 @@ char* get_filename(const struct zsync_state* zs, const char* source_name)
   return filename;
 }
 
+static float calc_zsync_progress(const struct zsync_state* zs)
+{
+  long long zgot, ztot;
+
+  zsync_progress(zs, &zgot, &ztot);
+  return (100.0f*zgot / ztot);
+}
+
 #define BUFFERSIZE 8192
 
 int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type)
@@ -144,10 +177,14 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
   int ret = 0;
   struct range_fetch* rf;
   unsigned char* buf;
-  int lastmegsdown = 0;
   struct zsync_receiver* zr;
   char *u = make_url_absolute(referer, url);
   
+  if (!u) {
+    fprintf(stderr,"URL '%s' from the .zsync file is relative, but I don't know the referer URL (you probably downloaded the .zsync separately and gave it to me as a file). I need to know the referring URL (the URL of the .zsync) in order to locate the download. You can specify this with -u (or edit the URL line(s) in the .zsync file you have).\n",url);
+    return -1;
+  }
+
   rf = range_fetch_start(u);
   if (!rf) { free(u); return -1; }
 
@@ -168,23 +205,31 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
     if (nrange == 0) return 0;
 
     range_fetch_addranges(rf, zbyterange, nrange);
+
+    free(zbyterange);
   }
 
   {
     int len;
     off64_t zoffset;
+    struct progress p = {0,0,0,0};
+
+    fputc('\n',stdout);
+    if (!no_progress)
+      do_progress(&p,calc_zsync_progress(z),range_fetch_bytes_down(rf));
 
     while ((len = get_range_block(rf, &zoffset, buf, BUFFERSIZE)) > 0) {
       if (zsync_receive_data(zr, buf, zoffset, len) != 0)
 	ret = 1;
+      
+      if (!no_progress)
+	do_progress(&p,calc_zsync_progress(z),range_fetch_bytes_down(rf));
 
-      {
-	int md = range_fetch_bytes_down(rf)/1000000;
-	if (md != lastmegsdown) {
-	  lastmegsdown = md; fputc('.',stderr);
-	}
-      }
+      zoffset += len; // Needed in case next call returns len=0 and we need to signal where the EOF was.
     }
+
+    if (!no_progress) end_progress(&p,len == 0);
+
     if (len < 0) ret = -1;
     else
       zsync_receive_data(zr, NULL, zoffset, 0);
@@ -195,7 +240,6 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
   zsync_end_receive(zr);
   range_fetch_end(rf);
   free(u);
-  fputc('\n',stderr);
   return ret;
 }
 
@@ -243,7 +287,7 @@ int main(int argc, char** argv) {
   srand(getpid());
   {
     int opt;
-    while ((opt = getopt(argc,argv,"o:i:V")) != -1) {
+    while ((opt = getopt(argc,argv,"o:i:Vsu:")) != -1) {
       switch (opt) {
       case 'o':
 	filename = strdup(optarg);
@@ -256,6 +300,12 @@ int main(int argc, char** argv) {
 	       "By Colin Phipps <cph@moria.org.uk>\n"
 	       "Published under the Artistic License v2, see the COPYING file for details.\n");
 	exit(0);
+      case 's':
+	no_progress = 1;
+	break;
+      case 'u':
+	referer = strdup(optarg);
+	break;
       }
     }
   }
@@ -266,6 +316,7 @@ int main(int argc, char** argv) {
     fprintf(stderr,"Usage: zsync http://example.com/some/filename.zsync\n");
     exit(3);
   }
+  if (!isatty(0)) no_progress = 1;
   {
     char *pr = getenv("http_proxy");
     if (pr != NULL) set_proxy_from_string(pr);
@@ -273,7 +324,7 @@ int main(int argc, char** argv) {
   if ((zs = read_zsync_control_file(argv[optind])) == NULL)
     exit(1);
 
-  if (!filename) filename = get_filename(zs, referer);
+  if (!filename) filename = get_filename(zs, argv[optind]);
 
   temp_file = malloc(strlen(filename)+6);
   strcpy(temp_file,filename);
@@ -323,7 +374,9 @@ int main(int argc, char** argv) {
       break;
     }
   }
-  zsync_end(zs);
+
+  free(temp_file);
+  temp_file = zsync_end(zs);
 
   if (filename) {
     char* oldfile_backup = malloc(strlen(filename)+8);
@@ -347,10 +400,13 @@ int main(int argc, char** argv) {
 	fprintf(stderr,"Unable to back up old file %s - completed download left in %s\n",filename,temp_file);
       }
     free(oldfile_backup);
+    free(filename);
   } else {
     printf("No filename specified for download - completed download left in %s\n",temp_file);
   }
 
   fprintf(stderr,"used %lld local, fetched %lld\n", local_used, http_down);
+  free(referer);
+  free(temp_file);
   return 0;
 }

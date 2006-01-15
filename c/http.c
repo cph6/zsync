@@ -1,6 +1,6 @@
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -13,13 +13,13 @@
  *   COPYING file for details.
  */
 
-#include "config.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+
+#include "config.h"
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -27,6 +27,7 @@
 
 #include "http.h"
 #include "url.h"
+#include "progress.h"
 
 int connect_to(const char* node, const char* service)
 {
@@ -123,11 +124,20 @@ int set_proxy_from_string(const char* s)
   }
 }
 
-FILE* http_open(const char* orig_url, const char* extraheader, int require_code, char** track_referer)
+FILE* http_get(const char* orig_url, const char* extraheader, int require_code, char** track_referer, char** pfname)
 {
   int allow_redirects = 5;
   char* url = strdup(orig_url);
   FILE* f = NULL;
+  FILE* g;
+  char* fname = strdup("/var/tmp/http-XXXXXX");
+
+  {
+    int fd = mkstemp(fname);
+    if (fd == -1) { perror("open"); free(url); return NULL; }
+    g = fdopen(fd,"w+");
+    if (!g) { close(fd); perror("fdopen"); free(url); return NULL; }
+  }
       
   for (;allow_redirects-- && url && !f;) {
     char hostn[256];
@@ -140,11 +150,13 @@ FILE* http_open(const char* orig_url, const char* extraheader, int require_code,
       connecthost = hostn;
     } else {
       connecthost = proxy;
-      port = pport;
+      port = strdup(pport);
     }
     {
       int sfd = connect_to(connecthost, port);
       int code;
+
+      free(port);
 
       if (sfd == -1) break;
 
@@ -177,7 +189,53 @@ FILE* http_open(const char* orig_url, const char* extraheader, int require_code,
     fprintf(stderr,"failed on url %s\n",url ? url : "(missing redirect)");
   if (track_referer)
     *track_referer = url;
-  return f;
+
+  {
+    size_t len = 0;
+    { /* Skip headers. TODO support content-encodings, Content-Location etc */
+      char buf[512];
+      do {
+	fgets(buf,sizeof(buf),f);
+	
+	sscanf(buf,"Content-Length: %d",&len);
+	if (ferror(f)) {
+	  perror("read"); exit(1);
+	}
+      } while (buf[0] != '\r' && !feof(f));
+    }
+    {
+      size_t got = 0;
+      struct progress p = {0,0,0,0};
+      int r;
+
+      if (!no_progress)
+	do_progress(&p,0,got);
+
+      while (!feof(f)) {
+	char buf[1024];
+	r = fread(buf, 1, sizeof(buf), f);
+	
+	if (r > 0)
+	  if (r > fwrite(buf, 1, r, g)) {
+	    fprintf(stderr,"short write on %s\n",fname);
+	    break;
+	  }
+	if (r < 0) { perror("read"); break; }
+
+	if (r>0) {
+	  got += r;
+	  if (!no_progress)
+	    do_progress(&p, len ? (100.0*got / len) : 0, got);
+	}
+      }
+      if (!no_progress) end_progress(&p,feof(f));
+    }
+    fclose(f);
+  }
+  if (pfname) *pfname = fname;
+  else { unlink(fname); free(fname); }
+  rewind(g);
+  return g;
 }
 
 /* HTTP Range: / 206 response interface 
@@ -269,7 +327,8 @@ struct range_fetch* range_fetch_start(const char* orig_url)
   if (proxy) {
     // URL must be absolute; throw away cport and get port for proxy
     rf->url = strdup(orig_url);
-    rf->cport = pport;
+    free(rf->cport);
+    rf->cport = strdup(pport);
     rf->chost = proxy;
   } else {
     // cport already set; set url to relative part and chost to the target
@@ -560,5 +619,7 @@ void range_fetch_end(struct range_fetch* rf) {
   if (rf->sd != -1) close(rf->sd);
   free(rf->ranges_todo);
   free(rf->boundary);
+  free(rf->url);
+  free(rf->cport);
   free(rf);
 }

@@ -1,6 +1,6 @@
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -15,12 +15,6 @@
 
 #include "config.h"
 
-#ifdef HAVE_STDINT_H
-#include <stdint.h>
-#else
-#include <sys/types.h>
-#endif
-
 struct gzblock {
   uint16_t inbitoffset;
   uint16_t outbyteoffset;
@@ -31,6 +25,28 @@ struct gzblock {
 struct zmap;
 struct z_stream_s;
 
-struct zmap* make_zmap(const struct gzblock* zb, int n);
+struct zmap* zmap_make(const struct gzblock* zb, int n);
+void zmap_free(struct zmap*);
+
 off64_t* zmap_to_compressed_ranges(const struct zmap* zm, off64_t* byterange, int nrange, int* num);
 void configure_zstream_for_zdata(const struct zmap* zm, struct z_stream_s* zs, long zoffset, long long* poutoffset);
+
+/* gzip flag byte */
+#define GZ_ASCII_FLAG   0x01 /* bit 0 set: file probably ascii text */
+#define GZ_HEAD_CRC     0x02 /* bit 1 set: header CRC present */
+#define GZ_EXTRA_FIELD  0x04 /* bit 2 set: extra field present */
+#define GZ_ORIG_NAME    0x08 /* bit 3 set: original file name present */
+#define GZ_COMMENT      0x10 /* bit 4 set: file comment present */
+#define GZ_RESERVED     0xE0 /* bits 5..7: reserved */
+
+static inline char* skip_zhead(char* p)
+{
+  int flags = p[3];
+  
+  p += 10;
+  if (flags & GZ_ORIG_NAME)
+    while (*p++ != 0) ;
+
+  return p;
+}
+

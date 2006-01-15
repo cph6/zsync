@@ -34,13 +34,17 @@ The simplest way to compile this package is:
 
   2. Type `make' to compile the package.
 
-  3. Type `make install' to install the programs and any data files and
+  3. Optionally, type `make check' to run the self-tests that come with
+     the package. This is strongly recommended if compiling for OSes other
+     than Linux/FreeBSD or for processors other than i386.
+
+  4. Type `make install' to install the programs and any data files and
      documentation. If you prefer, you can just run zsync out of its own
      directory - zsync requires no data files, `make install' just makes it
      easier to use by putting the programs and manuals into the normal paths
      on your system.
 
-  4. After `make install', you can remove the program binaries and object
+  5. After `make install', you can remove the program binaries and object
      files from the source code directory by typing `make clean'.  To also
      remove the files that `configure' created (so you can compile the
      package for a different kind of computer), type `make distclean'.

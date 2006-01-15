@@ -1,7 +1,7 @@
 /*
  *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -94,9 +94,12 @@ void rcksum_end(struct rcksum_state* z)
     free(z->filename);
   }
   free(z->rsum_hash);
+  free(z->blockhashes);
   free(z->bithash);
   free(z->ranges); // Should be NULL already
+#ifdef DEBUG
   fprintf(stderr,"hashhit %d, weakhit %d, checksummed %d, stronghit %d\n",z->stats.hashhit, z->stats.weakhit, z->stats.checksummed, z->stats.stronghit);
+#endif
   free(z);
 }
 

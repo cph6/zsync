@@ -1,7 +1,7 @@
 /*
  *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -108,8 +108,9 @@ zs_blockid* rcksum_needed_block_ranges(const struct rcksum_state* z, int* num, z
 	r[2*n-1] = z->ranges[2*i];
 	n++;
 	if (n == alloc_n) {
+	  zs_blockid* r2;
 	  alloc_n += 100;
-	  zs_blockid* r2 = realloc(r, 2 * alloc_n * sizeof *r);
+	  r2 = realloc(r, 2 * alloc_n * sizeof *r);
 	  if (!r2) { free(r); return NULL; } 
 	  r = r2;
 	}

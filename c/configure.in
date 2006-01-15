@@ -6,7 +6,7 @@ AC_CONFIG_AUX_DIR(autotools)
 dnl --- Set version strings
 MAJOR_VERSION=0
 MINOR_VERSION=3
-MICRO_VERSION=0
+MICRO_VERSION=2
 VERSION=$MAJOR_VERSION.$MINOR_VERSION.$MICRO_VERSION
 
 AC_SUBST(VERSION)
@@ -35,6 +35,12 @@ AC_CHECK_TYPE(off64_t,long long)
 dnl Solaris needs -lsocket
 AC_CHECK_LIB(socket,socket)
 AC_CHECK_FUNCS(pwrite)
+AC_ARG_ENABLE(dmalloc,[  --enable-dmalloc     use the dmalloc heap debug library],AC_CHECK_LIB(dmalloc,malloc))
+AH_BOTTOM([
+#ifdef HAVE_LIBDMALLOC
+#include <dmalloc.h>
+#endif
+])
 
 dnl --- output
 AC_SUBST(ac_aux_dir)

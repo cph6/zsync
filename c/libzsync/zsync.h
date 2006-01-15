@@ -1,6 +1,6 @@
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -19,12 +19,17 @@ struct zsync_state;
  */
 struct zsync_state* zsync_begin(FILE* cf);
 
+/* zsync_hint_decompress - if it returns non-zero, this suggests that 
+ *  compressed seed files should be decompressed */
+int zsync_hint_decompress(const struct zsync_state*);
+
 /* zsync_filename - return the suggested filename from the .zsync file */
 char* zsync_filename(const struct zsync_state*);
 
 /* zsync_rename_file - renames the temporary file used by zsync to the given name.
- * Once renamed the file is the caller's responsibility - but zsync will still have a filehandle on 
- *  it until you zsync_end. */
+ * You don't "own" the filename until you zsync_end, but you can use this to give zsync a more 
+ * appropriate intermediate filename (in case the user ctrl-c's). 
+ * This is purely a hint; zsync could ignore it. Returns 0 if successful. */
 int zsync_rename_file(struct zsync_state* zs, const char* f);
 
 /* zsync_status - returns the current state:
@@ -38,7 +43,7 @@ int zsync_status(struct zsync_state* zs);
 
 /* zsync_progress - returns bytes of the file known so far in *got,
  * and the total (roughly, the file length) in *total */
-void zsync_progress(struct zsync_state* zs, long long* got, long long* total);
+void zsync_progress(const struct zsync_state* zs, long long* got, long long* total);
 
 /* zsync_submit_source_file - submit local file data to zsync
  */
@@ -65,8 +70,9 @@ off64_t* zsync_needed_byte_ranges(struct zsync_state* zs, int* num, int type);
  * Returns -1 for failure, 1 for success, 0 for unable to verify (e.g. no checksum in the .zsync) */
 int zsync_complete(struct zsync_state* zs);
 
-/* Clean up and free all resources. The pointer is freed by this call. */
-void zsync_end(struct zsync_state* zs);
+/* Clean up and free all resources. The pointer is freed by this call.
+ * Returns a strdup()d pointer to the name of the file resulting from the process. */
+char* zsync_end(struct zsync_state* zs);
 
 /* And functions for receiving data on the network */
 struct zsync_receiver;

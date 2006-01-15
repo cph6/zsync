@@ -1,6 +1,6 @@
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -16,19 +16,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-
-#include "libzsync/zmap.h"
+#include <unistd.h>
+#include <ctype.h>
 
 #include "config.h"
 
 #include <arpa/inet.h>
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#else
+#include <sys/types.h>
+#endif
 
 #include "librcksum/rcksum.h"
-
-#include "zlib/zlib.h"
-
+#include "libzsync/zmap.h"
 #include "libzsync/sha1.h"
+#include "zlib/zlib.h"
 
 SHA1_CTX shactx;
 
@@ -58,20 +61,13 @@ static void write_block_sums(char* buf, size_t got, FILE* f)
   
 }
 
-/* gzip flag byte */
-#define ASCII_FLAG   0x01 /* bit 0 set: file probably ascii text */
-#define HEAD_CRC     0x02 /* bit 1 set: header CRC present */
-#define EXTRA_FIELD  0x04 /* bit 2 set: extra field present */
-#define ORIG_NAME    0x08 /* bit 3 set: original file name present */
-#define COMMENT      0x10 /* bit 4 set: file comment present */
-#define RESERVED     0xE0 /* bits 5..7: reserved */
-
 static inline long long in_position(z_stream* pz)
 { return pz->total_in * 8 - ( 63 & pz->data_type); }
 
 static FILE* zmap;
 static int zmapentries;
 static long long last_delta_in;
+static char* zhead;
 
 static void write_zmap_delta(long long *prev_in, long long *prev_out, long long new_in, long long new_out, int blockstart)
 {
@@ -130,12 +126,19 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
   if (inflateInit2(&zs,-MAX_WBITS) != Z_OK) exit(-1);
 
   { /* Skip gzip header and do iniital buffer fill */
-    int flags = bufsofar[3];
-    const char *p = bufsofar + 10;
-    if (flags & ORIG_NAME)
-      while (*p++ != 0) ;
-    header_bits = 8*(p - bufsofar);
-    got -= (p-bufsofar);
+    const char *p = skip_zhead(bufsofar);
+
+    {
+      int header_bytes = p - bufsofar;
+      int i;
+
+      header_bits = 8*header_bytes;
+      got -= header_bytes;
+
+      zhead = malloc(1+2*header_bytes);
+      for (i = 0; i < header_bytes; i++)
+	sprintf(zhead + 2*i, "%02x", (unsigned char)bufsofar[i]);
+    }
     if (got > inbufsz) { fprintf(stderr,"internal failure, %d > %d input buffer available\n",got,inbufsz); exit(2); }
     memcpy(inbuf,p,got);
     /* Fill the buffer up to offset inbufsz of the input file - we want to try and keep the input blocks aligned with block boundaries in the underlying filesystem and physical storage */
@@ -274,13 +277,83 @@ void fcopy_hashes(FILE* fin, FILE* fout, int rsum_bytes, int hash_bytes)
   }
 }
 
+static int read_sample_and_close(FILE* f, size_t l, void* buf)
+{
+  int rc = 0;
+  if (fread(buf,1,l,f) == l) rc = 1;
+  else perror("read");
+  fclose(f);
+  return rc;
+}
+
+static char* encode_filename(const char* fname)
+{
+  char* cmd = malloc(2 + strlen(fname)*2);
+
+  if (!cmd) return NULL;
+
+  {
+    int i,j;
+    for (i=j=0; fname[i]; i++) {
+      if (!isalnum(fname[i])) cmd[j++] = '\\';
+      cmd[j++] = fname[i];
+    }
+    cmd[j] = 0;
+  }
+  return cmd;
+}
+
+static const char * const try_opts[] = { "--best","","--rsync","--rsync --best", NULL };
+
+const char* guess_gzip_options(const char* f)
+{
+#define SAMPLE 1024
+  char orig[SAMPLE];
+  {
+    FILE* s = fopen(f,"r");
+    if (!s) { perror("open"); return NULL; }
+    if (!read_sample_and_close(s,SAMPLE,orig)) return NULL;
+  }
+  {
+    int i;
+    const char* o;
+    char* enc_f = encode_filename(f);
+
+    for (i=0; (o = try_opts[i]) != NULL; i++) {
+      char cmd[1024];
+      snprintf(cmd,sizeof(cmd),"zcat %s | gzip -n %s",enc_f,o);
+
+      {
+	FILE* p = popen(cmd,"r");
+	char samp[SAMPLE];
+
+	fprintf(stderr,"running %s to determine gzip options\n", cmd);
+
+	if (!p) {
+	  perror(cmd);
+	} else if (!read_sample_and_close(p,SAMPLE,samp)) {
+	  ;
+	} else {
+	  char *a = skip_zhead(orig);
+	  char *b = skip_zhead(samp);
+
+	  if (!memcmp(a,b,900))
+	    break;
+	}
+      }
+    }
+    free(enc_f);
+    return o;
+  }
+}
+
 #include <libgen.h>
 #include <math.h>
 
 int main(int argc, char** argv) {
   FILE* tf = tmpfile();
   FILE* instream;
-  char * fname = NULL;
+  char * fname = NULL, * zfname = NULL;
   char ** url = NULL;
   int nurls = 0;
   char ** Uurl = NULL;
@@ -347,6 +420,7 @@ int main(int argc, char** argv) {
     /* Remove any trailing .gz, as it is the uncompressed file being transferred */
     char *p = strrchr(fname,'.');
     if (p) {
+      zfname = strdup(fname);
       if (!strcmp(p,".gz")) *p = 0;
       if (!strcmp(p,".tgz")) strcpy(p,".tar");
     }
@@ -365,7 +439,17 @@ int main(int argc, char** argv) {
 
   /* Okay, start writing the zsync file */
   fprintf(fout,"zsync: " VERSION "\n");
+  
+  /* Lines we might include but which older clients can ignore */
+  if (zhead && zfname)
+    fprintf(fout,"Safe: Z-Filename Recompress\n");
+  else if (zhead)
+    fprintf(fout,"Safe: Recompress\n");
+  else if (zfname)
+    fprintf(fout,"Safe: Z-Filename\n");
+
   if (fname) fprintf(fout,"Filename: %s\n",fname);
+  if (zfname) fprintf(fout,"Z-Filename: %s\n",zfname);
   fprintf(fout,"Blocksize: %d\n",blocksize);
   fprintf(fout,"Length: %lld\n",len);
   fprintf(fout,"Hash-Lengths: %d,%d,%d\n",seq_matches,rsum_len,checksum_len);
@@ -397,6 +481,14 @@ int main(int argc, char** argv) {
       fprintf(fout,"%02x",digest[i]);
   }
   fputc('\n',fout);
+  if (zhead && infname) {
+    const char* gzopts = guess_gzip_options(infname);
+    if (gzopts)
+      fprintf(fout,"Recompress: %s %s\n",zhead,gzopts);
+    else
+      fprintf(stderr,"omitting recompress, not able to determine options\n");
+    
+  }
   if (zmapentries) {
     fprintf(fout,"Z-Map2: %d\n",zmapentries);
     fcopy(zmap,fout);

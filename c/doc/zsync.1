@@ -1,10 +1,10 @@
-.TH "zsync" "1" "0.3.0" "Colin Phipps" "File Transfer"
+.TH "zsync" "1" "0.3.2" "Colin Phipps" "File Transfer"
 .SH "NAME"
 .LP 
 zsync \- Partial/differential file download client over HTTP
 .SH "SYNTAX"
 .LP 
-zsync [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] { \fIfilename\fP | \fIurl\fR }
+zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-s ] { \fIfilename\fP | \fIurl\fR }
 .LP 
 zsync \-V
 .SH "DESCRIPTION"
@@ -24,6 +24,17 @@ Specifies (extra) input files. \fIinputfile\fP is scanned to identify blocks in 
 .TP 
 \fB\-o\fR \fIoutputfile\fP
 Override the default output file name.
+.TP 
+\fB\-s\fR
+Suppress the progress bar, download rate and ETA display.
+.TP 
+\fB\-u\fR \fIurl\fP
+This specifies the referring URL.  If you have a .zsync file locally (if you
+downloaded it separately, with wget, say) and the .zsync file contains a
+relative URL, you need to specify where you got the .zsync file from so that
+zsync knows which server and path to use for the rest of the download (this is
+analogous to adding a <base href="..."> to a downloaded web page to make the
+links work).
 .TP 
 \fB\-V\fR
 Prints the version of zsync.

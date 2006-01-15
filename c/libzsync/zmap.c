@@ -1,6 +1,6 @@
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -13,13 +13,13 @@
  *   COPYING file for details.
  */
 
-#include "config.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
+
+#include "config.h"
 
 #include "zmap.h"
 
@@ -34,7 +34,7 @@ struct zmap {
   struct zmapentry* e;
 };
 
-struct zmap* make_zmap(const struct gzblock* zb, int n)
+struct zmap* zmap_make(const struct gzblock* zb, int n)
 {
   struct zmap* m = malloc(sizeof(struct zmap));
 
@@ -69,6 +69,12 @@ struct zmap* make_zmap(const struct gzblock* zb, int n)
     }
   }
   return m;
+}
+
+void zmap_free(struct zmap* m)
+{
+  free(m->e);
+  free(m);
 }
 
 /* Translate into byte blocks to retrieve from the gzip file */

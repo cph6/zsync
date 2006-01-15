@@ -1,6 +1,6 @@
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <arpa/inet.h>
 
@@ -45,7 +46,12 @@ struct zsync_state {
   char** zurl;
   int nzurl;
 
-  char* filename;
+  char* cur_filename; /* If we have taken the filename from rcksum, it is here */
+  char* filename;     /* This is just the Filename: header from the .zsync */
+  char* zfilename;    /* ditto Z-Filename: */
+
+  char* gzopts;
+  char* gzhead;
 };
 
 static char** append_ptrlist(int *n, char** p, char* a) {
@@ -95,6 +101,8 @@ struct zsync_state* zsync_begin(FILE* f)
 	zs->filelen = atol(p);
       } else if (!strcmp(buf, "Filename")) {
 	zs->filename = strdup(p);
+      } else if (!strcmp(buf, "Z-Filename")) {
+	zs->zfilename = strdup(p);
       } else if (!strcmp(buf, "URL")) {
 	zs->url = (char**)append_ptrlist(&(zs->nurl), zs->url, strdup(p));
       } else if (!strcmp(buf, "Z-URL")) {
@@ -127,7 +135,7 @@ struct zsync_state* zsync_begin(FILE* f)
 	    free(zs); return NULL;
 	  }
 
-	  zs->zmap = make_zmap(zblock,nzblocks);
+	  zs->zmap = zmap_make(zblock,nzblocks);
 	  free(zblock);
 	}
       } else if (!strcmp(buf,"SHA-1")) {
@@ -135,6 +143,23 @@ struct zsync_state* zsync_begin(FILE* f)
 	zs->checksum_method = "SHA-1";
       } else if (!strcmp(buf,"Safe")) {
 	safelines = strdup(p);
+      } else if (!strcmp(buf,"Recompress")) {
+	zs->gzhead = strdup(p);
+	if (zs->gzhead) {
+	  char *q = strchr(zs->gzhead,' ');
+	  if (!q) {
+	    fprintf(stderr,"ignoring badly formed Recompress line\n"); free(zs->gzhead);
+	  } else {
+	    *q++ = 0;
+	    /* Whitelist for safe options for gzip command line */
+	    if (!strcmp(q,"--best") || !strcmp(q,"--rsync --best") || !strcmp(q,"--rsync") || !strcmp(q,""))
+	      zs->gzopts = strdup(q);
+	    else {
+	      fprintf(stderr,"bad recompress options, rejected\n");
+	      free(zs->gzhead);
+	    }
+	  }
+	}
       } else if (!safelines || !strstr(safelines,buf)) {
 	fprintf(stderr,"unrecognised tag %s - you need a newer version of zsync.\n",buf);
 	free(zs); return NULL;
@@ -171,11 +196,16 @@ struct zsync_state* zsync_begin(FILE* f)
   return zs;
 }
 
+int zsync_hint_decompress(const struct zsync_state* zs)
+{
+  return (zs->nzurl > 0 ? 1 : 0);
+}
+
 int zsync_blocksize(struct zsync_state* zs)
 { return zs->blocksize; }
 
 char* zsync_filename(const struct zsync_state* zs)
-{ return strdup(zs->filename); }
+{ return strdup(zs->gzhead && zs->zfilename ? zs->zfilename : zs->filename); }
 
 int zsync_status(struct zsync_state* zs)
 {
@@ -186,7 +216,7 @@ int zsync_status(struct zsync_state* zs)
   return 2; /* TODO: more? */
 }
 
-void zsync_progress(struct zsync_state* zs, long long* got, long long* total)
+void zsync_progress(const struct zsync_state* zs, long long* got, long long* total)
 {
 
   if (got) {
@@ -249,20 +279,36 @@ int zsync_submit_source_file(struct zsync_state* zs, FILE* f)
   return rcksum_submit_source_file(zs->rs, f);
 }
 
+char* zsync_cur_filename(struct zsync_state* zs)
+{
+  if (!zs->cur_filename)
+    zs->cur_filename = rcksum_filename(zs->rs);
+
+  return zs->cur_filename;
+}
+
 int zsync_rename_file(struct zsync_state* zs, const char* f)
 {
-  char* rf = rcksum_filename(zs->rs);
+  char* rf = zsync_cur_filename(zs);
 
   int x = rename(rf, f);
 
-  free(rf);
+  if (!x) { free(rf); zs->cur_filename = strdup(f); }
+  else perror("rename");
+
   return x;
+}
+
+static int hexdigit(char c) {
+  return (isdigit(c) ? (c-'0') : isupper(c) ? (0xa + (c-'A')) : islower(c) ? (0xa + (c-'a')) : 0);
 }
 
 int zsync_complete(struct zsync_state* zs)
 {
   int fh = rcksum_filehandle(zs->rs);
+  int rc;
 
+  zsync_cur_filename(zs);
   rcksum_end(zs->rs); zs->rs = NULL;
     
   if (ftruncate(fh,zs->filelen) != 0) { perror("ftruncate"); return -1; }
@@ -282,8 +328,9 @@ int zsync_complete(struct zsync_state* zs)
       while (0 < (rc = read(fh,buf,sizeof buf))) {
 	SHA1Update(&shactx,buf,rc);
       }
-      if (rc < 0) { perror("read"); return -1; }
+      if (rc < 0) { perror("read"); close(fh); return -1; }
     }
+    close(fh);
     {
       unsigned char digest[SHA1_DIGEST_LENGTH];
       int i;
@@ -297,26 +344,95 @@ int zsync_complete(struct zsync_state* zs)
 	  return -1;
 	}
       }
-      return 1;
     }
+    rc = 1;
   }
   else
   {
-    return 0;
+    rc = 0;
   }
+  /* Recompression. This is a fugly mess, calling gzip on the temporary file with options
+   *  read out of the .zsync, reading its output and replacing the gzip header. Ugh. */
+  if (zs->gzhead && zs->gzopts) {
+    FILE* g;
+    FILE* zout;
+    
+    char cmd[1024];
+    snprintf(cmd,sizeof(cmd),"gzip -n %s < ",zs->gzopts);
+    
+    {
+      int i=0;
+      int j = strlen(cmd);
+      char c;
+      
+      while ((c = zs->cur_filename[i++]) != 0 && j < sizeof(cmd) - 2) {
+	if (!isalnum(c)) cmd[j++] = '\\';
+	cmd[j++] = c;
+      }
+      cmd[j] = 0;
+    }
+    
+    g = popen(cmd,"r");
+    if (g) {
+      char zoname[1024];
+      
+      snprintf(zoname,sizeof(zoname),"%s.gz",zs->cur_filename);
+      zout=fopen(zoname,"w");
+      
+      if (zout) {
+	char *p = zs->gzhead;
+	int skip = 1;
+	
+	while (p[0] && p[1]) {
+	  if (fputc((hexdigit(p[0]) << 4)+hexdigit(p[1]), zout) == EOF) {
+	    perror("putc"); rc = -1;
+	  }
+	  p+= 2;
+	}
+	while (!feof(g)) {
+	  char buf[1024];
+	  int r;
+	  char *p = buf;
+	  
+	  if ((r = fread(buf,1,sizeof(buf),g)) < 0) {
+	    perror("fread"); rc = -1; goto leave_it;
+	  }
+	  if (skip) { p = skip_zhead(buf); skip = 0; }
+	  if (fwrite(p,1,r - (p-buf),zout) != r - (p-buf)) {
+	    perror("fwrite"); rc = -1; goto leave_it;
+	  }
+	}
+	
+      leave_it:
+	if (fclose(zout) != 0) { perror("close"); rc = -1; }
+      }
+      if (fclose(g) != 0) { perror("close"); rc = -1; }
+
+      unlink(zs->cur_filename);
+      free(zs->cur_filename);
+      zs->cur_filename = strdup(zoname);
+    } else {
+      fprintf(stderr,"problem with gzip, unable to compress.\n");
+    }
+  }
+  return rc;
 }
 
-void zsync_end(struct zsync_state* zs)
+char* zsync_end(struct zsync_state* zs)
 {
+  char *f = zsync_cur_filename(zs);
+
   if (zs->rs) rcksum_end(zs->rs);
+  if (zs->zmap) zmap_free(zs->zmap);
   {
     int i;
     for (i=0; i<zs->nurl; i++) free(zs->url[i]);
     for (i=0; i<zs->nzurl; i++) free(zs->zurl[i]);
   }
-  free(zs->url); free(zs->zurl);
-  free(zs->filename);
+  free(zs->url); free(zs->zurl); free(zs->checksum);
+  free(zs->filename); free(zs->zfilename);
   free(zs);
+  return f;
 }
 
 /* Functions for receiving data from supplied URLs below */

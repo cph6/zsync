@@ -1,9 +1,26 @@
+/*
+ *   http.h - simple HTTP client for zsync
+ *
+ *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the Artistic License v2 (see the accompanying 
+ *   file COPYING for the full license terms), or, at your option, any later 
+ *   version of the same license.
+ *
+ *   This program is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   COPYING file for details.
+ */
+
+
 
 extern char *referer;
 
 int set_proxy_from_string(const char* s);
 
-FILE* http_open(const char* orig_url, const char* extraheader, int require_code, char** track_referer);
+FILE* http_get(const char* orig_url, const char* extraheader, int require_code, char** track_referer, char** pfname);
 
 struct range_fetch;
 

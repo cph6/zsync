@@ -13,6 +13,14 @@
  *   COPYING file for details.
  */
 
-char* get_host_port(const char* url, char* hostn, int hnlen, char** port);
+struct progress {
+  time_t starttime;
+  time_t lasttime;
+  float lastpcnt;
+  long long lastdl;
+};
 
-char* __attribute__((pure)) make_url_absolute(const char* base, const char* url);
+extern int no_progress;
+
+void do_progress(struct progress* p, float pcnt, long long newdl);
+void end_progress(struct progress* p, int done);

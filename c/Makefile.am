@@ -8,7 +8,7 @@ bin_PROGRAMS = zsyncmake zsync
 zsyncmake_SOURCES = make.c
 zsyncmake_LDADD = libzsync/libzsync.a librcksum/librcksum.a zlib/libinflate.a -lm
 
-zsync_SOURCES = client.c http.c http.h url.c url.h
+zsync_SOURCES = client.c http.c http.h url.c url.h progress.c progress.h
 zsync_LDADD = libzsync/libzsync.a librcksum/librcksum.a zlib/libinflate.a
 
 # From "GNU autoconf, automake and libtool" Vaughan, Elliston, 
