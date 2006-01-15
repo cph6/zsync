@@ -33,21 +33,4 @@ used 12400640 local, fetched 71487
 </pre>
 </blockquote>
 
-<h2>FreeBSD Ports distfiles</h2>
-<p>I am offering a <a href="http://zsync.moria.org.uk/s/FBSD/INDEX-5.zsync">zsync stream of the FreeBSD v5 ports index file</a>. More interestingly, I am offering zsync files for all the .tar.gz distfiles referenced in the FreeBSD ports tree; this can cut ~40% off of the total download for upgrading installed versions of packages. Essentially you download <a href="/download/zsync-fetch">this script</a>, and when building ports you run:</p>
-<pre>make FETCH_CMD="/path/to/zsync-fetch -ARr"</pre>
-<p>The wrapper will use zsync when you have an older version of the tarball available; it will contact a CGI on zsync.moria.org.uk which automatically builds the zsync file, and then it will use that to download only the changes. Note that this may notwork for very recently updated ports, because as part of the security on moria.org.uk I have strictly restricted the URLs that it will accept, and it may not have an up-to-date list. See <a href="http://www.moria.org.uk/computers/zsync/source-tarballs">here to see my demonstration of this</a>.</p>
-
-<h2>ISO Images</h2>
-
-<p>zsync can be used to distribute ISO images where users are likely to have an older version available. Point releases of Linux distributions are a good example. I can put up more examples if people think they are useful.</p>
-
-<ul>
-<li><p>Fedora Core 3 for i386: <a href="/s/FC3/FC3-i386-disc1.iso.zsync">here</a>. E.g. to update from Fedora Core 3 test3:</p>
-<pre>
-zsync -i FC3-test3-i386-disc1.iso http://zsync.moria.org.uk/s/FC3/FC3-i386-disc1.iso.zsync
-</pre>
-<p>This is more of a proof-of-concept than a useful example, though, as it only reduces the total download by ~30%: Red Hat recompiled almost everyting prior to the FC3 release, apparently.</p>
-</li>
-</ul>
 #include "foot.gtml"
