@@ -24,6 +24,13 @@ static const char rcsid[] = "$OpenBSD: sha1.c,v 1.19 2004/05/28 15:10:27 millert
 
 #define rol(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
 
+/* Map Solaris endian stuff to something useful */
+#ifdef _BIG_ENDIAN
+#define LITTLE_ENDIAN 0
+#define BIG_ENDIAN 1
+#define BYTE_ORDER 1
+#endif
+
 /*
  * blk0() and blk() perform the initial expand.
  * I got the idea of expanding during the round function from SSLeay
@@ -50,13 +57,13 @@ static const char rcsid[] = "$OpenBSD: sha1.c,v 1.19 2004/05/28 15:10:27 millert
  * Hash a single 512-bit block. This is the core of the algorithm.
  */
 void
-SHA1Transform(u_int32_t state[5], const u_int8_t buffer[SHA1_BLOCK_LENGTH])
+SHA1Transform(uint32_t state[5], const uint8_t buffer[SHA1_BLOCK_LENGTH])
 {
-	u_int32_t a, b, c, d, e;
-	u_int8_t workspace[SHA1_BLOCK_LENGTH];
+	uint32_t a, b, c, d, e;
+	uint8_t workspace[SHA1_BLOCK_LENGTH];
 	typedef union {
-		u_int8_t c[64];
-		u_int32_t l[16];
+		uint8_t c[64];
+		uint32_t l[16];
 	} CHAR64LONG16;
 	CHAR64LONG16 *block = (CHAR64LONG16 *)workspace;
 
@@ -124,7 +131,7 @@ SHA1Init(SHA1_CTX *context)
  * Run your data through this.
  */
 void
-SHA1Update(SHA1_CTX *context, const u_int8_t *data, size_t len)
+SHA1Update(SHA1_CTX *context, const uint8_t *data, size_t len)
 {
 	size_t i, j;
 
@@ -134,7 +141,7 @@ SHA1Update(SHA1_CTX *context, const u_int8_t *data, size_t len)
 		(void)memcpy(&context->buffer[j], data, (i = 64-j));
 		SHA1Transform(context->state, context->buffer);
 		for ( ; i + 63 < len; i += 64)
-			SHA1Transform(context->state, (u_int8_t *)&data[i]);
+			SHA1Transform(context->state, (uint8_t *)&data[i]);
 		j = 0;
 	} else {
 		i = 0;
@@ -149,28 +156,28 @@ SHA1Update(SHA1_CTX *context, const u_int8_t *data, size_t len)
 void
 SHA1Pad(SHA1_CTX *context)
 {
-	u_int8_t finalcount[8];
-	u_int i;
+	uint8_t finalcount[8];
+	uint i;
 
 	for (i = 0; i < 8; i++) {
-		finalcount[i] = (u_int8_t)((context->count >>
+		finalcount[i] = (uint8_t)((context->count >>
 		    ((7 - (i & 7)) * 8)) & 255);	/* Endian independent */
 	}
-	SHA1Update(context, (u_int8_t *)"\200", 1);
+	SHA1Update(context, (uint8_t *)"\200", 1);
 	while ((context->count & 504) != 448)
-		SHA1Update(context, (u_int8_t *)"\0", 1);
+		SHA1Update(context, (uint8_t *)"\0", 1);
 	SHA1Update(context, finalcount, 8); /* Should cause a SHA1Transform() */
 }
 
 void
-SHA1Final(u_int8_t digest[SHA1_DIGEST_LENGTH], SHA1_CTX *context)
+SHA1Final(uint8_t digest[SHA1_DIGEST_LENGTH], SHA1_CTX *context)
 {
-	u_int i;
+	uint i;
 
 	SHA1Pad(context);
 	if (digest) {
 		for (i = 0; i < SHA1_DIGEST_LENGTH; i++) {
-			digest[i] = (u_int8_t)
+			digest[i] = (uint8_t)
 			   ((context->state[i>>2] >> ((3-(i & 3)) * 8) ) & 255);
 		}
 		memset(context, 0, sizeof(*context));

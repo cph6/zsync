@@ -21,13 +21,7 @@
 
 #include "config.h"
 
-/* htons - where to get this? */
-#ifdef HAVE_HTONS_IN_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_HTONS_IN_SYS_PARAM_H
-#include <sys/param.h>
-#endif
+#include <arpa/inet.h>
 
 #include "zsync.h"
 

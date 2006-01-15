@@ -13,7 +13,13 @@
  *   COPYING file for details.
  */
 
+#include "config.h"
+
+#ifdef HAVE_STDINT_H
 #include <stdint.h>
+#else
+#include <sys/types.h>
+#endif
 
 struct gzblock {
   uint16_t inbitoffset;

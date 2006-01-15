@@ -1,4 +1,4 @@
-zsync 0.1.1
+zsync 0.1.2
 ===========
 
 zsync is a file transfer program. It allows you to download a file from a
@@ -87,6 +87,13 @@ bits:
 
 zsync -i <(zcat big-0.1.tar.gz) http://example.com/downloads/big-0.2.tar.zsync
 
+Feedback, Support
+-----------------
+
+Mail zsync-users@lists.sourceforge.net if you have questions about zsync. And
+join the mailing list if you are using it a lot or are interested in the
+ongoing development.
+
 Copyright, Author, Acknowledgements
 -----------------------------------
 
@@ -110,10 +117,6 @@ emacs, the essential development tools. Also I would thank Sourceforge for
 providing the hosting facilities for the downloads and mailing list, and the
 compile farm for testing portability.
 
-Feedback, Support
------------------
-
-Mail zsync-users@lists.sourceforge.net if you have questions about zsync. And
-join the mailing list if you are using it a lot or are interested in the
-ongoing development.
+Also, thanks to Érsek László, saul@alien-science.org, Kent Mein for useful
+feedback about previous versions.
 

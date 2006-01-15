@@ -5,7 +5,7 @@ AC_CONFIG_AUX_DIR(autotools)
 dnl --- Set version strings
 MAJOR_VERSION=0
 MINOR_VERSION=1
-MICRO_VERSION=1
+MICRO_VERSION=2
 VERSION=$MAJOR_VERSION.$MINOR_VERSION.$MICRO_VERSION
 
 AC_SUBST(VERSION)
@@ -34,12 +34,6 @@ dnl --- Header files, typedefs, structures, libraries
 AC_TYPE_SIZE_T
 dnl Solaris needs -lsocket
 AC_CHECK_LIB(socket,socket)
-AC_EGREP_HEADER(htons,netinet/in.h,
-AC_DEFINE([HAVE_HTONS_IN_NETINET_IN_H],[],[htons is defined in netinet/in.h (Linux)]),
-AC_EGREP_HEADER(htons,sys/param.h,
-AC_DEFINE([HAVE_HTONS_IN_SYS_PARAM_H],[],[htons is defined in sys/param.h (BSD)]),
-echo "could not find header for htons definition"
-))
 
 dnl --- output
 AC_SUBST(ac_aux_dir)
