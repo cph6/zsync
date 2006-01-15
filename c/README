@@ -1,4 +1,4 @@
-zsync 0.0.2
+zsync 0.0.3
 ===========
 
 zsync is a file transfer program. It allows you to download a file from a
@@ -85,7 +85,7 @@ from which users can see the file.
 A user with v0.1 of the same file can now use zsync to download only the new
 bits:
 
-zsync -i <(zcat big-0.2.tar.gz) http://example.com/downloads/big-0.2.tar.zsync
+zsync -i <(zcat big-0.1.tar.gz) http://example.com/downloads/big-0.2.tar.zsync
 
 Feedback, Support
 -----------------

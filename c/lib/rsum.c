@@ -114,22 +114,24 @@ int submit_blocks(struct zsync_state* z, unsigned char* data, zs_blockid bfrom, 
   return 0;
 }
 
-static int check_checksums_on_hash_chain(struct zsync_state* z, const struct hash_entry* e, const char* data, struct rsum r)
+static int check_checksums_on_hash_chain(struct zsync_state* z, struct hash_entry* e, const char* data, struct rsum r)
 {
   unsigned char md4sum[CHECKSUM_SIZE];
   int done_md4 = 0;
   int got_blocks = 0;
+  struct hash_entry* pprev = NULL;
   
-  for (;e;e = e->next) {
-    zs_blockid id;
-    /* Begin checksum and offer block */
-    /* Should probably be a separate function, but it's too fiddly to transfer all this state about which parts of which buffers we refer to to another place */
+  /* This is essentially a for (;e;e=e->next), but we want to remove links from
+   * the list as we find matches, without kepeing too many temp variables. So
+   * every code path in the loop has to update e to e->next, but in its own 
+   * way. */
+  while (e) {
+    /* Check weak checksum first */
     
-    if (e->r.a != r.a || e->r.b != r.b) continue;
-    
-    id = get_HE_blockid(z,e);
-    
-    if (already_got_block(z, id)) continue;
+    if (e->r.a != r.a || e->r.b != r.b) {
+      pprev = e; e = e->next;
+      continue;
+    }
     
     /* We only calculate the MD4 once we need it; but need not do so twice */
     if (!done_md4) {
@@ -139,11 +141,25 @@ static int check_checksums_on_hash_chain(struct zsync_state* z, const struct has
     
     /* Now check the strong checksum for this block */
     if (!memcmp(&md4sum, e->checksum, sizeof e->checksum)) {
+      zs_blockid id = get_HE_blockid(z,e);
+    
       write_blocks(z, data, id, id);
       got_blocks++;
+
+      /* Delink this entry.
+       * pprev need not advance (prev entry remains the same).
+       * If pprev, we have an entry before us, so just change its next ptr.
+       * else, we are first link in the chain, so update the hash table itself
+       */
+      if (pprev) {
+	pprev->next = e = e->next;
+      } else {
+	z->rsum_hash[calc_rhash(z,r)] = e = e->next;
+      }
+    } else {
+      pprev = e; e = e->next;
+      continue;      
     }
-    
-    /* End checksum and offer block */
   }
   return got_blocks;
 }

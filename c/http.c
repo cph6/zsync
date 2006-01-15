@@ -214,8 +214,7 @@ static char* rfgets(char* buf, size_t len, struct range_fetch* rf)
   char *p;
 
   while (1) {
-    char *bufstart = &(rf->buf[rf->buf_start]);
-    p = memchr(bufstart, '\n', rf->buf_end - rf->buf_start);
+    p = memchr(rf->buf + rf->buf_start, '\n', rf->buf_end - rf->buf_start);
 
     if (!p) {
       int n = get_more_data(rf);
@@ -225,6 +224,7 @@ static char* rfgets(char* buf, size_t len, struct range_fetch* rf)
     } else p++; /* Step past \n */
     
     if (p) {
+      register char *bufstart = &(rf->buf[rf->buf_start]);
       len--; /* allow for trailing \0 */
       if (len > p-bufstart) len = p-bufstart;
       memcpy(buf, bufstart, len);
@@ -326,6 +326,7 @@ static void range_fetch_getmore(struct range_fetch* rf)
   }
 }
 
+/* This has 3 cases - EOF returns 0, good returns >0, error returns <0 */
 int range_fetch_read_http_headers(struct range_fetch* rf)
 {
   char buf[512];
@@ -335,7 +336,10 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
     char *p;
     int c;
 
-    if (rfgets(buf,sizeof(buf),rf) == NULL || memcmp(buf, "HTTP/1", 6) != 0 || (p = strchr(buf, ' ')) == NULL) {
+    if (rfgets(buf,sizeof(buf),rf) == NULL)
+      return -1;
+    if (buf[0] == 0) return 0; /* EOF, caller decides if that's an error */
+    if (memcmp(buf, "HTTP/1", 6) != 0 || (p = strchr(buf, ' ')) == NULL) {
       return -1;
     }
     if ((c = atoi(p+1)) != 206) {
@@ -353,7 +357,7 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
     if (rfgets(buf,sizeof(buf),rf) == NULL) return -1;
     if (buf[0] == '\r' || buf[0] == '\0') {
       /* End of headers. We are happy provided we got the block boundary */
-      if ((rf->boundary || rf->block_left) && !(rf->boundary && rf->block_left)) return 0;
+      if ((rf->boundary || rf->block_left) && !(rf->boundary && rf->block_left)) return 1;
       break;
     }
     p = strstr(buf,": ");
@@ -390,14 +394,27 @@ int get_range_block(struct range_fetch* rf, long long* offset, unsigned char* da
   if (!rf->block_left) {
 check_boundary:
     if (!rf->boundary) {
+      int newconn = 0;
+      int header_result;
+
       if (rf->sd == -1) {
 	range_fetch_connect(rf);
 	if (rf->sd == -1) return -1;
+	newconn = 1;
 	range_fetch_getmore(rf);
       }
-      if (range_fetch_read_http_headers(rf) == -1) {
+      header_result = range_fetch_read_http_headers(rf);
+
+      /* EOF on first connect is fatal */
+      if (newconn && header_result == 0) {
+	fprintf(stderr,"EOF from %s\n",rf->url);
 	return -1;
       }
+
+      /* Return EOF or error to caller */
+      if (header_result <= 0) return header_result;
+      
+      /* HTTP Pipelining - send next request before reading current response */
       if (!rf->server_close) range_fetch_getmore(rf);
     }
     if (rf->boundary) {
