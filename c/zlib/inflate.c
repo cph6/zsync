@@ -1279,9 +1279,10 @@ z_streamp source;
  * Extra stuff I need to move around in gzip files
  */
 
-void inflate_advance_bits(strm,b)
+void inflate_advance_bits(strm,b,s)
      z_streamp strm;
      int b;
+     int s;
 {
   struct inflate_state FAR* state = (struct inflate_state FAR *)strm->state;
   if (b) {
@@ -1292,7 +1293,9 @@ void inflate_advance_bits(strm,b)
     strm->total_in++;
   } else {
     state->bits = 0;
+    state->hold = 0;
   }
+  state->mode = s ? TYPEDO : LENDO;
 }
 
 int ZEXPORT inflateSafePoint(strm)

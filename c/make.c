@@ -1,20 +1,16 @@
 /*
- *   zsyncmake - client side rsync over http, metafile builder
+ *   zsync - client side rsync over http
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *   it under the terms of the Artistic License v2 (see the accompanying 
+ *   file COPYING for the full license terms), or, at your option, any later 
+ *   version of the same license.
  *
  *   This program is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
-
- *   You should have received a copy of the GNU General Public License
- *   along with this program; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *   COPYING file for details.
  */
 
 #include <stdio.h>
@@ -35,18 +31,9 @@
 
 #include "zlib/zlib.h"
 
-#ifdef HAVE_LIBCRYPTO
+#include "libhash/sha1.h"
 
-#include <openssl/sha.h>
-
-SHA_CTX shactx;
-
-#else
-
-#define SHA1_Init(a)
-#define SHA1_Update(a,b,c)
-
-#endif
+SHA1_CTX shactx;
 
 size_t blocksize = 1024;
 long long len = 0;
@@ -116,7 +103,8 @@ static void write_zmap_delta(long long *prev_in, long long *prev_out, long long 
 void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
 {
   z_stream zs;
-  Bytef inbuf[4096];
+  Bytef *inbuf = malloc(blocksize);
+  const int inbufsz = blocksize;
   Bytef *outbuf = malloc(blocksize);
   int eoz = 0;
   int header_bits;
@@ -124,7 +112,10 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
   long long prev_out = 0;
   long long midblock_in = 0;
   long long midblock_out = 0;
-  
+
+  if (!inbuf || !outbuf) {
+    fprintf(stderr,"memory allocation failure\n"); exit(1);
+  }
   zs.zalloc = Z_NULL;
   zs.zfree = Z_NULL;
   zs.opaque = NULL;
@@ -143,11 +134,12 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
       while (*p++ != 0) ;
     header_bits = 8*(p - bufsofar);
     got -= (p-bufsofar);
-    if (got > sizeof(inbuf)) { fprintf(stderr,"internal failure, %d > %d input buffer available\n",got,sizeof(inbuf)); exit(2); }
+    if (got > inbufsz) { fprintf(stderr,"internal failure, %d > %d input buffer available\n",got,inbufsz); exit(2); }
     memcpy(inbuf,p,got);
-    /* Fill the buffer up to offset sizeof(inbuf) of the input file - we want to try and keep the input blocks aligned with block boundaries in the underlying filesystem and physical storage */
-    if (sizeof(inbuf) > got +(header_bits/8))
-      zs.avail_in = got + fread(inbuf+got,1,sizeof(inbuf)-got-(header_bits/8),fin);
+    /* Fill the buffer up to offset inbufsz of the input file - we want to try and keep the input blocks aligned with block boundaries in the underlying filesystem and physical storage */
+    zs.avail_in = got;
+    if (inbufsz > got +(header_bits/8))
+      zs.avail_in += fread(inbuf+got,1,inbufsz-got-(header_bits/8),fin);
   }
   /* Start the zmap. We write into a temp file, which the caller then copies into the zsync file later. */
   zmap = tmpfile();
@@ -159,7 +151,7 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
  
   while (!eoz) {
     if (zs.avail_in == 0) {
-      int rc = fread(inbuf,1,sizeof(inbuf),fin);
+      int rc = fread(inbuf,1,inbufsz,fin);
       zs.next_in = inbuf;
       if (rc < 0) { perror("read"); exit(2); }
       zs.avail_in = rc;
@@ -184,7 +176,7 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
 	midblock_in = midblock_out = 0;
       }
       if (zs.avail_out == 0 || rc == Z_STREAM_END) {
-	SHA1_Update(&shactx, outbuf, blocksize-zs.avail_out);
+	SHA1Update(&shactx, outbuf, blocksize-zs.avail_out);
 	/* Completed a block */
 	write_block_sums(outbuf,blocksize-zs.avail_out,fout);
 	zs.next_out = outbuf; zs.avail_out = blocksize;
@@ -205,6 +197,9 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
   fputc('\n',fout);
   /* Move back to the start of the zmap constructed, ready for the caller to read it back in */
   rewind(zmap);
+
+  free(inbuf);
+  free(outbuf);
 }
 
 static int no_look_inside;
@@ -227,7 +222,7 @@ void read_stream_write_blocksums(FILE* fin, FILE* fout)
       }
 
       /* The SHA-1 sum, unlike our internal block-based sums, is on the whole file and nothing else - no padding */
-      SHA1_Update(&shactx, buf, got);
+      SHA1Update(&shactx, buf, got);
 
       write_block_sums(buf,got,fout);
       len += got;
@@ -307,7 +302,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  SHA1_Init(&shactx);
+  SHA1Init(&shactx);
 
   read_stream_write_blocksums(instream,tf);
 
@@ -352,20 +347,18 @@ int main(int argc, char** argv) {
     }
     fprintf(stderr,"Relative URL included in .zsync file - you must keep the file being served and the .zsync in the same public directory\n");
   }
-#ifdef HAVE_LIBCRYPTO
   fputs("SHA-1: ",fout);
   {
-    unsigned char digest[SHA_DIGEST_LENGTH];
+    unsigned char digest[SHA1_DIGEST_LENGTH];
     int i;
 
 
-    SHA1_Final(&digest[0], &shactx);
+    SHA1Final(digest, &shactx);
 
     for (i = 0; i < sizeof digest; i++)
       fprintf(fout,"%02x",digest[i]);
   }
   fputc('\n',fout);
-#endif
   if (zmapentries) {
     fprintf(fout,"Z-Map: %d\n",zmapentries);
     fcopy(zmap,fout);

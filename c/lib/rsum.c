@@ -4,18 +4,14 @@
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *   it under the terms of the Artistic License v2 (see the accompanying 
+ *   file COPYING for the full license terms), or, at your option, any later 
+ *   version of the same license.
  *
  *   This program is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
-
- *   You should have received a copy of the GNU General Public License
- *   along with this program; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *   COPYING file for details.
  */
 
 /* For pread/pwrite */
@@ -27,7 +23,7 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include <openssl/md4.h>
+#include "libhash/md4.h"
 
 #include "zsync.h"
 #include "internal.h"
@@ -54,7 +50,10 @@ struct rsum  __attribute__((pure)) calc_rsum_block(const unsigned char* data, si
 
 void calc_checksum(unsigned char *c, const unsigned char* data, size_t len)
 {
-  MD4(data,len,c);
+  MD4_CTX ctx;
+  MD4Init(&ctx);
+  MD4Update(&ctx,data,len);
+  MD4Final(c,&ctx);
 }
 
 static void write_blocks(struct zsync_state* z, unsigned char* data, zs_blockid bfrom, zs_blockid bto)

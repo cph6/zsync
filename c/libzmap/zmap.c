@@ -3,18 +3,14 @@
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *   it under the terms of the Artistic License v2 (see the accompanying 
+ *   file COPYING for the full license terms), or, at your option, any later 
+ *   version of the same license.
  *
  *   This program is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
-
- *   You should have received a copy of the GNU General Public License
- *   along with this program; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *   COPYING file for details.
  */
 
 #include "config.h"
@@ -85,36 +81,37 @@ struct zmap* make_zmap(const struct gzblock* zb, int n)
 
 int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int maxout, long long* byterange, int nrange)
 {
-  int i;
-  for (i=0; i<nrange; i++) {
+  int i,k;
+  long long lastwroteblockstart_inbitoffset = 0;
+  for (i=0,k=0; i<nrange && k < maxout-10; i++) {
     long long start = byterange[2*i];
     long long end = byterange[2*i+1];
     long long zstart = -1;
     long long zend = -1;
-    long long outstart = -1;
-    long long inbitoffset = 0;
-    long long outbyteoffset = 0;
     long long lastblockstart_inbitoffset = 0;
-    long long lastblockstart_outbyteoffset = 0;
     int j;
     
     for (j=0; j<zm->n && (zstart == -1 || zend == -1); j++) {
-      inbitoffset = zm->e[j].inbits;
-      outbyteoffset = zm->e[j].outbytes;
+      register long long inbitoffset = zm->e[j].inbits;
+      register long long outbyteoffset = zm->e[j].outbytes;
       
       /* Is this the first block that comes after the start point - if so, the previous block header is the place to start (hence we don't update the lastblockstart_* values until after this) */
       if (start < outbyteoffset && zstart == -1) {
 	if (j == 0) break;
-	zstart = lastblockstart_inbitoffset;
-	outstart = lastblockstart_outbyteoffset;
+	zstart = zm->e[j-1].inbits;
 	// fprintf(stderr,"starting range at zlib block %d offset %lld.%lld\n",j-1,zstart/8,zstart%8);
+	if (lastwroteblockstart_inbitoffset != lastblockstart_inbitoffset) {
+	  zbyterange[2*k] = lastblockstart_inbitoffset/8;
+	  zbyterange[2*k+1] = (lastblockstart_inbitoffset/8) + 200;
+	  k++;
+	  lastwroteblockstart_inbitoffset = lastblockstart_inbitoffset;
+	}
       }
       
       if (!(zm->e[j].blockcount)) { /* Block starts here */
 	lastblockstart_inbitoffset = inbitoffset;
-	lastblockstart_outbyteoffset = outbyteoffset;
       }
-      
+
       /* If we have passed the start, and we have now passed the end, then the end of this block is the end of the range to fetch. Special case end of stream, where the range libzsync knows about could extend beyond the range of the zlib stream. */
       if (start < outbyteoffset && (end <= outbyteoffset || j == zm->n - 1)) {
 	zend = inbitoffset;
@@ -125,20 +122,24 @@ int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int m
       fprintf(stderr,"Z-Map couldn't tell us how to find %lld-%lld\n",byterange[2*i],byterange[2*i+1]);
       return -1;
     }
-    zbyterange[2*i] = zstart/8;
+    zbyterange[2*k] = zstart/8;
     /* Note +9 trailing bits, the offset is to the last huffman code inside the block, and each code is at most 9 bits */
-    zbyterange[2*i+1] = (zend+7)/8;
+    zbyterange[2*k+1] = (zend+7)/8;
+    k++;
   }
-  for (i=0; i<nrange-1;) {
+  for (i=0; i<k-1;) {
     if (zbyterange[2*i+1] >= zbyterange[2*(i+1)]) {
       // Ranges overlap, merge
       // fprintf(stderr,"merging ranges %lld-%lld and %lld-%lld\n",zbyterange[2*i+0],zbyterange[2*i+1],zbyterange[2*i+2],zbyterange[2*i+3]);
-      /* Copy the end of the second range over the end of the first (so the new range covers both); and copy down the rest of the array - both done in one memmove, hence the odd (2*(number fo topy down)+1) */
-      memmove(&zbyterange[2*i+1],&zbyterange[2*i+3], (2*(nrange-2-i)+1)*sizeof(zbyterange[0]));
-      nrange--;
+      /* Second range might be contained in the first */
+      if (zbyterange[2*i+1] < zbyterange[2*(i+1)+1])
+	zbyterange[2*i+1] = zbyterange[2*(i+1)+1];
+      /* Copy the rest of the array down */
+      memmove(&zbyterange[2*i+2],&zbyterange[2*i+4], 2*(k-2-i)*sizeof(zbyterange[0]));
+      k--;
     } else i++;
   }
-  return nrange;
+  return k;
 }
 
 #include "zlib/zlib.h"
@@ -169,10 +170,16 @@ void configure_zstream_for_zdata(const struct zmap* zm, z_stream* zs, long zoffs
     i = low;
   }
 
-  /* Release any old inflate object */
-  if (zs->total_in > 0) inflateEnd(zs);
-  
-  inflateInit2(zs,-MAX_WBITS);
+  if (!zm->e[i].blockcount) {
+    /* Release any old inflate object */
+    if (zs->total_in > 0) inflateEnd(zs);
+    
+    inflateInit2(zs,-MAX_WBITS);
+  } else
+    if (zs->total_in == 0) {
+      fprintf(stderr,"bad first offset %ld, not a block start.\n",zoffset);
+      exit(3);
+    }
 
   /* Work out what the decompressed data will correspond to */
   *poutoffset = zm->e[i].outbytes;
@@ -180,5 +187,5 @@ void configure_zstream_for_zdata(const struct zmap* zm, z_stream* zs, long zoffs
 
   /* Align with the bitstream */
   zs->total_in = zoffset; /* We are here, plus a few more bits. */
-  inflate_advance_bits(zs, zm->e[i].inbits % 8);
+  inflate_advance_bits(zs, zm->e[i].inbits % 8, !zm->e[i].blockcount);
 }

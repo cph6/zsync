@@ -4,8 +4,8 @@ AC_CONFIG_AUX_DIR(autotools)
 
 dnl --- Set version strings
 MAJOR_VERSION=0
-MINOR_VERSION=0
-MICRO_VERSION=6
+MINOR_VERSION=1
+MICRO_VERSION=0
 VERSION=$MAJOR_VERSION.$MINOR_VERSION.$MICRO_VERSION
 
 AC_SUBST(VERSION)
@@ -32,7 +32,6 @@ CFLAGS="$CFLAGS -I\$(top_srcdir)/lib"
 
 dnl --- Header files, typedefs, structures, libraries
 AC_TYPE_SIZE_T
-AC_CHECK_LIB(crypto,SHA1_Init)
 dnl Solaris needs -lsocket
 AC_CHECK_LIB(socket,socket)
 AC_EGREP_HEADER(htons,netinet/in.h,
@@ -44,5 +43,5 @@ echo "could not find header for htons definition"
 
 dnl --- output
 AC_SUBST(ac_aux_dir)
-AC_OUTPUT(Makefile lib/Makefile zlib/Makefile libzmap/Makefile doc/Makefile)
+AC_OUTPUT(Makefile lib/Makefile zlib/Makefile libzmap/Makefile libhash/Makefile doc/Makefile)
 

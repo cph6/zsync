@@ -17,7 +17,11 @@ zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_unstable_main_
 <p>I am also offering .zsync's for a limited range of ISO images for Linux distributions. Clearly these are only any use to you if you have a relevant older version to do the incremental update from.</p>
 
 <ul>
+<li>Fedora Core 3 for i386: <a href="s/FC3/FC3-i386-disc1.iso.zsync">here</a>. E.g. to update from Fedora Core 3 test3:
+<pre>
+zsync -i FC3-test3-i386-disc1.iso http://zsync.moria.org.uk/s/FC3/FC3-i386-disc1.iso.zsync
+</pre>
+</li>
 <li>Debian-Installer image pre-rc2 for i386: <a href="s/d-i-pre-rc2/sarge-i386-netinst.iso.zsync">here</a>. Seeded with an earlier debian-installer ISO you can get about a 40% download saving, according to my testing. cdimages.debian.org does seem to disconnect you every now and then &#8212; zsync recovers fine if you rerun it. (I could do the daily snapshots if anyone is interested &#8212; zsync gets a 90% saving between daily images in my tests.)</li>
-<li>Fedora Core 3 (rc3) for i386: <a href="s/FC/FC3-i386-disc1.iso.zsync">here</a>. I will put up a .zsync for Fedora Core 3 (the final release) when it comes out.</li>
 </ul>
 <!--#include file="foot.html" -->

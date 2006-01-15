@@ -1,4 +1,4 @@
-zsync 0.0.6
+zsync 0.1.0
 ===========
 
 zsync is a file transfer program. It allows you to download a file from a
@@ -87,21 +87,33 @@ bits:
 
 zsync -i <(zcat big-0.1.tar.gz) http://example.com/downloads/big-0.2.tar.zsync
 
+Copyright, Author, Acknowledgements
+-----------------------------------
+
+zsync is based on the rsync algorithm, by Andrew Tridgell. zsync also uses
+a large part of zlib - this code, in the zlib subdirectory,  is copyright
+1995-2003 Jean-loup Gailly and Mark Adler, see zlib/README for details.
+
+zlib also includes checksum code taken from OpenBSD. The MD4 code is public
+domanain, by Colin Plumb and Todd C. Miller. The SHA1 code is also public
+domain, by Steve Reid. This code is in the libhash/ subdirectory, see the
+individual files for their non-copyright notices.
+
+The rest of the code (that is, everything not in the zlib and libhash
+subdirectories) is copyright (C) 2004 Colin Phipps <cph@moria.org.uk>. zsync is
+made available under the (clarified) Artistic License - see the file COPYING
+for details.
+
+I must thank the developers above, whose code I have used. Also, I would like
+to thank the Free Software Foundation and its contributors, for gcc, gdb and
+emacs, the essential development tools. Also I would thank Sourceforge for
+providing the hosting facilities for the downloads and mailing list, and the
+compile farm for testing portability.
+
 Feedback, Support
 -----------------
 
 Mail zsync-users@lists.sourceforge.net if you have questions about zsync. And
 join the mailing list if you are using it a lot or are interested in the
 ongoing development.
-
-Copyright, Author
------------------
-
-zsync was written and is developed by Colin Phipps <cph@moria.org.uk> (I prefer
-it if you mail the mailing list above if you have general questions about
-zsync). It is copyright (C) 2004 Colin Phipps. zsync is made available under
-the GNU General Public License - see the file COPYING for details.
-
-zsync is based on the rsync algorithm, by Andrew Tridgell. zsync also includes
-code from zlib - see zlib/README for details.
 

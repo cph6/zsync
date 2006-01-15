@@ -3,18 +3,14 @@
  *   Copyright (C) 2004 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *   it under the terms of the Artistic License v2 (see the accompanying 
+ *   file COPYING for the full license terms), or, at your option, any later 
+ *   version of the same license.
  *
  *   This program is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
-
- *   You should have received a copy of the GNU General Public License
- *   along with this program; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *   COPYING file for details.
  */
 
 #include <stdio.h>
@@ -45,11 +41,7 @@
 
 long known_blocks;
 
-#ifdef HAVE_LIBCRYPTO
-
-#include <openssl/sha.h>
-
-#endif
+#include "libhash/sha1.h"
 
 void read_seed_file(struct zsync_state* z, const char* fname) {
   fprintf(stderr,"reading seed file %s: ",fname);
@@ -251,7 +243,6 @@ void  read_zsync_control_file(const char* p, struct zsync_state** pzs)
 int fetch_remaining_blocks(struct zsync_state* zs)
 {
   zs_blockid blrange[2];
-  int first = 1;
   
   /* Use get_needed_block_ranges with a wide range and a dummy storage area. If we get at least once range, there is still data to transfer. */
   while (get_needed_block_ranges(zs, &blrange[0], 1, 0, 0x7fffffff) != 0) {
@@ -259,7 +250,7 @@ int fetch_remaining_blocks(struct zsync_state* zs)
     int zfetch = 0;
 
     /* Pick a random URL from the list. Try compressed URLs first. */
-    if (!first && zmap) {
+    if (zmap) {
       int i,c;
 
       zfetch = 1;
@@ -279,14 +270,14 @@ int fetch_remaining_blocks(struct zsync_state* zs)
 	  else if (!(rand() % c)) ptryurl = &url[i];
 	}
     }
-    if (!first && !ptryurl) return 1; /* All URLs eliminated. */
+    if (!ptryurl) return 1; /* All URLs eliminated. */
 
     if (ptryurl) {
       int rc;
       if (zfetch)
 	rc = fetch_remaining_blocks_zlib_http(zs,*ptryurl,zmap);
       else
-	rc = fetch_remaining_blocks_http(zs,*ptryurl,first && zmap ? 2 : 0);
+	rc = fetch_remaining_blocks_http(zs,*ptryurl,0);
 
       if (rc != 0) {
 	fprintf(stderr,"%s removed from list\n",*ptryurl);
@@ -294,7 +285,6 @@ int fetch_remaining_blocks(struct zsync_state* zs)
 	*ptryurl = NULL;
       }
     }
-    first = 0;
   }
   return 0;
 }
@@ -302,12 +292,11 @@ int fetch_remaining_blocks(struct zsync_state* zs)
 static int truncate_verify_close(int fh, long long filelen, const char* checksum, const char* checksum_method) {
   if (ftruncate(fh,filelen) != 0) { perror("ftruncate"); return -1; }
   if (lseek(fh,0,SEEK_SET) != 0) { perror("lseek"); return -1; }
-#ifdef HAVE_LIBCRYPTO
   if (checksum && !strcmp(checksum_method,"SHA-1")) {
-    SHA_CTX shactx;
+    SHA1_CTX shactx;
 
     fprintf(stderr,"verifying download\n");
-    if (strlen(checksum) != SHA_DIGEST_LENGTH*2) {
+    if (strlen(checksum) != SHA1_DIGEST_LENGTH*2) {
       fprintf(stderr,"SHA-1 digest from control file is wrong length.\n");
       return -1;
     }
@@ -315,19 +304,19 @@ static int truncate_verify_close(int fh, long long filelen, const char* checksum
       char buf[4096];
       int rc;
       
-      SHA1_Init(&shactx);
+      SHA1Init(&shactx);
       while (0 < (rc = read(fh,buf,sizeof buf))) {
-	SHA1_Update(&shactx,buf,rc);
+	SHA1Update(&shactx,buf,rc);
       }
       if (rc < 0) { perror("read"); return -1; }
     }
     {
-      unsigned char digest[SHA_DIGEST_LENGTH];
+      unsigned char digest[SHA1_DIGEST_LENGTH];
       int i;
 
-      SHA1_Final(&digest[0], &shactx);
+      SHA1Final(digest, &shactx);
 
-      for (i=0; i<SHA_DIGEST_LENGTH; i++) {
+      for (i=0; i<SHA1_DIGEST_LENGTH; i++) {
 	int j;
 	sscanf(&checksum[2*i],"%2x",&j);
 	if (j != digest[i]) {
@@ -337,7 +326,6 @@ static int truncate_verify_close(int fh, long long filelen, const char* checksum
     }
   }
   else
-#endif
   {
     fprintf(stderr,"Unable to verify checksum (%s), but proceeding.\n", checksum_method ? checksum_method : "no recognised checksum provided");
   }

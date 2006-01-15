@@ -1153,7 +1153,7 @@ ZEXTERN uLong ZEXPORT crc32   OF((uLong crc, const Bytef *buf, uInt len));
 */
 
 ZEXTERN int ZEXPORT updatewindow OF((z_streamp strm, unsigned out));
-ZEXTERN void ZEXPORT inflate_advance_bits OF((z_streamp strm, int b));
+ZEXTERN void ZEXPORT inflate_advance_bits OF((z_streamp strm, int b, int s));
 
                         /* various hacks, don't look :) */
 
