@@ -342,7 +342,7 @@ int main(int argc, char** argv) {
 
   {
     int opt;
-    while ((opt = getopt(argc,argv,"o:i:")) != -1) {
+    while ((opt = getopt(argc,argv,"o:i:V")) != -1) {
       switch (opt) {
       case 'o':
 	filename = strdup(optarg);
@@ -350,6 +350,11 @@ int main(int argc, char** argv) {
       case 'i':
 	seedfiles = append_ptrlist(&nseedfiles,seedfiles,optarg);
 	break;
+      case 'V':
+	printf(PACKAGE " v" VERSION " (compiled " __DATE__ " " __TIME__ ")\n"
+	       "By Colin Phipps <cph@moria.org.uk>\n"
+	       "Published under the Artistic License v2, see the COPYING file for details.\n");
+	exit(0);
       }
     }
   }

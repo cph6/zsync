@@ -339,7 +339,7 @@ static void range_fetch_getmore(struct range_fetch* rf)
   }
 }
 
-static void __attribute__((pure)) buflwr(char* s)
+static void buflwr(char* s)
 {
   char c;
   while(c = *s) {

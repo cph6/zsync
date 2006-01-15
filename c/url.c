@@ -22,7 +22,7 @@
 
 #include "url.h"
 
-char* __attribute__((pure)) get_host_port(const char* url, char* hostn, int hnlen, char** port)
+char* get_host_port(const char* url, char* hostn, int hnlen, char** port)
 {
   char *p;
   char *q = strstr(url,"://");

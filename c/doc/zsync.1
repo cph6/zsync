@@ -5,6 +5,8 @@ zsync \- Partial/differential file download client over HTTP
 .SH "SYNTAX"
 .LP 
 zsync [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] { \fIfilename\fP | \fIurl\fR }
+.LP 
+zsync \-V
 .SH "DESCRIPTION"
 .LP 
 Downloads a file over HTTP. zsync uses a control file to determine whether any blocks in the file are already known to the downloader, and only downloads the new blocks.
@@ -22,6 +24,9 @@ Specifies (extra) input files. \fIinputfile\fP is scanned to identify blocks in 
 .TP 
 \fB\-o\fR \fIoutputfile\fP
 Override the default output file name.
+.TP 
+\fB\-V\fR
+Prints the version of zsync.
 .SH "FILES"
 
 .SH "ENVIRONMENT VARIABLES"

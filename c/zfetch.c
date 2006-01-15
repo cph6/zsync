@@ -26,7 +26,7 @@
 
 #define MAXRANGES 100
 
-static int __attribute__((pure)) get_zranges(long long* zbyterange, int maxrange, const struct zsync_state* z, const struct zmap* zm, long long* sofar)
+static int get_zranges(long long* zbyterange, int maxrange, const struct zsync_state* z, const struct zmap* zm, long long* sofar)
 {
   long long byterange[MAXRANGES*2];
   int nrange;
