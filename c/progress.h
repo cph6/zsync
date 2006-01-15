@@ -23,4 +23,6 @@ struct progress {
 extern int no_progress;
 
 void do_progress(struct progress* p, float pcnt, long long newdl);
+
+/* end_progress - done parameter is 0 for error, 1 for okay-but-incomplete, 2 for completed */
 void end_progress(struct progress* p, int done);

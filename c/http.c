@@ -280,7 +280,7 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
 	    do_progress(&p, len ? (100.0*got / len) : 0, got);
 	}
       }
-      if (!no_progress) end_progress(&p,feof(f));
+      if (!no_progress) end_progress(&p,feof(f) ? 2 : 0);
     }
     fclose(f);
   }

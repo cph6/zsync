@@ -61,13 +61,13 @@ void do_progress(struct progress* p, float pcnt, long long newdl)
 
 void end_progress(struct progress* p, int done)
 {
-  if (done) progbar(20, 100.0);
+  if (done == 2) progbar(20, 100.0);
   else progbar(p->lastpcnt*(20.0/100.0), p->lastpcnt);
   
   {
     float rate = ((float)p->lastdl) / (p->lasttime - p->starttime + 0.5);
     printf(" %.1f kBps ",rate/1000.0);
   }
-  puts(done ? "DONE    \n" : "aborted    \n");
+  puts(done == 2 ? "DONE    \n" : !done ? "aborted    \n" : "        \n");
   fflush(stdout);
 }

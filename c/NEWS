@@ -1,3 +1,8 @@
+Changes in 0.4.0
+- now considered beta instead of alpha quality
+- fixed incorrect 100%/done display of progress bar when cleanly disconnected before end by server
+- updated autoconf/automake scripts
+
 Changes in 0.3.3
 - build in gzip in zsyncmake which produces .gz files optimised for zsync
 - quickly stop downloading from a URL producing bad data

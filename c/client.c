@@ -226,11 +226,11 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
       zoffset += len; // Needed in case next call returns len=0 and we need to signal where the EOF was.
     }
 
-    if (!no_progress) end_progress(&p,len == 0);
-
     if (len < 0) ret = -1;
     else
       zsync_receive_data(zr, NULL, zoffset, 0);
+
+    if (!no_progress) end_progress(&p,zsync_status(z) >= 2 ? 2 : len == 0 ? 1 : 0);
   }
 
   free(buf);

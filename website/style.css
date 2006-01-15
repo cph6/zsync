@@ -1,0 +1,18 @@
+#content {
+  margin-right: 160px;
+}
+#linklist {
+  width: 150px;
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  padding: 10px;
+  border: 2px black;
+  background: #ffffb0;
+}
+.inlinetitle {
+  font-weight: bolder;
+}
+a img {
+  border: 0px;
+}

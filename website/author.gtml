@@ -1,0 +1,29 @@
+#include "header.gtml"
+<title>zsync &#8212; Credits &amp; Contact</title>
+#include "head.gtml"
+
+<h2>The Author</h2>
+
+<p>zsync is written by Colin Phipps, as is this website. You can contact me at <a href="mailto:cph&#64;moria.org.uk">cph&#64;moria.org.uk</a>. I retain the copyright to zsync, and make it available to you under the Artistic License v2 &#8212; see the file <code>COPYING</code> supplied with zsync.</p>
+<p>I use IRC for my instant messaging, so you can find me from time to time on irc.freenode.net, #zsync.</p>
+<p>The content of this website is copyright 2005 by Colin Phipps (except for the standard images, obviously). You are free to copy the examples and descriptions from the web pages on site without restriction, except for the technical papers. The technical papers you can redistribute and reproduce, but they must not be modified and you must acknowledge me as the author; you can cite from them freely, provided you provide a reference to the full copy of the papers on this site.</p>
+
+<h2>Acknowledgements</h2>
+
+<p>zsync uses <a href="http://rsync.samba.org/tech_report/"><i>the rsync algorithm</i></a>, from the technical paper by Andrew Tridgell and Paul Mackerras.
+It also builds on optimisations of the basic rsync concept, including ideas from papers by Utku Irmak, Svilen Mihaylov, and Torsten Suel</p>
+
+<p>zsync also contains some code from zlib, <code>Copyright (C) 1995-2003 Jean-loup Gailly and Mark Adler</code>. I have made only slight alterations to this code, which I have put in the public domain.</p>
+
+<p>zsync also includes checksum code taken from OpenBSD. The MD4 code is public
+domain, by Colin Plumb and Todd C. Miller. The SHA1 code is also public
+domain, by Steve Reid.</p>
+
+<p>I would like
+to thank the Free Software Foundation and its contributors, for gcc, gdb,
+automake, autoconf and emacs, the essential development tools. Also I would
+thank Sourceforge for providing the hosting facilities for the downloads and
+mailing list, and the compile farm for testing portability.
+</p>
+
+#include "foot.gtml"

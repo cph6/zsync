@@ -1,0 +1,48 @@
+#include "header.gtml"
+<title>zsync</title>
+#include "head.gtml"
+
+<h2>Overview</h2>
+
+<p>zsync is a file transfer program. It allows you to download a file from a remote server, where you have a copy of an older version of the file on your computer already. zsync downloads only the new parts of the file. It uses the same algorithm as <a href="http://rsync.samba.org/">rsync</a>. However, where rsync is designed for synchronising data from one computer to another within an organisation, zsync is designed for file distribution, with one file on a server to be distributed to thousands of downloaders. zsync requires no special server software — just a web server to host the files — and imposes no extra load on the server, making it ideal for large scale file distribution.</p>
+
+<p>zsync is <a href="http://www.opensource.org/">open source</a>, distributed under version 2 of the Artistic License. Feedback, bugs reports and patches are welcome.</p>
+
+<h2>Advantages of zsync</h2>
+
+<p>zsync fills a gap in the technology available for large-scale file distribution. Three key points explain why zsync provides a genuinely new technique for file distribution:</p>
+<ul>
+<li><span class="inlinetitle">Client-side rsync</span> — zsync uses the rsync algorithm, but runs it on the client side, thus avoiding the high server load associated with rsync.</li>
+<li><span class="inlinetitle">Rsync over HTTP</span> — zsync provides transfers that are nearly as efficient as rsync -z or cvsup, without the need to run a special server application. All that is needed is an HTTP/1.1-compliant web server. So it works through firewalls and on shared hosting accounts, and gives less security worries.</li>
+<li><span class="inlinetitle">Handling for compressed files</span> — rsync is ineffective on compressed files, unless they are compressed with a patched version of gzip. zsync has special handling for gzipped files, which enables update transfers of files which are distributed in compressed form.</li>
+</ul>
+
+<p>The special handling of compressed files is, as far as I know, entirely new and unique to zsync. The combination of client-side rsync and HTTP is also unique to zsync, to the best of my knowledge.</p>
+
+<p>I have put up <a href="papers">technical papers</a>. There is a current paper, which reflects zsync's latest development, and which I update with new figures as I run new tests and comparisons; there are also older snapshots of the technical paper, included for reference and citation.</p>
+
+<h2>Practical Engineering</h2>
+
+<p>zsync is only useful if people offer zsync downloads. I have made a deliberate effort to make zsync simple and reliable in use, and easy to deploy.</p>
+
+<ul>
+<li><span class="inlinetitle">Single meta-file</span> — zsync downloads are offered by building a .zsync file, which contains the meta-data needed by zsync. This file contains the precalculated checksums for the rsync algorithm; it is generated on the server, once, and is then used by any number of downloaders.</li>
+<li><span class="inlinetitle">Easy file format</span> — .zsync files have a simple text header, so they can be edited with any good editor to change details like the download URL.</li>
+<li><span class="inlinetitle">Flexible use</span> — The .zsync contains either a relative URL to the full content of the file, so you can either generate and offer it on the same server as hosts the full download (and so it can be distributed like any other file onto mirror sites). Or it can contains one or more absolute URLs (the client will try multiple URLs if necessary to find the content), meaning the .zsync can be hosted on a different server entirely; in fact, the .zsync can be generated and offered by a third party, while still leaving most of the download to the original distribution site.</li>
+</ul>
+
+<p>
+ Because zsync is a file distribution method, it is useful only when people offer .zsyncs for downloads. It's a little hard to demonstrate the program and build up a user base because of this. So I am suggesting a number of uses for zsync on the <a href="client">client page</a>; these include some zsync downloads that I am offering downloads myself to give some immediate use to the program.
+</p>
+
+<p>If you are a server operator looking to use zsync for file distribution, see the <a href="server">server page</a>, which gives some guidance on how to create and offer .zsync files.</p>
+
+<h2>Current Status</h2>
+
+<p>zsync is currently not even in beta; I am calling it an alpha for now. Originally this C implementation of zsync was only intended to be a prototype. But it has proved sufficiently fast and effective that I have continued developing it, to be the definitive zsync implementation.</p>
+
+<p>The file format and command-line interface is settling down now, so I will be looking to declare it to be a beta release soon. I am also looking to freeze the interface between the zsync library and the current command-line client; I will at some point split zsync into a dynamic library, which implements the format and allows it to be embedded into other programs, and the client program.</p>
+
+<p>I am interested in <a href="author">hearing feedback about zsync</a>. Bugs, crashes, and feature suggestions are welcome. Perhaps most of all I am interested in hearing about uses of zsync: I would like to hear about any serious use of zsync, because knowing how people are using it will affect which features I work on; and if there are features that you need to enable a particular use, then I would like to hear about that too.</p>
+
+#include "foot.gtml"
