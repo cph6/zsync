@@ -28,14 +28,11 @@
 #include "http.h"
 #include "url.h"
 
-int connect_to(const char* node, unsigned short p)
+int connect_to(const char* node, const char* service)
 {
   struct addrinfo hint;
   struct addrinfo *ai;
   int rc;
-  const char *service = "http";
-
-  if (p == 8080) service = "webcache";
 
   memset(&hint,0,sizeof hint);
   hint.ai_family = AF_UNSPEC;
@@ -102,9 +99,22 @@ char* get_location_url(FILE* f, const char* cur_url) {
   return NULL; // TODO
 }
 
-char *proxy = NULL;
-char *referer = NULL;
-unsigned short pport;
+char *proxy;
+char *pport;
+char *referer;
+
+int set_proxy_from_string(const char* s)
+{
+  char *p;
+  if (!memcmp(s,"http://",7))
+    s += 7;
+  proxy = strdup(s);
+  p = strchr(proxy,':');
+  if (!p) { pport = strdup("webcache"); return 1; }
+  *p++ = 0;
+  pport = strdup(p);
+  return 1;
+}
 
 FILE* http_open(const char* orig_url, const char* extraheader, int require_code, char** track_referer)
 {
@@ -116,7 +126,7 @@ FILE* http_open(const char* orig_url, const char* extraheader, int require_code,
     char hostn[256];
     const char* connecthost;
     char *p;
-    int port;
+    char *port;
 
     if ( (p = get_host_port(url,hostn,sizeof(hostn),&port)) == NULL) break;
     if (!proxy) {
@@ -175,7 +185,7 @@ struct range_fetch {
   char hostn[256];
 
   char* chost;
-  int cport;
+  char* cport;
 
   size_t block_left;
   long long offset;
@@ -247,6 +257,7 @@ struct range_fetch* range_fetch_start(const char* orig_url)
     // URL must be absolute; throw away cport and get port for proxy
     rf->url = strdup(orig_url);
     rf->cport = pport;
+    rf->chost = proxy;
   } else {
     // cport already set; set url to relative part and chost to the target
     rf->url = strdup(p);
@@ -328,6 +339,16 @@ static void range_fetch_getmore(struct range_fetch* rf)
   }
 }
 
+static void __attribute__((pure)) buflwr(char* s)
+{
+  char c;
+  while(c = *s) {
+    if (c >= 'A' && c <= 'Z')
+      *s = c - 'A' + 'a';
+    s++;
+  }
+}
+
 /* This has 3 cases - EOF returns 0, good returns >0, error returns <0 */
 int range_fetch_read_http_headers(struct range_fetch* rf)
 {
@@ -365,8 +386,9 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
     p = strstr(buf,": ");
     if (!p) break;
     *p = 0; p+=2;
-      /* buf is the header name, p the value */
-    if (!strcmp(buf,"Content-Range")) {
+    buflwr(buf);
+      /* buf is the header name (lower-cased), p the value */
+    if (!strcmp(buf,"content-range")) {
       unsigned long long from,to;
       sscanf(p,"bytes %llu-%llu/",&from,&to);
       if (from <= to) {
@@ -374,16 +396,23 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
 	rf->offset = from;
       }
     }
-    if (!strcmp(buf,"Connection") && !strcmp(buf,"close")) {
+    if (!strcmp(buf,"connection") && !strcmp(p,"close")) {
       rf->server_close = 1;
     }
-    if (!strcasecmp(buf,"Content-Type") && !strncasecmp(p,"multipart/byteranges",20)) {
+    if (!strcasecmp(buf,"content-type") && !strncasecmp(p,"multipart/byteranges",20)) {
       char *q = strstr(p,"boundary=");
       if (!q) break;
-      rf->boundary = strdup(q+9); /* length of the above */
-      q = rf->boundary + strlen(rf->boundary)-1;
+      q += 9;
+      if (*q == '"') {
+	rf->boundary = strdup(q+1);
+	q = strchr(rf->boundary,'"');
+	if (q) *q = 0;
+      } else {
+	rf->boundary = strdup(q);
+	q = rf->boundary + strlen(rf->boundary)-1;
       
-      while (*q == '\r' || *q == ' ' || *q == '\n') *q-- = '\0';
+	while (*q == '\r' || *q == ' ' || *q == '\n') *q-- = '\0';
+      }
     }
   }
   return -1;
@@ -421,6 +450,8 @@ check_boundary:
     }
     if (rf->boundary) {
       char buf[512];
+      int gotr = 0;
+
       if (!rfgets(buf,sizeof(buf),rf)) return 0;
       /* Get, hopefully, boundary marker */
       if (!rfgets(buf,sizeof(buf),rf)) return 0;
@@ -436,9 +467,14 @@ check_boundary:
       for(;buf[0] != '\r' && buf[0] != '\n' && buf[0] != '\0';) {
 	int from, to;
 	if (!rfgets(buf,sizeof(buf),rf)) return 0;
-	if (2 == sscanf(buf,"Content-range: bytes %d-%d/",&from,&to)) {
-	  rf->offset = from; rf->block_left = to - from + 1;
+	buflwr(buf);
+	if (2 == sscanf(buf,"content-range: bytes %d-%d/",&from,&to)) {
+	  rf->offset = from; rf->block_left = to - from + 1; gotr = 1;
 	}
+      }
+      if (!gotr) {
+	fprintf(stderr,"got multipart/byteranges but no Content-Range?");
+	return -1;
       }
     }
   }

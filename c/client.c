@@ -360,6 +360,10 @@ int main(int argc, char** argv) {
     fprintf(stderr,"Usage: zsync http://example.com/some/filename.zsync\n");
     exit(3);
   }
+  {
+    char *pr = getenv("http_proxy");
+    if (pr != NULL) set_proxy_from_string(pr);
+  }
   read_zsync_control_file(argv[optind], &zs);
   if (filename) {
     temp_file = malloc(strlen(filename)+6);

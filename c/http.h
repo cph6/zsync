@@ -1,7 +1,7 @@
 
-extern char *proxy;
-extern unsigned short pport;
 extern char *referer;
+
+int set_proxy_from_string(const char* s);
 
 FILE* http_open(const char* orig_url, const char* extraheader, int require_code, char** track_referer);
 

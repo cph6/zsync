@@ -22,7 +22,7 @@
 
 #include "url.h"
 
-char* __attribute__((pure)) get_host_port(const char* url, char* hostn, int hnlen, int* port)
+char* __attribute__((pure)) get_host_port(const char* url, char* hostn, int hnlen, char** port)
 {
   char *p;
   char *q = strstr(url,"://");
@@ -31,8 +31,7 @@ char* __attribute__((pure)) get_host_port(const char* url, char* hostn, int hnle
   q+=3;
   
   p = strchr(q,':');
-  if (!p) { *port = 80; p = strchr(q,'/'); }
-  else { *port = atoi(p+1); }
+  if (!p) { *port = strdup("http"); p = strchr(q,'/'); }
   
   if (!p) return NULL;
   
@@ -41,7 +40,14 @@ char* __attribute__((pure)) get_host_port(const char* url, char* hostn, int hnle
     hostn[p-q] = 0;
   }
   
-  if (*p == ':') p = strchr(p,'/');
+  if (*p == ':') {
+    q = p;
+    p = strchr(p,'/');
+    *port = malloc(p-q+1);
+    if (!*port) return NULL;
+    memcpy(*port,q,p-q);
+    (*port)[p-q] = 0;
+  }
   return p;
 }
 
