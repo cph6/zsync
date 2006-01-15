@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "libzmap/zmap.h"
+
 #include "config.h"
 
 /* htons - where to get this? */
@@ -78,24 +80,28 @@ static long long last_delta_in;
 
 static void write_zmap_delta(long long *prev_in, long long *prev_out, long long new_in, long long new_out, int blockstart)
 {
+  struct gzblock g;
   {
-    long inbits = new_in - *prev_in;
+    uint16_t inbits = new_in - *prev_in;
 
-    inbits &= 0x7fffffff;
     if (*prev_in + inbits != new_in) { fprintf(stderr,"too long between blocks?"); exit(1); }
-    if (!blockstart) inbits |= 0x80000000;
 
-    inbits = htonl(inbits);
-    fwrite(&inbits,sizeof(inbits),1,zmap);
+    inbits = htons(inbits);
+    g.inbitoffset = inbits;
     *prev_in = new_in;
   }
   {
-    long outbytes = new_out - *prev_out;
+    uint16_t outbytes = new_out - *prev_out;
+    
+    outbytes &= ~GZB_NOTBLOCKSTART;
     if ((long long)outbytes + *prev_out != new_out) { fprintf(stderr,"too long output of block blocks?"); exit(1); }
-    outbytes = htonl(outbytes);
-    fwrite(&outbytes,sizeof(outbytes),1,zmap);
+    if (!blockstart) outbytes |= GZB_NOTBLOCKSTART;
+
+    outbytes = htons(outbytes);
+    g.outbyteoffset = outbytes;
     *prev_out = new_out;
   }
+  fwrite(&g,sizeof(g),1,zmap);
   zmapentries++;
   last_delta_in = new_in;
 }
@@ -104,7 +110,7 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
 {
   z_stream zs;
   Bytef *inbuf = malloc(blocksize);
-  const int inbufsz = blocksize;
+  const size_t inbufsz = blocksize;
   Bytef *outbuf = malloc(blocksize);
   int eoz = 0;
   int header_bits;
@@ -112,6 +118,7 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
   long long prev_out = 0;
   long long midblock_in = 0;
   long long midblock_out = 0;
+  int want_zdelta = 0;
 
   if (!inbuf || !outbuf) {
     fprintf(stderr,"memory allocation failure\n"); exit(1);
@@ -170,25 +177,27 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
 	fprintf(stderr,"zlib error %s\n",zs.msg);
 	exit(1);
       }
-      if (zs.data_type & 128 || rc == Z_STREAM_END) {
-	write_zmap_delta(&prev_in,&prev_out,header_bits + in_position(&zs),zs.total_out,1);
-
-	midblock_in = midblock_out = 0;
-      }
       if (zs.avail_out == 0 || rc == Z_STREAM_END) {
 	SHA1Update(&shactx, outbuf, blocksize-zs.avail_out);
 	/* Completed a block */
 	write_block_sums(outbuf,blocksize-zs.avail_out,fout);
 	zs.next_out = outbuf; zs.avail_out = blocksize;
-      } else if (inflateSafePoint(&zs)) {
+	want_zdelta = 1;
+      }
+      if (zs.data_type & 128 || rc == Z_STREAM_END) {
+	write_zmap_delta(&prev_in,&prev_out,header_bits + in_position(&zs),zs.total_out,1);
+
+	midblock_in = midblock_out = 0;
+	want_zdelta = 0;
+      }
+      if (want_zdelta && inflateSafePoint(&zs)) {
 	long long cur_in = header_bits + in_position(&zs);
 	//	fprintf(stderr,"here %lld %lld %lld!\n",cur_in,midblock_in,last_delta_in);
-	if (cur_in > (midblock_in ? midblock_in : last_delta_in) + 16*blocksize) {
-	  if (midblock_in) {
-	    write_zmap_delta(&prev_in,&prev_out,midblock_in,midblock_out,0);
-	  }
-	  midblock_in = cur_in; midblock_out = zs.total_out;
+	if (midblock_in) {
+	  write_zmap_delta(&prev_in,&prev_out,midblock_in,midblock_out,0);
 	}
+	midblock_in = cur_in; midblock_out = zs.total_out;
+	want_zdelta = 0;
       }
     }
   }
@@ -360,7 +369,7 @@ int main(int argc, char** argv) {
   }
   fputc('\n',fout);
   if (zmapentries) {
-    fprintf(fout,"Z-Map: %d\n",zmapentries);
+    fprintf(fout,"Z-Map2: %d\n",zmapentries);
     fcopy(zmap,fout);
     fclose(zmap);
   }

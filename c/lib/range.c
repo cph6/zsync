@@ -77,7 +77,7 @@ int already_got_block(struct zsync_state* zs, zs_blockid x)
   return (min == max);
 }
 
-int get_needed_block_ranges(struct zsync_state* z, zs_blockid* r, int max, zs_blockid from, zs_blockid to) {
+int get_needed_block_ranges(const struct zsync_state* z, zs_blockid* r, int max, zs_blockid from, zs_blockid to) {
   int i,n;
 
   if (to >= z->blocks) to = z->blocks;

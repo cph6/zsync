@@ -24,18 +24,18 @@
 
 #include "zlib/zlib.h"
 
-int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, const struct zmap* zm)
-{
 #define MAXRANGES 100
+
+static int __attribute__((pure)) get_zranges(long long* zbyterange, int maxrange, const struct zsync_state* z, const struct zmap* zm, long long* sofar)
+{
   long long byterange[MAXRANGES*2];
   int nrange;
-  int ret = 0;
-  
+
   {
     int i;
     zs_blockid blrange[MAXRANGES*2];
     
-    nrange = get_needed_block_ranges(z, &blrange[0], MAXRANGES, 0, 0x7fffffff);
+    nrange = get_needed_block_ranges(z, &blrange[0], MAXRANGES, *sofar/blocksize, 0x7fffffff);
     if (nrange == 0) return 0;
     
     for (i=0; i<nrange; i++) {
@@ -44,47 +44,54 @@ int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, con
     }
   }
 
-  {
+  return map_to_compressed_ranges(zm, zbyterange, maxrange, byterange, nrange, sofar);
+}
+
+int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, const struct zmap* zm)
+{
+  int ret = 0;
+  struct range_fetch* rf = range_fetch_start(url);
+  unsigned char* buf;
+  unsigned char* obuf;
+  unsigned char* wbuf;
+  z_stream zs;
+  long long outoffset = -1;
+  long long sofar = 0;
+  int nrange;
+  int len;
+  int lastmegsdown = 0;
+  
+  /* Set up new inflate object */
+  zs.zalloc = Z_NULL; zs.zfree = Z_NULL; zs.opaque = NULL;
+  zs.total_in = 0;
+
+  if (!rf) return -1;
+  fprintf(stderr,"downloading from %s:",url);
+  
+  buf = malloc(4*blocksize);
+  if (!buf) { range_fetch_end(rf); return -1; }
+  obuf = malloc(blocksize);
+  if (!obuf) { free(buf); range_fetch_end(rf); return -1; }
+  wbuf = malloc(32768);
+  if (!wbuf) { free(obuf); free(buf); range_fetch_end(rf); return -1; }
+
+  do {
     long long zbyterange[MAXRANGES*2];
 
-    nrange = map_to_compressed_ranges(zm, zbyterange, MAXRANGES, byterange, nrange);
-    if (nrange <= 0)
-      return nrange;
+    nrange = get_zranges(zbyterange, MAXRANGES, z, zm, &sofar);
 
-    fprintf(stderr,"downloading from %s:",url);
-  
-    {
-      struct range_fetch* rf = range_fetch_start(url);
-      int len;
-      unsigned char* buf;
-      unsigned char* obuf;
-      unsigned char* wbuf;
-      long long zoffset;
-      int cur_range = -1;
-      z_stream zs;
-      int eoz = 0;
-      long long outoffset = -1;
-      
-      /* Set up new inflate object */
-      zs.zalloc = Z_NULL; zs.zfree = Z_NULL; zs.opaque = NULL;
-      zs.total_in = 0;
-
-      if (!rf) return -1;
+    if (nrange > 0)
       range_fetch_addranges(rf, zbyterange, nrange);
 
-      buf = malloc(4*blocksize);
-      if (!buf) { http_down += range_fetch_bytes_down(rf); range_fetch_end(rf); return -1; }
-      obuf = malloc(blocksize);
-      if (!obuf) { free(buf); http_down += range_fetch_bytes_down(rf); range_fetch_end(rf); return -1; }
-      wbuf = malloc(32768);
-      if (!wbuf) { free(obuf); free(buf); http_down += range_fetch_bytes_down(rf); range_fetch_end(rf); return -1; }
+    {
+      long long zoffset;
+      int eoz = 0;
 
       while ((len = get_range_block(rf, &zoffset, buf, 4*blocksize)) > 0) {
 	/* Now set up for the downloaded block */
 	zs.next_in = buf; zs.avail_in = len;
 
 	if (zs.total_in == 0 || zoffset != zs.total_in) {
-	  cur_range++;
 	  configure_zstream_for_zdata(zm, &zs, zoffset, &outoffset);
 
 	  { /* Load in prev 32k sliding window for backreferences */
@@ -135,17 +142,24 @@ int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, con
 	    eoz=1; ret = -1; break;
 	  }
 	}
+	{
+	  int md = range_fetch_bytes_down(rf)/1000000;
+	  if (md != lastmegsdown) {
+	    lastmegsdown = md; fputc('.',stderr);
+	  }
+	}
+	if (nrange) break;
       }
       if (len < 0) ret = -1;
-      if (zs.total_in > 0) { inflateEnd(&zs); }
-      free(wbuf);
-      free(obuf);
-      free(buf);
-      http_down += range_fetch_bytes_down(rf);
-      range_fetch_end(rf);
     }
-    fputc('\n',stderr);
-    return ret;
-  }
+  } while (!ret && (nrange || len > 0));
+  if (zs.total_in > 0) { inflateEnd(&zs); }
+  free(wbuf);
+  free(obuf);
+  free(buf);
+  http_down += range_fetch_bytes_down(rf);
+  range_fetch_end(rf);
+  fputc('\n',stderr);
+  return ret;
 }
 

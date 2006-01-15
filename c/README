@@ -1,4 +1,4 @@
-zsync 0.1.0
+zsync 0.1.1
 ===========
 
 zsync is a file transfer program. It allows you to download a file from a
@@ -94,8 +94,8 @@ zsync is based on the rsync algorithm, by Andrew Tridgell. zsync also uses
 a large part of zlib - this code, in the zlib subdirectory,  is copyright
 1995-2003 Jean-loup Gailly and Mark Adler, see zlib/README for details.
 
-zlib also includes checksum code taken from OpenBSD. The MD4 code is public
-domanain, by Colin Plumb and Todd C. Miller. The SHA1 code is also public
+zsync also includes checksum code taken from OpenBSD. The MD4 code is public
+domain, by Colin Plumb and Todd C. Miller. The SHA1 code is also public
 domain, by Steve Reid. This code is in the libhash/ subdirectory, see the
 individual files for their non-copyright notices.
 

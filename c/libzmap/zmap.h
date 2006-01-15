@@ -13,14 +13,18 @@
  *   COPYING file for details.
  */
 
+#include <stdint.h>
+
 struct gzblock {
-  long inbitoffset;
-  long outbyteoffset;
-};
+  uint16_t inbitoffset;
+  uint16_t outbyteoffset;
+} __attribute__((packed));
+
+#define GZB_NOTBLOCKSTART 0x8000
 
 struct zmap;
 struct z_stream_s;
 
 struct zmap* make_zmap(const struct gzblock* zb, int n);
-int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int maxout, long long* byterange, int nrange);
+int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int maxout, long long* byterange, int nrange, long long* lastoffset);
 void configure_zstream_for_zdata(const struct zmap* zm, struct z_stream_s* zs, long zoffset, long long* poutoffset);

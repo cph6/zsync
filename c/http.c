@@ -448,18 +448,23 @@ check_boundary:
 
   for (;;) {
     size_t rl = rf->block_left;
-    int n = get_more_data(rf);
     /* Note that we do not use n to test EOF - that is implicit in setting rl
      * to min(rl,buf_end-buf_start), as buf_end-buf_start == 0 iff EOF */
 
     /* We want to send rf->block_left to the caller, but we may have less in the buffer, and they may have less buffer space, so reduce appropriately */
     if (rl > dlen) rl = dlen;
-    if (rf->buf_end - rf->buf_start < rl)
+    if (rf->buf_end - rf->buf_start < rl) {
       rl = rf->buf_end - rf->buf_start;
 
-    if (!rl) {
-      return bytes_to_caller;
+      /* If we have exhausted the buffer, get more data.
+       * If we don't get data, drop through and return what we have got.
+       * If we do, back to top of loop and recalculate how much to return to caller.
+       */
+      if (!rl && get_more_data(rf) > 0) continue;
     }
+
+    if (!rl)
+      return bytes_to_caller;
 
     /* Copy as much as we can to their buffer, freeing space in rf->buf */
     memcpy(data, &(rf->buf[rf->buf_start]), rl);

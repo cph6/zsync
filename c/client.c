@@ -155,6 +155,14 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
 	  fprintf(stderr,"nonsensical blocksize %d\n",blocksize); return -1;
 	}
       } else if (blocks && !strcmp(buf,"Z-Map")) {
+	/* Obsolete, not supported, just throw away the stuff marked by the header */
+	int nzblocks = atoi(p);
+	void *d = malloc(nzblocks*8);
+	if (d) {
+	  fread(d,8,nzblocks,f);
+	  free(d);
+	}
+      } else if (blocks && !strcmp(buf,"Z-Map2")) {
 	int nzblocks;
 	struct gzblock* zblock;
 

@@ -58,15 +58,15 @@ struct zmap* make_zmap(const struct gzblock* zb, int n)
     int bc = 0;
 
     for (i=0; i<n; i++) {
-      int ib = ntohl(zb[i].inbitoffset);
+      uint16_t ob = ntohs(zb[i].outbyteoffset);
 
-      if (ib & 0x80000000) { /* Not a zlib block start, just a mid-block mark */
-	ib &= 0x7fffffff; bc++;
+      if (ob & GZB_NOTBLOCKSTART) { /* Not a zlib block start, just a mid-block mark */
+	ob &= ~GZB_NOTBLOCKSTART; bc++;
       }
       else { bc = 0; }
 
-      in += ib;
-      out += ntohl(zb[i].outbyteoffset);
+      in += ntohs(zb[i].inbitoffset);
+      out += ob;
 
       /* And write the entry */
       m->e[i].inbits = in;
@@ -79,10 +79,12 @@ struct zmap* make_zmap(const struct gzblock* zb, int n)
 
 /* Translate into byte blocks to retrieve from the gzip file */
 
-int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int maxout, long long* byterange, int nrange)
+int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int maxout, long long* byterange, int nrange, long long* lastoffset)
 {
   int i,k;
   long long lastwroteblockstart_inbitoffset = 0;
+  int k_at_last_block = -1;
+
   for (i=0,k=0; i<nrange && k < maxout-10; i++) {
     long long start = byterange[2*i];
     long long end = byterange[2*i+1];
@@ -101,6 +103,9 @@ int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int m
 	zstart = zm->e[j-1].inbits;
 	// fprintf(stderr,"starting range at zlib block %d offset %lld.%lld\n",j-1,zstart/8,zstart%8);
 	if (lastwroteblockstart_inbitoffset != lastblockstart_inbitoffset) {
+	  k_at_last_block = k;
+	  if (lastoffset) *lastoffset = outbyteoffset;
+
 	  zbyterange[2*k] = lastblockstart_inbitoffset/8;
 	  zbyterange[2*k+1] = (lastblockstart_inbitoffset/8) + 200;
 	  k++;
@@ -127,6 +132,13 @@ int map_to_compressed_ranges(const struct zmap* zm, long long* zbyterange, int m
     zbyterange[2*k+1] = (zend+7)/8;
     k++;
   }
+
+  /* Step back to last block boundary if needed */
+  if (i != nrange) { k = k_at_last_block; }
+  else {
+    if (lastoffset) *lastoffset = byterange[2*i-1]+1;
+  }
+
   for (i=0; i<k-1;) {
     if (zbyterange[2*i+1] >= zbyterange[2*(i+1)]) {
       // Ranges overlap, merge
