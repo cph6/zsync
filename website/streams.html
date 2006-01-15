@@ -1,0 +1,22 @@
+<!--#include file="header.html" -->
+<title>zsync Streams</title>
+<!--#include file="head.html" -->
+
+<h2>zsync Streams</h2>
+
+<p>(Is streams the right word?)</p>
+
+<p>I am offering hourly-updated .zsync's for the main Debian Packages files (downloading these rather bulky files is a daily nuisance for Debian users). Feel free to use them:</p>
+<pre>
+zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages http://zsync.moria.org.uk/streams/sarge/Packages.zsync
+
+zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_unstable_main_binary-i386_Packages http://zsync.moria.org.uk/streams/unstable/Packages.zsync
+</pre>
+
+<p>I am also offering .zsync's for a limited range of ISO images for Linux distributions. Clearly these are only any use to you if you have a relevant older version to do the incremental update from.</p>
+
+<ul>
+<li>Debian-Installer image pre-rc2 for i386: <a href="streams/d-i-pre-rc2/sarge-i386-netinst.iso.zsync">here</a>. Seeded with an earlier debian-installer ISO you can get about a 40% download saving, according to my testing. cdimages.debian.org does seem to disconnect you every now and then &#8212; zsync recovers fine if you rerun it. (I could do the daily snapshots if anyone is interested &#8212; zsync gets a 90% saving between daily images in my tests.)</li>
+<li>Fedora Core 3 (test3) for i386: <a href="streams/FC/FC3-test3-i386-disc1.iso.zsync">here</a>. Seeding this with Fedora Core 3 (test2) I get, again, about a 40% download saving. I will put up a .zsync for Fedora Core 3 (the final release) when it comes out.</li>
+</ul>
+<!--#include file="foot.html" -->

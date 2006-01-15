@@ -4,21 +4,24 @@
 zsyncmake \- Build control file for zsync(1)
 .SH "SYNTAX"
 .LP 
-zsyncmake [ \-Z ] [ \-u \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] \fIfilename\fP
+zsyncmake [ \-Z ] [ \-u \fIurl\fR ] [ \-U \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] \fIfilename\fP
 .SH "DESCRIPTION"
 .LP 
 Constructs a metafile for the zsync client program to use to perform partial file downloads. \fIfilename\fR is the file that users wish to downloads; zsyncmake constructs the appropriate metafile and writes \fIfilename\fR.zsync in the current directory.
 .LP 
-You must specify URLs from which users can download the actual file content. Use the \fB\-u\fR option to do this. (You can edit the .zsync file and add these afterwards \- it has a simple key: value format in the header \- but I suggest you only do this once you are familiar with the tool.)
+zsync will need at least one URL from which to download the file content. If the .zsync will be in the same directory as the file to download, you can accept the default \- zsync includes a relative URL in the control file. If not, use the \fB\-u\fR option to specify the URL. You should also specify a URL for the uncompressed content with \-U if available, as zsync can make use of this for more efficient downloads sometimes. (You can edit the .zsync file and add these afterwards \- it has a simple key: value format in the header \- but I suggest you only do this once you are familiar with the tool.)
 .LP 
 Note that zsyncmake itself does not (currently) verify the URLs or download any data, you must provide the file data locally and check the URLs yourself.
 .SH "OPTIONS"
 .LP 
 .TP 
-\fB\-u\fR \fIurl\fP
-Specifies the URL from which users can download the content of the supplied file. Users need the control file in order to find out what parts of the file they already have, and they need the URLs to retrieve the parts of the file that they don't already have. You can specify this multiple times. Note that the URL must hold exactly the same file as the one supplied to zsyncmake, it must be accessible to the user, it must be HTTP and it must support Range: downloads (most websevers do for static content \- and you certainly should never provide a URL to dynamic content).
+\fB\-u\fR \fIurl\fR
+Specifies the URL from which users can download the content of the supplied file. Users need the control file in order to find out what parts of the file they already have, and they need the URLs to retrieve the parts of the file that they don't already have. You can specify multiple URLs by specifying \-u multiple times. If not specified, zsync assumes that the file and the .zsync will reside in the same public directory, and includes a single relative URL.
 .TP 
-\fB\-o\fR \fIoutputfile\fP
+\fB\-U\fR \fIurl\fR
+Specifies a URL corresponding to the decompressed content of the file (only applicable if it is a gzip file). zsync can sometimes download more efficiently from the uncompressed data than from the compressed data \- it will take advantage of this if available. If no URLs are specifies, zsync looks for a file without the .gz extension and assumes that this will be in the same public dir as the .zsync, and includes a relative URL to it.
+.TP 
+\fB\-o\fR \fIoutputfile\fR
 Override the default output file name.
 .TP 
 \fB\-b\fR \fIblocksize\fR

@@ -8,27 +8,22 @@
 
 <p>zsync does not require any special server software or a shell account on the remote system (rsync, in comparison, requires that you have an rsh or ssh account, or that the remote system runs rsyncd). Instead, it uses a control file &#8212; a <code>.zsync</code> file &#8212; that describes the file to be downloaded and enables zsync to work out which blocks it needs. This file can be created by the admin of the web server hosting the download, and placed alongside the file to download &#8212; it is generated once, then any downloaders with zsync can use it. Alternatively, anyone can download the file, make a .zsync and provide it to other users (this is what I am doing for the moment).</p>
 
-<p>zsync 0.0.2 is the current version. It is definitely no more than an alpha. I have tried to make it quite verbose, so it is clear what it is doing, and the checksum verification and file handling are designed to minimise the risk of it losing any data. It works well enough for me.</p>
+<p>zsync 0.0.3 is the current version. It is definitely no more than an alpha. I have tried to make it quite verbose, so it is clear what it is doing, and the checksum verification and file handling are designed to minimise the risk of it losing any data. It works well enough for me.</p>
 
 <h2>News</h2>
+
+<h3>2004/10/31</h3>
+
+<p>zsync 0.0.3 is out. 0.0.2 had a bug in the new HTTP code, which resulted in it thinking an error occurred every time it disconnected from a web server. This broke gzip downloads, which still use multiple connections in some cases. 0.0.3 is also much faster at running the checksum comparison; it is now much closer to rsync in speed. <a href="http://sourceforge.net/project/shownotes.php?release_id=279245">(Change log and release notes.)</a></p>
+
+<p>I have updated the <a href="paper/">technical paper</a>. It now has more notes on the network/HTTP side of things, and more comparison with rsync. Also I have broken out the trial data to its own section, and included some larger files and some direct comparisons with rsync. So far, zsync seems to be holding up wel.</p>
+
+<p>I have moved the .zsync streams I am providing to <a href="streams.html">their own page</a>. There are streams for Debian packages files, debian-installer netinst images, and Fedora Core releases currently.</p>
 
 <h3>2004/10/30</h2>
 
 <p>zsync 0.0.2 is out. Get it from the download page about. This is a major overhaul from 0.0.1, in particular removing the libc streams mess from the download process, and using HTTP/1.1+pipelining when downloading. This version can now max out my connection, and the traffic pattern is much more server-friendly. <a href="https://sourceforge.net/project/shownotes.php?release_id=279107">Full changelog &amp; release notes</a>.</p>
 
-<p>I am offering hourly-updated .zsync's for the main Debian Packages files (downloading these rather bulky files is a daily nuisance for Debian users). Feel free to use them:</p>
-<pre>
-zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages http://zsync.moria.org.uk/streams/sarge/Packages.zsync
-
-zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_unstable_main_binary-i386_Packages http://zsync.moria.org.uk/streams/unstable/Packages.zsync
-</pre>
-
-<p>I plan to put up .zsync's for some larger files too; Debian testing snapshot
-ISOs, Fedora Core 3, ... I am open to suggestions. Local testing suggests that
-0.0.2 copes with files of this size well enough, although it is currently slow
-parsing the local data (~6 minutes to run the rsync stage on a 600meg ISO on my
-oldish computer - but still very worthwhile, as it cut 40 minutes from the
-download time over my DSL).</p>
 
 <h2>Why did you write zsync? Why release it now?</h2>
 

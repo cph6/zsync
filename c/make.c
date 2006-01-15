@@ -263,12 +263,15 @@ int main(int argc, char** argv) {
   char * fname = NULL;
   char ** url = NULL;
   int nurls = 0;
+  char ** Uurl = NULL;
+  int nUurls = 0;
   char * outfname = NULL;
   FILE* fout;
+  char *infname = NULL;
 
   {
     int opt;
-    while ((opt = getopt(argc,argv,"o:b:u:Z")) != -1) {
+    while ((opt = getopt(argc,argv,"o:b:u:U:Z")) != -1) {
       switch (opt) {
       case 'o':
 	outfname = strdup(optarg);
@@ -281,6 +284,10 @@ int main(int argc, char** argv) {
 	url = realloc(url,(nurls+1)*sizeof *url);
 	url[nurls++] = optarg;
 	break;
+      case 'U':
+	Uurl = realloc(Uurl,(nUurls+1)*sizeof *Uurl);
+	Uurl[nUurls++] = optarg;
+	break;
       case 'Z':
 	no_look_inside = 1;
 	break;
@@ -289,6 +296,7 @@ int main(int argc, char** argv) {
     if (optind == argc-1) {
       instream = fopen(argv[optind],"r");
       if (!instream) { perror("open"); exit(2); }
+      infname = strdup(argv[optind]);
       fname = basename(argv[optind]);
     }
     else {
@@ -327,9 +335,17 @@ int main(int argc, char** argv) {
     int i;
     for (i = 0; i < nurls; i++)
       fprintf(fout,"%s: %s\n",zmapentries ? "Z-URL" : "URL", url[i]);
+    for (i = 0; i < nUurls; i++)
+      fprintf(fout,"URL: %s\n", Uurl[i]);
   }
-  if (nurls == 0) {
-    fprintf(stderr,"Warning: you provided no URLs with -u, so you will have to edit the .zsync file and provide a %sURL: line before the zsync file can be used.\n",zmapentries ? "Z-URL: or " : "");
+  if (nurls == 0 && infname) {
+    /* Assume that we are in the public dir, and use relative paths.
+     * Look for an uncompressed version and add a URL for that to if appropriate. */
+    fprintf(fout,"%s: %s\n",zmapentries ? "Z-URL" : "URL", infname);
+    if (zmapentries && fname && !access(fname,R_OK)) {
+      fprintf(fout,"URL: %s\n",fname);
+    }
+    fprintf(stderr,"Relative URL included in .zsync file - you must keep the file being served and the .zsync in the same public directory\n");
   }
 #ifdef HAVE_LIBCRYPTO
   fputs("SHA-1: ",fout);

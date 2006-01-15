@@ -30,6 +30,7 @@
 #include <netdb.h>
 
 #include "http.h"
+#include "url.h"
 
 int connect_to(const char* node, unsigned short p)
 {
@@ -79,37 +80,37 @@ FILE* http_get_stream(int fd, int* code)
   return f;
 }
 
-char* get_host_port(const char* url, char* hostn, int hnlen, int* port)
-{
-  char *p;
-  char *q = strstr(url,"://");
-  /* Must parse the url to get the hostname */
-  if (!q) return NULL;
-  q+=3;
-  
-  p = strchr(q,':');
-  if (!p) { *port = 80; p = strchr(q,'/'); }
-  else { *port = atoi(p+1); }
-  
-  if (!p) return NULL;
-  
-  if (p-q < hnlen-1) {
-    memcpy(hostn,q,p-q);
-    hostn[p-q] = 0;
-  }
-  
-  if (*p == ':') p = strchr(p,'/');
-  return p;
-}
+char* get_location_url(FILE* f, const char* cur_url) {
+  char buf[1024];
 
-char* get_location_url(FILE* f) {
+  while (fgets(buf,sizeof(buf),f)) {
+    char *p;
+    if (buf[0] == '\r' || buf[0] == '\n') return NULL;
+
+    p = strchr(buf,':');
+    if (!p) return NULL;
+    *p++ = 0;
+    if (strcasecmp(buf,"Location")) continue;
+
+    while (*p == ' ') p++;
+
+    { /* Remove trailing whitespace */
+      char *q = p;
+      while (*q != '\r' && *q != '\n' && *q != ' ' && *q) q++;
+
+      *q = 0;
+    }
+    if (!*p) return NULL;
+    return make_url_absolute(cur_url,p);
+  }
   return NULL; // TODO
 }
 
 char *proxy = NULL;
+char *referer = NULL;
 unsigned short pport;
 
-FILE* http_open(const char* orig_url, const char* extraheader, int require_code)
+FILE* http_open(const char* orig_url, const char* extraheader, int require_code, char** track_referer)
 {
   int allow_redirects = 5;
   char* url = strdup(orig_url);
@@ -149,8 +150,9 @@ FILE* http_open(const char* orig_url, const char* extraheader, int require_code)
 
       if (!f) break;
       if (code == 301 || code == 302) {
-	free(url);
-	url = get_location_url(f);
+	char *oldurl = url;
+	url = get_location_url(f, oldurl);
+	free(oldurl);
 	fclose(f); f = NULL;
       } else if (code != require_code) {
 	fclose(f); f = NULL;
@@ -160,7 +162,8 @@ FILE* http_open(const char* orig_url, const char* extraheader, int require_code)
 
   if (!f)
     fprintf(stderr,"failed on url %s\n",url ? url : "(missing redirect)");
-  free(url);
+  if (track_referer)
+    *track_referer = url;
   return f;
 }
 
@@ -301,9 +304,12 @@ static void range_fetch_getmore(struct range_fetch* rf)
   snprintf(request,sizeof(request), 
 	   "GET %s HTTP/1.1\r\n"
 	   "User-Agent: zsync/" VERSION "\r\n"
-	   "Host: %s\r\n"
+	   "Host: %s"
+	   "%s%s\r\n"
 	   "Accept-Ranges: bytes\r\nRange: bytes=",
-	   rf->url, rf->hostn);
+	   rf->url, rf->hostn,
+	   referer ? "\r\nReferer: " : "", referer ? referer : ""
+	   );
   
   /* The for loop here is just a sanity check, lastrange is the real loop control */
   for (; rf->rangesdone < rf->nranges; ) {
@@ -447,6 +453,8 @@ check_boundary:
   for (;;) {
     size_t rl = rf->block_left;
     int n = get_more_data(rf);
+    /* Note that we do not use n to test EOF - that is implicit in setting rl
+     * to min(rl,buf_end-buf_start), as buf_end-buf_start == 0 iff EOF */
 
     /* We want to send rf->block_left to the caller, but we may have less in the buffer, and they may have less buffer space, so reduce appropriately */
     if (rl > dlen) rl = dlen;

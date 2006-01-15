@@ -42,6 +42,8 @@ int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, str
       nrange = get_needed_block_ranges(z, &blrange[0], MAXRANGES, 0, 0x7fffffff);
       if (nrange == 0) return 0;
 
+      fprintf(stderr,"downloading from %s:",url);
+  
       /* Translate into byte blocks to retrieve from the gzip file */
       for (i=0; i<nrange; i++) {
 	long long start = blocksize*(long long)blrange[2*i];

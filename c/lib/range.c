@@ -84,7 +84,7 @@ int already_got_block(struct zsync_state* zs, zs_blockid x)
 int get_needed_block_ranges(struct zsync_state* z, zs_blockid* r, int max, zs_blockid from, zs_blockid to) {
   int i,n;
 
-  if (to >= z->blocks) to = z->blocks-1;
+  if (to >= z->blocks) to = z->blocks;
   r[0] = from; r[1] = to; n = 1;
   /* Note r[2*n-1] is the last range in our prospective list */
 
@@ -96,7 +96,9 @@ int get_needed_block_ranges(struct zsync_state* z, zs_blockid* r, int max, zs_bl
     if (n == 1 && z->ranges[2*i] <= from) { /* Overlaps the start of our window */
       r[0] = z->ranges[2*i+1]+1;
     } else {
-      if (z->ranges[2*i+1] >= r[2*n-1]) { /* Clips the end of our window */
+      /* If the last block that we still (which is the last window end -1, due
+       * to half-openness) then this range just cuts the end of our window */
+      if (z->ranges[2*i+1] >= r[2*n-1]-1) {
 	r[2*n-1] = z->ranges[2*i];
       } else {
 	/* In the middle of our range, split it */
@@ -109,7 +111,7 @@ int get_needed_block_ranges(struct zsync_state* z, zs_blockid* r, int max, zs_bl
       }
     }
   }
-  if (n == 1 && r[0] > r[1]) return 0;
+  if (n == 1 && r[0] >= r[1]) return 0;
   return n;
 }
 

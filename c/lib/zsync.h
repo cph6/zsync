@@ -52,7 +52,10 @@ int submit_source_file(struct zsync_state* z, FILE* f);
 /* This reads back in data which is already known. */
 int read_known_data(struct zsync_state* z, unsigned char* buf, long long offset, size_t len);
 
-/* get_needed_block_ranges tells you what blocks, within the given range, are still unknown. */
+/* get_needed_block_ranges tells you what blocks, within the given range,
+ * are still unknown. It returns a list of block ranges in r[]
+ * (at most max ranges, so spece for 2*max elements must be there)
+ * these are half-open ranges, so r[0] <= x < r[1], r[2] <= x < r[3] etc are needed */
 int get_needed_block_ranges(struct zsync_state* z, zs_blockid* r, int max, zs_blockid from, zs_blockid to);
 
 /* For preparing zsync control files - in both cases len is the block size. */

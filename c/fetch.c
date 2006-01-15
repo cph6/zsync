@@ -24,7 +24,7 @@
 #include "fetch.h"
 #include "http.h"
 
-int fetch_remaining_blocks_http(struct zsync_state* z, const char* url)
+int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int maxblocks)
 {
   struct range_fetch* rf = range_fetch_start(url);
   int nrange;
@@ -40,15 +40,18 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url)
 #define MAXRANGES 100
       zs_blockid blrange[MAXRANGES*2];
       long long byterange[MAXRANGES*2];
-      int i;
+      int i,j;
 
       nrange = get_needed_block_ranges(z, &blrange[0], MAXRANGES, lowwatermark, 0x7fffffff);
-      for (i=0; i<nrange; i++) {
-	byterange[2*i] = blrange[2*i]*blocksize;
-	byterange[2*i+1] = (blrange[2*i+1]+1)*blocksize-1;
-	lowwatermark = blrange[2*i+1]+1; /* Don't queue these again */
+      for (i=j=0; i<nrange; i++) {
+	lowwatermark = blrange[2*i+1]; /* Don't queue these again */
+	if (maxblocks && blrange[2*i+1] - blrange[2*i] > maxblocks) continue;
+	byterange[2*j] = blrange[2*i]*blocksize;
+	byterange[2*j+1] = blrange[2*i+1]*blocksize-1;
+	j++;
       }
-      
+      nrange = j;
+
       if (nrange)
         range_fetch_addranges(rf, byterange, nrange);
     }

@@ -39,6 +39,7 @@
 
 #include "zsync.h"
 #include "http.h"
+#include "url.h"
 #include "fetch.h"
 
 long known_blocks;
@@ -137,9 +138,17 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
 	  }
 	}
       } else if (!strcmp(buf, "URL")) {
-	url = (char**)append_ptrlist(&nurl, url, strdup(p));
+	char *u = make_url_absolute(source_name,p);
+	if (!u) {
+	  fprintf(stderr,"unable to determine full URL for %s\n",p);
+	} else
+	  url = (char**)append_ptrlist(&nurl, url, u);
       } else if (!strcmp(buf, "Z-URL")) {
-	zurl = (char**)append_ptrlist(&nzurl, zurl, strdup(p));
+	char *u = make_url_absolute(source_name,p);
+	if (!u) {
+	  fprintf(stderr,"unable to determine full URL for %s\n",p);
+	} else
+	  zurl = (char**)append_ptrlist(&nzurl, zurl, u);
       } else if (!strcmp(buf, "Blocksize")) {
 	blocksize = atol(p);
 	if (blocksize < 0 || (blocksize & (blocksize-1))) {
@@ -199,12 +208,14 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
 void  read_zsync_control_file(const char* p, struct zsync_state** pzs)
 {
   FILE* f;
+  char* lastpath = p;
+
   f = fopen(p,"r");
   if (!f) {
     if (memcmp(p,"http://",7)) {
       perror(p); exit(2);
     }
-    f = http_open(p,NULL,200);
+    f = http_open(p,NULL,200,&lastpath);
     if (!f) {
       fprintf(stderr,"could not read control file from URL %s\n",p);
       exit(3);
@@ -219,14 +230,16 @@ void  read_zsync_control_file(const char* p, struct zsync_state** pzs)
 	}
       } while (buf[0] != '\r' && !feof(f));
     }
+    referer = lastpath;
   }
-  if (read_zsync_control_stream(f, pzs, p) != 0) { exit(1); }
+  if (read_zsync_control_stream(f, pzs, lastpath) != 0) { exit(1); }
   if (fclose(f) != 0) { perror("fclose"); exit(2); }
 }
 
 int fetch_remaining_blocks(struct zsync_state* zs)
 {
   zs_blockid blrange[2];
+  int first = 1;
   
   /* Use get_needed_block_ranges with a wide range and a dummy storage area. If we get at least once range, there is still data to transfer. */
   while (get_needed_block_ranges(zs, &blrange[0], 1, 0, 0x7fffffff) != 0) {
@@ -234,7 +247,7 @@ int fetch_remaining_blocks(struct zsync_state* zs)
     int zfetch = 0;
 
     /* Pick a random URL from the list. Try compressed URLs first. */
-    if (zblock) {
+    if (!first && zblock) {
       int i,c;
 
       zfetch = 1;
@@ -254,14 +267,14 @@ int fetch_remaining_blocks(struct zsync_state* zs)
 	  else if (!(rand() % c)) ptryurl = &url[i];
 	}
     }
-    if (!ptryurl) return 1; /* All URLs eliminated. */
+    if (!first && !ptryurl) return 1; /* All URLs eliminated. */
 
-    {
+    if (ptryurl) {
       int rc;
       if (zfetch)
 	rc = fetch_remaining_blocks_zlib_http(zs,*ptryurl,zblock,nzblocks);
       else
-	rc = fetch_remaining_blocks_http(zs,*ptryurl);
+	rc = fetch_remaining_blocks_http(zs,*ptryurl,first && zblock ? 2 : 0);
 
       if (rc != 0) {
 	fprintf(stderr,"%s removed from list\n",*ptryurl);
@@ -269,6 +282,7 @@ int fetch_remaining_blocks(struct zsync_state* zs)
 	*ptryurl = NULL;
       }
     }
+    first = 0;
   }
   return 0;
 }
@@ -280,6 +294,7 @@ static int truncate_verify_close(int fh, long long filelen, const char* checksum
   if (checksum && !strcmp(checksum_method,"SHA-1")) {
     SHA_CTX shactx;
 
+    fprintf(stderr,"verifying download\n");
     if (strlen(checksum) != SHA_DIGEST_LENGTH*2) {
       fprintf(stderr,"SHA-1 digest from control file is wrong length.\n");
       return -1;
