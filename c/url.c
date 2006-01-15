@@ -45,12 +45,15 @@ char* get_host_port(const char* url, char* hostn, int hnlen, char** port)
   }
   
   if (*p == ':') {
+    int l;
     q = p;
     p = strchr(p,'/');
-    *port = malloc(p-q+1);
+    l = p ? p-q-1 : strlen(q)-1;
+    *port = malloc(l+1);
     if (!*port) return NULL;
-    memcpy(*port,q+1,p-q);
-    (*port)[p-q-1] = 0;
+    memcpy(*port,q+1,l);
+    (*port)[l] = 0;
+    if (!p) p = strdup("/");
   }
   return p;
 }

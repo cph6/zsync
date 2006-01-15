@@ -1,3 +1,10 @@
+Changes in 0.4.1
+- security fix from zlib-1.2.2
+- generate RFC 1123 date strings in HTTP requests
+- include port numbers in Host headers
+- be slightly more accepting in proxy URL syntax
+- don't generate Accept-Ranges headers
+
 Changes in 0.4.0
 - now considered beta instead of alpha quality
 - fixed incorrect 100%/done display of progress bar when cleanly disconnected before end by server

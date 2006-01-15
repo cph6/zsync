@@ -126,12 +126,12 @@ int set_proxy_from_string(const char* s)
   }
 }
 
-char* http_date_string(time_t t, char* buf)
-{	       
+static char* http_date_string(time_t t, char* const buf, const int blen)
+{
   struct tm d;
-  if (localtime_r(&t,&d) != NULL) {
-    if (asctime_r(&d,buf) != NULL) {
-      if (buf[24] == '\n') buf[24] = 0;
+
+  if (gmtime_r(&t,&d) != NULL) {
+    if (strftime(buf, blen, "%a, %d %h %Y %T GMT", &d) > 0) {
       return buf;
     }
   }
@@ -149,7 +149,6 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
   int code;
 
   if (tfname) {
-    int fd;
     struct stat st;
     
     fname = malloc(strlen(tfname) + 6);
@@ -158,13 +157,13 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
     if (stat(fname,&st) == 0) {
       char buf[50];
 
-      if (http_date_string(st.st_mtime,buf) != NULL)
+      if (http_date_string(st.st_mtime,buf,sizeof(buf)) != NULL)
 	snprintf(ifrange,sizeof(ifrange),"If-Unmodified-Since: %s\r\nRange: bytes=%u-\r\n",buf,st.st_size);
 
     } else if (errno == ENOENT && stat(tfname,&st) == 0) {
       char buf[50];
 
-      if (http_date_string(st.st_mtime,buf) != NULL)
+      if (http_date_string(st.st_mtime,buf,sizeof(buf)) != NULL)
 	snprintf(ifrange,sizeof(ifrange),"If-Modified-Since: %s\r\n",buf);
     }
   }
@@ -175,27 +174,31 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
   for (;allow_redirects-- && url && !f;) {
     char hostn[256];
     const char* connecthost;
+    char* connectport;
     char *p;
     char *port;
 
     if ( (p = get_host_port(url,hostn,sizeof(hostn),&port)) == NULL) break;
     if (!proxy) {
       connecthost = hostn;
+      connectport = strdup(port);
     } else {
       connecthost = proxy;
-      port = strdup(pport);
+      connectport = strdup(pport);
     }
     {
-      int sfd = connect_to(connecthost, port);
+      int sfd = connect_to(connecthost, connectport);
 
-      free(port);
+      free(connectport);
 
       if (sfd == -1) break;
 
       {
 	char buf[1024];
-	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s\r\nAccept-Ranges: bytes\r\nUser-Agent: zsync/%s\r\n%s\r\n",
-		 proxy ? url : p, hostn, VERSION,
+	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s%s%s\r\nUser-Agent: zsync/%s\r\n%s\r\n",
+		 proxy ? url : p,
+		 hostn, !strcmp(port,"http") ? "" : ":", !strcmp(port,"http") ? "" : port,
+		 VERSION,
 		 ifrange[0] ? ifrange : ""
 		 );
 	if (send(sfd,buf,strlen(buf),0) == -1) {
@@ -303,7 +306,7 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
 struct range_fetch {
   char* boundary;
   char* url;
-  char hostn[256];
+  char hosth[256];
 
   char* chost;
   char* cport;
@@ -375,21 +378,27 @@ struct range_fetch* range_fetch_start(const char* orig_url)
 {
   struct range_fetch* rf = malloc(sizeof(struct range_fetch));
   char *p;
+  char hostn[sizeof(rf->hosth)];
 
   if (!rf) return NULL;
-  p = get_host_port(orig_url, rf->hostn, sizeof(rf->hostn), &(rf->cport));
+  p = get_host_port(orig_url, hostn, sizeof(hostn), &(rf->cport));
   if (!p) { free(rf); return NULL; }
   
+  if (strcmp(rf->cport,"http") != 0)
+    snprintf(rf->hosth,sizeof(rf->hosth),"%s:%s",hostn,rf->cport);
+  else
+    snprintf(rf->hosth,sizeof(rf->hosth),"%s",hostn);
+
   if (proxy) {
     // URL must be absolute; throw away cport and get port for proxy
     rf->url = strdup(orig_url);
     free(rf->cport);
     rf->cport = strdup(pport);
-    rf->chost = proxy;
+    rf->chost = strdup(proxy);
   } else {
     // cport already set; set url to relative part and chost to the target
     rf->url = strdup(p);
-    rf->chost = rf->hostn;
+    rf->chost = strdup(hostn);
   }
 
   rf->block_left = 0;
@@ -446,8 +455,8 @@ static void range_fetch_getmore(struct range_fetch* rf)
 	   "User-Agent: zsync/" VERSION "\r\n"
 	   "Host: %s"
 	   "%s%s\r\n"
-	   "Accept-Ranges: bytes\r\nRange: bytes=",
-	   rf->url, rf->hostn,
+	   "Range: bytes=",
+	   rf->url, rf->hosth,
 	   referer ? "\r\nReferer: " : "", referer ? referer : ""
 	   );
   
@@ -485,7 +494,7 @@ static void range_fetch_getmore(struct range_fetch* rf)
 static void buflwr(char* s)
 {
   char c;
-  while(c = *s) {
+  while((c = *s) != 0) {
     if (c >= 'A' && c <= 'Z')
       *s = c - 'A' + 'a';
     s++;
@@ -677,5 +686,6 @@ void range_fetch_end(struct range_fetch* rf) {
   free(rf->boundary);
   free(rf->url);
   free(rf->cport);
+  free(rf->chost);
   free(rf);
 }
