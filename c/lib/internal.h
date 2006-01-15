@@ -74,4 +74,4 @@ static inline unsigned calc_rhash(const struct zsync_state* const z, const struc
   return h & z->hashmask;
 }
 
-void build_hash(struct zsync_state* z);
+int build_hash(struct zsync_state* z);

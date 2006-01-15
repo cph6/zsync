@@ -29,7 +29,7 @@ struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize, int rsum_by
 {
   struct zsync_state* z = malloc(sizeof(struct zsync_state));
 
-  if (z != NULL){
+  if (z != NULL) {
     /* Setup blocksize and shift. Size must be a power of two. */
     z->blocksize = blocksize;
     z->blocks = nblocks;
@@ -53,19 +53,15 @@ struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize, int rsum_by
 	    }
 	}
 	
-	z->hashmask = 0xffff;
-	z->rsum_hash = calloc(z->hashmask+1, sizeof *(z->rsum_hash));
-	if (z->rsum_hash != NULL) {
-	  z->ranges = NULL;
-	  z->numranges = 0;
+	z->ranges = NULL;
+	z->rsum_hash = NULL;
+	z->numranges = 0;
 	  
-	  z->blockhashes = malloc(sizeof(z->blockhashes[0]) * (z->blocks+z->seq_matches));
-	  if (z->blockhashes != NULL)
-	    return z;
+	z->blockhashes = malloc(sizeof(z->blockhashes[0]) * (z->blocks+z->seq_matches));
+	if (z->blockhashes != NULL)
+	  return z;
 
-	  /* All below is error handling */
-	  free(z->rsum_hash);
-	}
+	/* All below is error handling */
       }
     }
     free(z->filename);
@@ -96,7 +92,7 @@ void zsync_end(struct zsync_state* z)
     unlink(z->filename);
     free(z->filename);
   }
-  free(z->rsum_hash);
+  if (z->rsum_hash) free(z->rsum_hash);
   free(z->ranges); // Should be NULL already
   fprintf(stderr,"hashhit %d, weakhit %d, checksummed %d, stronghit %d\n",z->stats.hashhit, z->stats.weakhit, z->stats.checksummed, z->stats.stronghit);
   free(z);

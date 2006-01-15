@@ -1295,7 +1295,7 @@ void inflate_advance_bits(strm,b,s)
     state->bits = 0;
     state->hold = 0;
   }
-  state->mode = s ? TYPEDO : LENDO;
+  state->mode = s ? TYPEDO : state->mode == COPY ? COPY : LENDO;
 }
 
 int ZEXPORT inflateSafePoint(strm)
@@ -1305,6 +1305,6 @@ z_streamp strm;
 
     if (strm == Z_NULL || strm->state == Z_NULL) return Z_STREAM_ERROR;
     state = (struct inflate_state FAR *)strm->state;
-    return state->mode == LENDO;
+    return (state->mode == LENDO || state->mode == COPY);
 }
 

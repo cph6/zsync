@@ -31,12 +31,19 @@ void add_target_block(struct zsync_state* z, zs_blockid b, struct rsum r, void* 
   memcpy(e->checksum, checksum, z->checksum_bytes);
   e->r.a = r.a & z->rsum_a_mask;
   e->r.b = r.b;
+  if (z->rsum_hash) {
+    free(z->rsum_hash); z->rsum_hash = NULL;
+  }
  }
 }
 
-void build_hash(struct zsync_state* z)
+int build_hash(struct zsync_state* z)
 {
   zs_blockid id;
+
+  z->hashmask = 0xffff;
+  z->rsum_hash = calloc(z->hashmask+1, sizeof *(z->rsum_hash));
+  if (!z->rsum_hash) return 0;
 
   for (id = 0; id < z->blocks; id++) {
     struct hash_entry* e = z->blockhashes + id;
@@ -46,5 +53,6 @@ void build_hash(struct zsync_state* z)
     e->next = z->rsum_hash[h];
     z->rsum_hash[h] = e;
   }
+  return 1;
 }
 

@@ -1,0 +1,60 @@
+Changes in 0.2.1
+- fixed bug where zsync would loop if fed more than one local source file
+- enabled zsync to handle gzip files containing stored (uncompressed) blocks (so we should do slightly better on gzipped binaries now - but this is still incomplete and will not work for all files)
+
+Changes in 0.2.0
+- major reduction in the size of the control file, due to some new optimisations 
+- further fixes for servers refusing to do multipart/byteranges responses
+
+Changes in 0.1.6
+- fixes some problems with compressed file downloads and unusual server responses
+- improved http_proxy parsing
+
+Changes in 0.1.5
+- fixes some minor HTTP problems
+
+Changes in 0.1.4
+- fixed compilation with gcc-3.4
+
+Changes in 0.1.3
+- HTTP proxy support
+- better HTTP support - we deal better with unusual server responses
+
+Changes in 0.1.2
+- fixes for Solaris/sparc
+
+Changes in 0.1.1
+- more efficient compressed stream support
+- code cleanups
+
+Changes in 0.1.0
+- finished the cleanup of the compressed file transfer code
+- major improvement in efficiency for compressed file transfers
+- OpenSSL is no longer required
+- now under the v2 Artistic License
+
+Changes in 0.0.6
+- just code cleanups and documentation updates
+
+Changes in 0.0.5
+- switch to OpenSSL's MD4 code
+- fix checksumming at stream end
+- fix various portability problems
+
+Changes in 0.0.4
+- relative URLs in .zsync files supported
+- HTTP redirects are followed for the metafile
+- now uses both compressed and uncompressed sources to further reduce download sizes
+
+Changes in 0.0.3
+- fix HTTP connection termination handling
+- speed up local file reading
+
+Changes in 0.0.2
+- HTTP/1.1, with pipelining
+- cleaning up more of the libc streams and mmap clutter
+- progress displays
+- lots of bugfixes
+
+First release 0.0.1.
+

@@ -150,7 +150,7 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
 	  fprintf(stderr,"nonsensical blocksize %d\n",blocksize); return -1;
 	}
       } else if (!strcmp(buf, "Hash-Lengths")) {
-        if (sscanf(p,"%d,%d,%d",&seq_matches,&rsum_bytes,&checksum_bytes) != 3 || rsum_bytes < 1 || rsum_bytes > 4 || checksum_bytes < 4 || checksum_bytes > 16 || seq_matches > 2 || seq_matches < 1) {
+        if (sscanf(p,"%d,%d,%d",&seq_matches,&rsum_bytes,&checksum_bytes) != 3 || rsum_bytes < 1 || rsum_bytes > 4 || checksum_bytes < 3 || checksum_bytes > 16 || seq_matches > 2 || seq_matches < 1) {
 	  fprintf(stderr,"nonsensical hash lengths line %s\n",p);
 	  return -1;
 	}

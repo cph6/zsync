@@ -294,7 +294,10 @@ int submit_source_file(struct zsync_state* z, FILE* f)
 
   if (!buf) return 0;
 
-  build_hash(z);
+  if (!z->rsum_hash)
+    if (!build_hash(z))
+      return 0;
+
   while (!feof(f)) {
     size_t len;
     long long start_in = in;
