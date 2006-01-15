@@ -40,9 +40,11 @@ struct zsync_state {
   int skip; /* skip forward on next submit_source_data */
 
   /* Hash table for rsync algorithm */
-  int hashmask;
+  unsigned int hashmask;
   struct hash_entry* blockhashes;
   struct hash_entry** rsum_hash;
+  unsigned int bithashmask;
+  unsigned char *bithash;
 
   /* Current state and stats for data collected by algorithm */
   int numranges;
@@ -57,6 +59,8 @@ struct zsync_state {
   int fd;
 };
 
+#define BITHASHBITS 3
+
 static inline zs_blockid get_HE_blockid(const struct zsync_state* z, const struct hash_entry* e) { return e - z->blockhashes; }
 
 void add_to_ranges(struct zsync_state* z, zs_blockid n);
@@ -67,11 +71,9 @@ struct hash_entry* calc_hash_entry(void* data, size_t len);
 static inline unsigned calc_rhash(const struct zsync_state* const z, const struct hash_entry* const e) {
   unsigned h = e[0].r.b;
   
-  if (z->seq_matches > 1)
-    h ^= e[1].r.b;
-  
-  /* Mask for array */
-  return h & z->hashmask;
+  h ^= ((z->seq_matches > 1) ? e[1].r.b : e[0].r.a) << BITHASHBITS;
+    
+  return h;
 }
 
 int build_hash(struct zsync_state* z);

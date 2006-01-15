@@ -1,3 +1,7 @@
+Changes in 0.2.3
+- fix crash in zsyncmake with short files
+- "negative" hash table used to speed up processing
+
 Changes in 0.2.2
 - complete support for stored blocks in gzip files
 - update block size recommendations in man page

@@ -92,7 +92,8 @@ void zsync_end(struct zsync_state* z)
     unlink(z->filename);
     free(z->filename);
   }
-  if (z->rsum_hash) free(z->rsum_hash);
+  free(z->rsum_hash);
+  free(z->bithash);
   free(z->ranges); // Should be NULL already
   fprintf(stderr,"hashhit %d, weakhit %d, checksummed %d, stronghit %d\n",z->stats.hashhit, z->stats.weakhit, z->stats.checksummed, z->stats.stronghit);
   free(z);

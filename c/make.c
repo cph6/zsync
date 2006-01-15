@@ -335,9 +335,9 @@ int main(int argc, char** argv) {
     rsum_len = (7.9 + ((log(len) + log(blocksize))/log(2) - 8.6)/seq_matches)/8;
     if (rsum_len > 4) rsum_len = 4;
     if (rsum_len < 2) rsum_len = 2;
-    checksum_len = (7.9 + (20 + (log(len) + log(len/blocksize)) / log(2))/seq_matches) / 8;
+    checksum_len = (7.9 + (20 + (log(len) + log(1+len/blocksize)) / log(2))/seq_matches) / 8;
     {
-      int checksum_len2 = (7.9 + (20 + log(len/blocksize)/log(2))) / 8;
+      int checksum_len2 = (7.9 + (20 + log(1+len/blocksize)/log(2))) / 8;
       if (checksum_len < checksum_len2) checksum_len = checksum_len2;
     }
   }

@@ -61,7 +61,7 @@ static void unlink_block(struct zsync_state* z, zs_blockid id)
 {
   struct hash_entry* t = &(z->blockhashes[id]);
 
-  struct hash_entry** p = &(z->rsum_hash[calc_rhash(z,t)]);
+  struct hash_entry** p = &(z->rsum_hash[calc_rhash(z,t) & z->hashmask]);
 
   while (*p != NULL) {
     if (*p == t) {
@@ -238,12 +238,13 @@ int submit_source_data(struct zsync_state* const z, unsigned char* data, size_t 
       }
       if (!blocks_matched) {
 	const struct hash_entry* e;
-	{
-	  unsigned hash = z->r[0].b;
-	  if (z->seq_matches > 1) hash ^= z->r[1].b;
-	  e = z->rsum_hash[hash & z->hashmask];
-	}
-	if (e) {
+	
+	unsigned hash = z->r[0].b;
+	hash ^= ((z->seq_matches > 1) ? z->r[1].b : z->r[0].a) << BITHASHBITS;
+	e = z->rsum_hash[hash & z->hashmask];
+	
+	if ((z->bithash[(hash & z->bithashmask) >> 3] & (1 << (hash & 7))) != 0
+	    &&(e = z->rsum_hash[hash & z->hashmask]) != NULL) {
 	  thismatch = check_checksums_on_hash_chain(z, e, data+x, 0);
 	  if (thismatch)
 	    blocks_matched = z->seq_matches;

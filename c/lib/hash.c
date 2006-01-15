@@ -33,6 +33,7 @@ void add_target_block(struct zsync_state* z, zs_blockid b, struct rsum r, void* 
   e->r.b = r.b;
   if (z->rsum_hash) {
     free(z->rsum_hash); z->rsum_hash = NULL;
+    free(z->bithash); z->bithash = NULL;
   }
  }
 }
@@ -40,18 +41,27 @@ void add_target_block(struct zsync_state* z, zs_blockid b, struct rsum r, void* 
 int build_hash(struct zsync_state* z)
 {
   zs_blockid id;
+  int i = 16;
+  
+  while ((2<<(i-1)) > z->blocks && i > 4) i--;
+  z->bithashmask = (2<<(i+BITHASHBITS)) - 1;
+  z->hashmask = (2<<i) - 1;
 
-  z->hashmask = 0xffff;
   z->rsum_hash = calloc(z->hashmask+1, sizeof *(z->rsum_hash));
   if (!z->rsum_hash) return 0;
+
+  z->bithash = calloc(z->bithashmask+1, 1);
+  if (!z->bithash) { free(z->rsum_hash); z->rsum_hash = NULL; return 0; }
 
   for (id = 0; id < z->blocks; id++) {
     struct hash_entry* e = z->blockhashes + id;
     /* Prepend to linked list for this hash entry */
     unsigned h = calc_rhash(z,e);
 
-    e->next = z->rsum_hash[h];
-    z->rsum_hash[h] = e;
+    e->next = z->rsum_hash[h & z->hashmask];
+    z->rsum_hash[h & z->hashmask] = e;
+
+    z->bithash[(h & z->bithashmask) >> 3] |= 1 << (h & 7);
   }
   return 1;
 }
