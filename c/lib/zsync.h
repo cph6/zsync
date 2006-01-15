@@ -29,7 +29,7 @@ struct rsum {
 
 #define CHECKSUM_SIZE 16
 
-struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize);
+struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize, int rsum_butes, int checksum_bytes, int require_consecutive_matches);
 void zsync_end(struct zsync_state* z);
 
 /* These transfer out the filename and handle of the file backing the data retrieved.

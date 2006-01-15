@@ -1,4 +1,4 @@
-zsync 0.1.6
+zsync 0.2.0
 ===========
 
 zsync is a file transfer program. It allows you to download a file from a
@@ -97,9 +97,14 @@ ongoing development.
 Copyright, Author, Acknowledgements
 -----------------------------------
 
-zsync is based on the rsync algorithm, by Andrew Tridgell. zsync also uses
-a large part of zlib - this code, in the zlib subdirectory,  is copyright
-1995-2003 Jean-loup Gailly and Mark Adler, see zlib/README for details.
+zsync is based on the rsync algorithm, by Andrew Tridgell. It also incorporates
+a number of optimisations, based on ideas in academic papers by Utku Irmak,
+Svilen Mihaylov and Torsten Suel (primarily "Improved Single-Round Protocols
+for Remote File Synchronization", Sept 2004).
+
+zsync also uses a large part of zlib - this code, in the zlib subdirectory,  is
+copyright 1995-2003 Jean-loup Gailly and Mark Adler, see zlib/README for
+details.
 
 zsync also includes checksum code taken from OpenBSD. The MD4 code is public
 domain, by Colin Plumb and Todd C. Miller. The SHA1 code is also public
@@ -117,6 +122,6 @@ emacs, the essential development tools. Also I would thank Sourceforge for
 providing the hosting facilities for the downloads and mailing list, and the
 compile farm for testing portability.
 
-Also, thanks to Érsek László, saul@alien-science.org, Kent Mein for useful
-feedback about previous versions.
+Also, thanks to Érsek László, saul@alien-science.org, Kent Mein and  Marc
+Lehmann for useful feedback about previous versions.
 

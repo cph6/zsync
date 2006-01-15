@@ -80,6 +80,7 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
 {
   struct zsync_state* zs = NULL;
   zs_blockid blocks = 0;
+  int checksum_bytes = 16,rsum_bytes = 4,seq_matches=1;
 
   for (;;) {
     char buf[1024];
@@ -148,6 +149,11 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
 	if (blocksize < 0 || (blocksize & (blocksize-1))) {
 	  fprintf(stderr,"nonsensical blocksize %d\n",blocksize); return -1;
 	}
+      } else if (!strcmp(buf, "Hash-Lengths")) {
+        if (sscanf(p,"%d,%d,%d",&seq_matches,&rsum_bytes,&checksum_bytes) != 3 || rsum_bytes < 1 || rsum_bytes > 4 || checksum_bytes < 4 || checksum_bytes > 16 || seq_matches > 2 || seq_matches < 1) {
+	  fprintf(stderr,"nonsensical hash lengths line %s\n",p);
+	  return -1;
+	}
       } else if (blocks && !strcmp(buf,"Z-Map")) {
 	/* Obsolete, not supported, just throw away the stuff marked by the header */
 	int nzblocks = atoi(p);
@@ -187,24 +193,21 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
     fprintf(stderr,"Not a zsync file (looked for Blocksize and Length lines)\n");
     return -1;
   }
-  if (!(zs = zsync_init(blocks, blocksize))) {
+  if (!(zs = zsync_init(blocks, blocksize, rsum_bytes, checksum_bytes, seq_matches))) {
     exit (1);
   }
   {
     zs_blockid id = 0;
     for (;id < blocks; id++) {
-      struct {
-	struct rsum r;
-	unsigned char checksum[CHECKSUM_SIZE];
-      } buf;
+      struct rsum r = { 0,0 };
+      unsigned char checksum[CHECKSUM_SIZE];
 
-      if (fread((void*)&buf,sizeof(buf),1,f) < 1) {
+      if (fread(((char*)&r)+4-rsum_bytes,rsum_bytes,1,f) < 1 || fread((void*)&checksum,checksum_bytes,1,f) < 1) {
 	fprintf(stderr,"short read on control file; %s\n",strerror(ferror(f)));
 	return -1;
       }
-      buf.r.a = ntohs(buf.r.a); buf.r.b = ntohs(buf.r.b);
-      add_target_block(zs, id, buf.r,buf.checksum);
-
+      r.a = ntohs(r.a); r.b = ntohs(r.b);
+      add_target_block(zs, id, r, checksum);
     }
   }
   *z = zs;

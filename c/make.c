@@ -253,7 +253,28 @@ void fcopy(FILE* fin, FILE* fout)
   }
 }
 
+void fcopy_hashes(FILE* fin, FILE* fout, int rsum_bytes, int hash_bytes)
+{
+  unsigned char buf[20];
+  size_t len;
+
+  while ((len = fread(buf,1,sizeof(buf),fin)) > 0) {
+    /* write trailing rsum_bytes of the rsum (trailing because the second part of the rsum is more useful in practice for hashing), and leading checksum_bytes of the checksum */
+    if (fwrite(buf + 4-rsum_bytes, 1, rsum_bytes, fout) < rsum_bytes)
+      break;
+    if (fwrite(buf + 4, 1, hash_bytes, fout) < hash_bytes)
+      break;
+  }
+  if (ferror(fin)) {
+    stream_error("fread",fin);
+  }
+  if (ferror(fout)) {
+    stream_error("fwrite",fout);
+  }
+}
+
 #include <libgen.h>
+#include <math.h>
 
 int main(int argc, char** argv) {
   FILE* tf = tmpfile();
@@ -266,6 +287,7 @@ int main(int argc, char** argv) {
   char * outfname = NULL;
   FILE* fout;
   char *infname = NULL;
+  int rsum_len, checksum_len, seq_matches;
 
   {
     int opt;
@@ -308,6 +330,17 @@ int main(int argc, char** argv) {
   SHA1Init(&shactx);
 
   read_stream_write_blocksums(instream,tf);
+  { /* Decide how long a rsum hash and checksum hash we need */
+    seq_matches = 2;
+    rsum_len = (7.9 + ((log(len) + log(blocksize))/log(2) - 8.6)/seq_matches)/8;
+    if (rsum_len > 4) rsum_len = 4;
+    if (rsum_len < 2) rsum_len = 2;
+    checksum_len = (7.9 + (20 + (log(len) + log(len/blocksize)) / log(2))/seq_matches) / 8;
+    {
+      int checksum_len2 = (7.9 + (20 + log(len/blocksize)/log(2))) / 8;
+      if (checksum_len < checksum_len2) checksum_len = checksum_len2;
+    }
+  }
 
   if (fname && zmapentries) {
     /* Remove any trailing .gz, as it is the uncompressed file being transferred */
@@ -330,10 +363,11 @@ int main(int argc, char** argv) {
   }
 
   /* Okay, start writing the zsync file */
-  fprintf(fout,"zsync: " VERSION "\nMin-Version: 0.0.5\n");
+  fprintf(fout,"zsync: " VERSION "\n");
   if (fname) fprintf(fout,"Filename: %s\n",fname);
   fprintf(fout,"Blocksize: %d\n",blocksize);
   fprintf(fout,"Length: %lld\n",len);
+  fprintf(fout,"Hash-Lengths: %d,%d,%d\n",seq_matches,rsum_len,checksum_len);
   { /* Write URLs */
     int i;
     for (i = 0; i < nurls; i++)
@@ -370,7 +404,7 @@ int main(int argc, char** argv) {
 
   fputc('\n',fout);
   rewind(tf);
-  fcopy(tf,fout);
+  fcopy_hashes(tf,fout,rsum_len,checksum_len);
   fclose(tf);
   fclose(fout);
 

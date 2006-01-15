@@ -26,16 +26,25 @@ void add_target_block(struct zsync_state* z, zs_blockid b, struct rsum r, void* 
  if (b < z->blocks) {
   /* Get hash entry with checksums for this block */
   struct hash_entry* e = &(z->blockhashes[b]);
-  int h;
 
   /* Enter checksums */
-  memcpy(e->checksum, checksum, CHECKSUM_SIZE);
-  e->r = r;
-
-  /* Prepend to linked list for this hash entry */
-  h = calc_rhash(z, r);
-  e->next = z->rsum_hash[h];
-  z->rsum_hash[h] = e;
+  memcpy(e->checksum, checksum, z->checksum_bytes);
+  e->r.a = r.a & z->rsum_a_mask;
+  e->r.b = r.b;
  }
+}
+
+void build_hash(struct zsync_state* z)
+{
+  zs_blockid id;
+
+  for (id = 0; id < z->blocks; id++) {
+    struct hash_entry* e = z->blockhashes + id;
+    /* Prepend to linked list for this hash entry */
+    unsigned h = calc_rhash(z,e);
+
+    e->next = z->rsum_hash[h];
+    z->rsum_hash[h] = e;
+  }
 }
 

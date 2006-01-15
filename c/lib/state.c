@@ -25,7 +25,7 @@
 #include "zsync.h"
 #include "internal.h"
 
-struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize)
+struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize, int rsum_bytes, int checksum_bytes, int require_consecutive_matches)
 {
   struct zsync_state* z = malloc(sizeof(struct zsync_state));
 
@@ -33,8 +33,13 @@ struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize)
     /* Setup blocksize and shift. Size must be a power of two. */
     z->blocksize = blocksize;
     z->blocks = nblocks;
+    z->rsum_a_mask = rsum_bytes < 3 ? 0 : rsum_bytes == 3 ? 0xff : 0xffff;
+    z->checksum_bytes = checksum_bytes;
+    z->seq_matches = require_consecutive_matches;
+    z->context = blocksize * require_consecutive_matches;
     z->gotblocks = 0;
     z->filename = strdup("zsync-XXXXXX");
+    memset(&(z->stats),0,sizeof(z->stats));
     if (!(z->blocksize & (z->blocksize - 1)) && z->filename != NULL && z->blocks) {
       z->fd = mkstemp(z->filename);
       if (z->fd == -1) {
@@ -54,7 +59,7 @@ struct zsync_state* zsync_init(zs_blockid nblocks, size_t blocksize)
 	  z->ranges = NULL;
 	  z->numranges = 0;
 	  
-	  z->blockhashes = malloc(sizeof(z->blockhashes[0]) * z->blocks);
+	  z->blockhashes = malloc(sizeof(z->blockhashes[0]) * (z->blocks+z->seq_matches));
 	  if (z->blockhashes != NULL)
 	    return z;
 
@@ -93,6 +98,7 @@ void zsync_end(struct zsync_state* z)
   }
   free(z->rsum_hash);
   free(z->ranges); // Should be NULL already
+  fprintf(stderr,"hashhit %d, weakhit %d, checksummed %d, stronghit %d\n",z->stats.hashhit, z->stats.weakhit, z->stats.checksummed, z->stats.stronghit);
   free(z);
 }
 

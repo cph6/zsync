@@ -23,21 +23,36 @@ struct hash_entry {
 };
 
 struct zsync_state {
+  struct rsum r[2]; /* Current rsums */
+
   zs_blockid blocks;
   size_t blocksize;
   int blockshift;
+  unsigned short rsum_a_mask;
+  int checksum_bytes;
+  int seq_matches;
 
+  int context; /* precalculated blocksize * seq_matches */
+
+  /* These are used by the library. Note, not thread safe. */
+  const struct hash_entry* rover;
+  const struct hash_entry* next_match;
+  int skip; /* skip forward on next submit_source_data */
+
+  /* Hash table for rsync algorithm */
   int hashmask;
   struct hash_entry* blockhashes;
   struct hash_entry** rsum_hash;
 
-  struct rsum current_rsum;
-  int skip; /* skip forward on next submit_source_data */
-
-  int gotblocks;
+  /* Current state and stats for data collected by algorithm */
   int numranges;
   zs_blockid* ranges;
+  int gotblocks;
+  struct {
+    int hashhit, weakhit, stronghit, checksummed;
+  } stats;
 
+  /* Temp file for output */
   char* filename;
   int fd;
 };
@@ -49,10 +64,14 @@ int already_got_block(struct zsync_state* z, zs_blockid n);
 
 struct hash_entry* calc_hash_entry(void* data, size_t len);
 
-static inline int calc_rhash(const struct zsync_state* z, struct rsum r) { return r.b & z->hashmask; }
-
-static inline const struct hash_entry* __attribute__((pure)) get_first_hash_entry(const struct zsync_state* z, struct rsum r) {
-  return z->rsum_hash[calc_rhash(z, r)];
+static inline unsigned calc_rhash(const struct zsync_state* const z, const struct hash_entry* const e) {
+  unsigned h = e[0].r.b;
+  
+  if (z->seq_matches > 1)
+    h ^= e[1].r.b;
+  
+  /* Mask for array */
+  return h & z->hashmask;
 }
 
-
+void build_hash(struct zsync_state* z);

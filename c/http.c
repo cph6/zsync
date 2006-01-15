@@ -150,7 +150,7 @@ FILE* http_open(const char* orig_url, const char* extraheader, int require_code,
 
       {
 	char buf[1024];
-	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: zsync %s\r\n%s%s\r\n",
+	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: zsync/%s\r\n%s%s\r\n",
 		 proxy ? url : p, hostn, VERSION,
 		 extraheader ? extraheader : "",
 		 extraheader ? "\r\n" : ""
@@ -200,7 +200,7 @@ struct range_fetch {
   char buf[4096];
   int buf_start, buf_end;
   long long bytes_down;
-  int server_close;
+  int server_close; /* 0: can send more, 1: cannot send more (but one set of headers still to read), 2: cannot send more and all existing headers read */
 
   long long* ranges_todo;
   int nranges;
@@ -351,7 +351,8 @@ static void range_fetch_getmore(struct range_fetch* rf)
     if (lastrange) break;
   }
   l = strlen(request);
-  snprintf(request + l, sizeof(request)-l, "\r\n%s\r\n", rf->rangessent == rf->nranges ? "Connection: close\r\n" : "");
+  /* Possibly close the connection (and record the fact, so we definitely don't send more stuff) if this is the last */
+  snprintf(request + l, sizeof(request)-l, "\r\n%s\r\n", rf->rangessent == rf->nranges ? (rf->server_close = 1, "Connection: close\r\n") : "");
   
   {
     size_t len = strlen(request);
@@ -397,7 +398,7 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
       return -1;
     }
     if (*(p-1) == '0') { /* HTTP/1.0 server? */
-      rf->server_close = 1;
+      rf->server_close = 2;
     }
   }
 
@@ -427,7 +428,7 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
       rf->rangessent = rf->rangesdone;
     }
     if (!strcmp(buf,"connection") && !strcmp(p,"close")) {
-      rf->server_close = 1;
+      rf->server_close = 2;
     }
     if (!strcasecmp(buf,"content-type") && !strncasecmp(p,"multipart/byteranges",20)) {
       char *q = strstr(p,"boundary=");
@@ -458,7 +459,7 @@ check_boundary:
       int newconn = 0;
       int header_result;
 
-      if (rf->sd != -1 && rf->server_close) {
+      if (rf->sd != -1 && rf->server_close == 2) {
 	close(rf->sd); rf->sd = -1;
       }
       if (rf->sd == -1) {
@@ -469,6 +470,9 @@ check_boundary:
 	range_fetch_getmore(rf);
       }
       header_result = range_fetch_read_http_headers(rf);
+
+      /* Might be the last */
+      if (rf->server_close == 1) rf->server_close = 2;
 
       /* EOF on first connect is fatal */
       if (newconn && header_result == 0) {
