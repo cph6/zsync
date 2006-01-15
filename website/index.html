@@ -1,0 +1,25 @@
+<!--#include file="header.html" -->
+<title>zsync</title>
+<!--#include file="head.html" -->
+
+<h2>What is zsync?</h2>
+
+<p>zsync is a file transfer program. It allows you to download a file from a remote web server, where you have a copy of an older version of the file on your computer already. zsync downloads only the new parts of the file. It uses the same algorithm as <a href="http://rsync.samba.org/">rsync</a>.</p>
+
+<p>zsync does not require any special server software or a shell account on the remote system (rsync, in comparison, requires that you have an rsh or ssh account, or that the remote system runs rsyncd). Instead, it uses a control file &#8212; a <code>.zsync</code> file &#8212; that describes the file to be downloaded and enables zsync to work out which blocks it needs. This file can be created by the admin of the web server hosting the download, and placed alongside the file to download &#8212; it is generated once, then any downloaders with zsync can use it. Alternatively, anyone can download the file, make a .zsync and provide it to other users (this is what I am doing for the moment).</p>
+
+<h2>What is the state of zsync? Does it work?</h2>
+
+<p>zsync 0.0.1 works. It is definitely at the alpha stage &#8212; I have run it on all of two computers, and perhaps half a dozen different downloads. It's a little beyond proof of concept.</p>
+
+<p>That said, I have done my best to make this first release useable, to encourage feedback. There are man pages. zsync does checksum verifications of downloads, so it will not claim a download worked unless it has verified that you really got the file. I have made the interface fairly easy to use I hope - zsync automatically picks up any older file of the same name as the file to download, and doesn't replace the old file with the new one until the download is complete and verified (and even then it backs up the old file). While it isn't very verbose, it should not ever throw away data, and always tells you where it put the data it did get in any failed download. But I'm not promising anything; it is 0.0.1 :-).</p>
+
+<p>I am already using zsync every day &#8212; downloading files onto a remote server, running zsyncmake on them, then using the .zsync file to download the file to my home machine. zsync can dramatically reduce the amount that you have to download, although it very much depends on the file being downloaded, and how much has changed since the previous version that you have.</p>
+
+<h2>Why did you write zsync? Why release it now?</h2>
+
+<p>Release early, release often. I'm interested in hearing whether people think it is useful, and perhaps more interestingly what uses they think it should aim for. As a tool zsync only becomes useful as people begin to provide .zsync's for large downloads &#8212; which only happens if the tool is available and has users. In the meantime, I am interested in any feedback about the direction it is going in. I started zsync in the first week of October; perhaps in another month it will look totally different, but this depends on whether people think the current approach makes it useful.</p>
+
+<p>I have put up <a href="paper/">this technical paper</a>, which sets out my current thinking on zsync. This is also at an early stage, so it's fairly sketchy on details, but does provide some reasoning and figures to back up the current approach.</p>
+
+<!--#include file="foot.html" -->

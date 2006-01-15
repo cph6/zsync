@@ -1,0 +1,47 @@
+dnl Process this file with autoconf to produce a configure script.
+AC_INIT(lib/rsum.c)
+AC_CONFIG_AUX_DIR(autotools)
+
+dnl --- Set version strings
+MAJOR_VERSION=0
+MINOR_VERSION=0
+MICRO_VERSION=1
+VERSION=$MAJOR_VERSION.$MINOR_VERSION.$MICRO_VERSION
+
+AC_SUBST(VERSION)
+
+dnl --- Check for system type
+AC_CANONICAL_SYSTEM
+
+dnl --- Fire up automake
+AM_INIT_AUTOMAKE(zsync,$VERSION)
+AM_CONFIG_HEADER(config.h)
+
+dnl --- Check for programs
+AC_PROG_CC
+AC_PROG_LN_S
+AC_PROG_RANLIB
+
+CFLAGS="$CFLAGS -g -Wall"
+AC_C_COMPILE_FLAGS(-Wwrite-strings -Winline -W -Wunreachable-code -Winline -ffast-math)
+AC_ARG_ENABLE(profile,[  --enable-profile         turns on profiling],
+CFLAGS_OPT="-pg"
+)
+
+CFLAGS="$CFLAGS -I\$(top_srcdir)/lib"
+
+dnl --- Header files, typedefs, structures, libraries
+AC_TYPE_SIZE_T
+AC_CHECK_FUNCS(mmap)
+AC_CHECK_LIB(crypto,SHA1_Init)
+AC_EGREP_HEADER(htons,netinet/in.h,
+AC_DEFINE([HAVE_HTONS_IN_NETINET_IN_H],[],[htons is defined in netinet/in.h (Linux)]),
+AC_EGREP_HEADER(htons,sys/param.h,
+AC_DEFINE([HAVE_HTONS_IN_SYS_PARAM_H],[],[htons is defined in sys/param.h (BSD)]),
+echo "could not find header for htons definition"
+))
+
+dnl --- output
+AC_SUBST(ac_aux_dir)
+AC_OUTPUT(Makefile lib/Makefile zlib/Makefile doc/Makefile)
+

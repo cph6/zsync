@@ -1,0 +1,38 @@
+.TH "zsyncmake" "1" "0.0.1" "Colin Phipps" "File Transfer"
+.SH "NAME"
+.LP 
+zsyncmake \- Build control file for zsync(1)
+.SH "SYNTAX"
+.LP 
+zsyncmake [ \-Z ] [ \-u \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] \fIfilename\fP
+.SH "DESCRIPTION"
+.LP 
+Constructs a metafile for the zsync client program to use to perform partial file downloads. \fIfilename\fR is the file that users wish to downloads; zsyncmake constructs the appropriate metafile and writes \fIfilename\fR.zsync in the current directory.
+.LP 
+You must specify URLs from which users can download the actual file content. Use the \fB\-u\fR option to do this. (You can edit the .zsync file and add these afterwards \- it has a simple key: value format in the header \- but I suggest you only do this once you are familiar with the tool.)
+.LP 
+Note that zsyncmake itself does not (currently) verify the URLs or download any data, you must provide the file data locally and check the URLs yourself.
+.SH "OPTIONS"
+.LP 
+.TP 
+\fB\-u\fR \fIurl\fP
+Specifies the URL from which users can download the content of the supplied file. Users need the control file in order to find out what parts of the file they already have, and they need the URLs to retrieve the parts of the file that they don't already have. You can specify this multiple times. Note that the URL must hold exactly the same file as the one supplied to zsyncmake, it must be accessible to the user, it must be HTTP and it must support Range: downloads (most websevers do for static content \- and you certainly should never provide a URL to dynamic content).
+.TP 
+\fB\-o\fR \fIoutputfile\fP
+Override the default output file name.
+.TP 
+\fB\-b\fR \fIblocksize\fR
+Specify the blocksize to the underlying rsync algorithm. A smaller blocksize may be more efficient for files where there are likely to be lots of small, scattered changes between downloads; a larger blocksize may be more efficient for files with larger blocks of contiguous new or old data. This blocksize must be a power of two \- don't use anything other than 512, 1024 or 2048 unless you know what you are doing (although in that case you probably shouldn't even think of changing it anyway :\-).
+.TP 
+\fB\-Z\fR
+zsyncmake automatically looks inside gzip compressed files and exports the underlying, uncompressed data to the zsyncmake file. In testing this has proved to provide greater download efficiency. \-Z overrides the default behaviour and treats gzip files as just binary data. Use this if it is essential that the user receives the compressed data (for instance because a cryptographic signature is available only for the compressed data). zsync is typically no use if you specify \-Z, unless the gzip file was compressed with the special \-\-rsync option to make it friendly to differential transfers.
+.SH "EXAMPLES"
+.LP 
+zsyncmake \-u http://ftp.uk.debian.org/debian/dists/sarge/main/binary\-i386/Packages.gz Packages.gz
+
+.SH "AUTHORS"
+.LP 
+Colin Phipps <cph@moria.org.uk>
+.SH "SEE ALSO"
+.LP 
+zsync(1)

@@ -1,0 +1,85 @@
+zsync 0.0.1
+===========
+
+zsync is a file transfer program. It allows you to download a file from a
+remote web server, where you have a copy of an older version of the file on
+your computer already. zsync downloads only the new parts of the file. It uses
+the same algorithm as rsync.
+
+zsync does not require any special server software or a shell account on the
+remote system (rsync, in comparison, requires that you have an rsh or ssh
+account, or that the remote system runs rsyncd). Instead, it uses a control
+file - a .zsync file - that describes the file to be downloaded and enables
+zsync to work out which blocks it needs. This file can be created by the admin
+of the web server hosting the download, and placed alongside the file to
+download - it is generated once, then any downloaders with zsync can use it.
+Alternatively, anyone can download the file, make a .zsync and provide it to
+other users (this is what I am doing for the moment).
+
+The zsync web site is at http://zsync.moria.org.uk/ . There are likely to be
+frequent releases, so check back often.
+
+Installation
+------------
+
+See the file INSTALL for instructions on compiling and (optionally) installing
+zsync.
+
+As zsync is still at a very early stage, you may prefer not to install it, and
+to run the program where you compile it. It will work fine that way - it has no
+data files or libraries. The man(1) program on some systems will let you read
+the man pages without installing them, e.g. man -l doc/zsync.1 .
+
+zsync is free software. There is no implied support, no implied fitness for
+purpose, no warranty. You use it at your own risk.
+
+Use
+---
+
+In its simplest form:
+
+zsync http://some.example.com/downloads/my-big-download.tar.zsync
+
+Someone has to make a .zsync file for the download before you can use zsync. As
+I am only just releasing 0.0.1, there won't be many such downloads around :-).
+And you have to have an older copy of the file around, otherwise there is
+little point in using zsync - zsync normally looks in the current directory for
+a file of the same name as the one being downloaded (note: if the download is a
+.gz file, the local file should be uncompressed - use gzip -d to decompress it
+first). If the local file is not in the current directory or has a different
+name, you can specify it with -i, e.g.:
+
+zsync -i /var/lib/apt/lists/ftp.uk.debian.org_debian_dists_sarge_main_binary-i386_Packages http://zsync.moria.org.uk/streams/sarge/Packages.zsync
+
+To offer a zsync download, use the zsyncmake program to produce a .zsync file.
+You have to have a local copy of the file that you will be offering to
+download.
+
+zsyncmake -u http://some.example.org/downloads/my-big-download.tar.gz my-big-download.tar.gz
+
+Note that zsync requires both the public URL for the full download, and a local
+copy of the same file. Users will still need access to the full downloads -
+zsync merely allows then to save time by only downloading parts of the file.
+
+zsync will produce a file with the same name (but possibly removing any
+extension for compression) with .zsync appended; this is the control file. You
+then put this on your web server, and people can use the zsync client with it.
+
+Feedback, Support
+-----------------
+
+Mail zsync-users@lists.sourceforge.net if you have questions about zsync. And
+join the mailing list if you are using it a lot or are interested in the
+ongoing development.
+
+Copyright, Author
+-----------------
+
+zsync was written and is developed by Colin Phipps <cph@moria.org.uk>. It is
+copyright (C) 2004 Colin Phipps. zsync is made available under the GNU General
+Public License - see the file COPYING for details.
+
+zsync is based on the rsync algorithm, by Andrew Trigell; and there is a little
+of his code from rsync included in zsync (lib/mdfour.c). zsync also includes
+code from zlib - see zlib/README for details.
+
