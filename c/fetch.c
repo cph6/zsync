@@ -21,6 +21,8 @@
 #include <string.h>
 
 #include "zsync.h"
+#include "libzmap/zmap.h"
+
 #include "fetch.h"
 #include "http.h"
 

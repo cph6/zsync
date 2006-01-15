@@ -1289,6 +1289,7 @@ void inflate_advance_bits(strm,b)
     state->hold >>= b;
     state->bits = 8-b;
     strm->avail_in--;
+    strm->total_in++;
   } else {
     state->bits = 0;
   }

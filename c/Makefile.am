@@ -1,5 +1,5 @@
 
-SUBDIRS = lib zlib doc
+SUBDIRS = lib zlib libzmap doc
 
 bin_PROGRAMS = zsyncmake zsync
 
@@ -7,7 +7,7 @@ zsyncmake_SOURCES = make.c
 zsyncmake_LDADD = lib/libzsync.a zlib/libinflate.a
 
 zsync_SOURCES = client.c http.c http.h fetch.c fetch.h zfetch.c url.c url.h
-zsync_LDADD = lib/libzsync.a zlib/libinflate.a
+zsync_LDADD = lib/libzsync.a libzmap/libzmap.a zlib/libinflate.a
 
 # From "GNU autoconf, automake and libtool" Vaughan, Elliston, 
 # #  Tromey and Taylor, publisher New Riders, p.134

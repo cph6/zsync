@@ -37,6 +37,8 @@
 #endif
 
 #include "zsync.h"
+#include "libzmap/zmap.h"
+
 #include "http.h"
 #include "url.h"
 #include "fetch.h"
@@ -86,14 +88,12 @@ static void** append_ptrlist(int *n, void** p, void* a) {
   return p;
 }
 
-struct gzblock* zblock;
-int nzblocks;
+struct zmap* zmap;
 
 int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* source_name)
 {
   struct zsync_state* zs = NULL;
-  zs_blockid blocks;
-  long long bitoffset;
+  zs_blockid blocks = 0;
 
   for (;;) {
     char buf[1024];
@@ -163,14 +163,18 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
 	  fprintf(stderr,"nonsensical blocksize %d\n",blocksize); return -1;
 	}
       } else if (blocks && !strcmp(buf,"Z-Map")) {
-	int i;
+	int nzblocks;
+	struct gzblock* zblock;
+
 	nzblocks = atoi(p);
 	if (nzblocks < 0) { fprintf(stderr,"bad Z-Map line\n"); return -1; }
+
 	zblock = malloc(nzblocks * sizeof *zblock);
-	for (i=0; i<nzblocks; i++) {
-	  if (fread(&zblock[i],sizeof *zblock,1,f) < 1) { fprintf(stderr,"premature EOF after Z-Map\n"); return -1; }
-	  zblock[i].inbitoffset = ntohl(zblock[i].inbitoffset);
-	  zblock[i].outbyteoffset = ntohl(zblock[i].outbyteoffset);
+	if (zblock) {
+	  if (fread(zblock,sizeof *zblock,nzblocks,f) < nzblocks) { fprintf(stderr,"premature EOF after Z-Map\n"); return -1; }
+
+	  zmap = make_zmap(zblock,nzblocks);
+	  free(zblock);
 	}
       } else if (!strcmp(buf,"SHA-1")) {
 	sha1sum = strdup(p);
@@ -255,7 +259,7 @@ int fetch_remaining_blocks(struct zsync_state* zs)
     int zfetch = 0;
 
     /* Pick a random URL from the list. Try compressed URLs first. */
-    if (!first && zblock) {
+    if (!first && zmap) {
       int i,c;
 
       zfetch = 1;
@@ -280,9 +284,9 @@ int fetch_remaining_blocks(struct zsync_state* zs)
     if (ptryurl) {
       int rc;
       if (zfetch)
-	rc = fetch_remaining_blocks_zlib_http(zs,*ptryurl,zblock,nzblocks);
+	rc = fetch_remaining_blocks_zlib_http(zs,*ptryurl,zmap);
       else
-	rc = fetch_remaining_blocks_http(zs,*ptryurl,first && zblock ? 2 : 0);
+	rc = fetch_remaining_blocks_http(zs,*ptryurl,first && zmap ? 2 : 0);
 
       if (rc != 0) {
 	fprintf(stderr,"%s removed from list\n",*ptryurl);
