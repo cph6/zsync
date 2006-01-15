@@ -207,7 +207,12 @@ static int get_more_data(struct range_fetch* rf)
     rf->buf_end -= rf->buf_start; rf->buf_start = 0;
   }
   {
-    int n = read(rf->sd, &(rf->buf[rf->buf_end]), sizeof(rf->buf) - rf->buf_end);
+    int n;
+
+    do {
+      n = read(rf->sd, &(rf->buf[rf->buf_end]), sizeof(rf->buf) - rf->buf_end);
+    } while (n == -1 && errno == EINTR);
+
     if (n < 0) {
       perror("read");
     } else {
@@ -297,6 +302,7 @@ static void range_fetch_connect(struct range_fetch* rf)
 {
   rf->sd = connect_to(rf->chost, rf->cport);
   if (rf->sd == -1) perror("connect");
+  rf->server_close = 0;
 }
 
 static void range_fetch_getmore(struct range_fetch* rf)
@@ -334,8 +340,17 @@ static void range_fetch_getmore(struct range_fetch* rf)
   l = strlen(request);
   snprintf(request + l, sizeof(request)-l, "\r\n%s\r\n", rf->rangesdone == rf->nranges ? "Connection: close\r\n" : "");
   
-  if (send(rf->sd,request,strlen(request),0) == -1) {
-    perror("send");
+  {
+    size_t len = strlen(request);
+    char *p = request;
+    int r = 0;
+    
+    while (len > 0 && ((r = send(rf->sd,p,len,0)) != -1 || errno == EINTR)) {
+      if (r >= 0) { p += r; len -= r; }
+    }
+    if (r == -1) {
+      perror("send");
+    }
   }
 }
 
@@ -354,7 +369,6 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
 {
   char buf[512];
 
-  rf->server_close = 0;
   { /* read status line */
     char *p;
     int c;
@@ -428,7 +442,11 @@ check_boundary:
       int newconn = 0;
       int header_result;
 
+      if (rf->sd != -1 && rf->server_close) {
+	close(rf->sd); rf->sd = -1;
+      }
       if (rf->sd == -1) {
+        if (rf->rangesdone == rf->nranges) return 0;
 	range_fetch_connect(rf);
 	if (rf->sd == -1) return -1;
 	newconn = 1;
@@ -443,7 +461,7 @@ check_boundary:
       }
 
       /* Return EOF or error to caller */
-      if (header_result <= 0) return header_result;
+      if (header_result <= 0) return -1;
       
       /* HTTP Pipelining - send next request before reading current response */
       if (!rf->server_close) range_fetch_getmore(rf);
@@ -519,7 +537,7 @@ long long range_fetch_bytes_down(const struct range_fetch* rf)
 { return rf->bytes_down; }
 
 void range_fetch_end(struct range_fetch* rf) {
-  if (rf->sd) close(rf->sd);
+  if (rf->sd != -1) close(rf->sd);
   free(rf->ranges_todo);
   free(rf->boundary);
   free(rf);
