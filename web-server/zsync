@@ -1,0 +1,61 @@
+#!/usr/bin/perl -wT
+
+use strict;
+use CGI qw(:standard);
+use IPC::SysV qw(IPC_PRIVATE S_IRWXU IPC_CREAT SEM_UNDO);
+use IPC::Semaphore;
+
+my $zsyncmake = "/home/cphnet/zsync-0.3.1/zsyncmake";
+my $tmp = "/var/tmp";
+
+my %archive = (
+	distfiles => {
+		fetch => 'ftp://ftp.freebsd.org/pub/FreeBSD/ports/distfiles/',
+		url => ['http://www.mirrorservice.org/sites/ftp.freebsd.org/pub/FreeBSD/ports/distfiles/'],
+		store => '/var/www/zsync/s/distfiles',
+		lurl => 'http://zsync.moria.org.uk/s/distfiles',
+	},
+);
+
+my ($a,$f) = path_info() =~ m!^/*(\w+)/([-a-zA-Z_0-9.]+)$!;
+
+$a = $archive{$a} if $a;
+unless ($a && $f) {
+	print header(-status => 404);
+	exit(0);
+}
+
+if ($f =~ /\.(tbz|bz2)$/) {
+	print header(-status => 403);
+	exit(0);
+}
+
+my $lf = $f;
+$lf =~ s/\.gz$//; $lf =~ s/\.tgz$/.tar/;
+$lf .= ".zsync";
+
+unless (-r $a->{store}."/".$lf) {
+    my $sem = new IPC::Semaphore(0x1234,1,S_IRWXU);
+
+    if (!$sem) {
+	$sem = new IPC::Semaphore(0x1234,1,S_IRWXU | IPC_CREAT);
+	$sem->setall(1);
+    }
+    $sem or die "semaphore create failed: $!";
+    $sem->op(0,-1,SEM_UNDO) or die "semaphore failed: $!";
+
+    unless (-r $a->{store}."/".$lf) {
+	my @u = @{$a->{url}};
+
+	$ENV{PATH} = "/usr/local/bin";
+
+	system("curl","-s","-o","$tmp/$f",$a->{fetch}."/".$f) == 0 or die "failed to download: $! $?";
+	my @uparams = map { ("-u",$_) } @u;
+	system($zsyncmake,@uparams,"-b",2048,"-o",$a->{store}."/".$lf,"$tmp/$f") == 0 or die "failed to zsyncmake: $! $?";
+	unlink("$tmp/$f");
+    }
+    $sem->op(0,1,SEM_UNDO);
+}
+
+print redirect(-uri => "$a->{lurl}/$lf", -status => 301);
+

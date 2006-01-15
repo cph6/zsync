@@ -147,10 +147,10 @@ struct zsync_state* zsync_begin(FILE* f)
 	zs->gzhead = strdup(p);
 	if (zs->gzhead) {
 	  char *q = strchr(zs->gzhead,' ');
-	  if (!q) {
-	    fprintf(stderr,"ignoring badly formed Recompress line\n"); free(zs->gzhead);
-	  } else {
-	    *q++ = 0;
+	  if (!q)
+	    q = zs->gzhead + strlen(zs->gzhead);
+	  {
+	    if (*q) *q++ = 0;
 	    /* Whitelist for safe options for gzip command line */
 	    if (!strcmp(q,"--best") || !strcmp(q,"--rsync --best") || !strcmp(q,"--rsync") || !strcmp(q,""))
 	      zs->gzopts = strdup(q);
@@ -516,10 +516,11 @@ int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off64_t of
       int rc;
       
       /* Read in up to the next block (in the libzsync sense on the output stream) boundary */
-      
+
       rc = inflate(&(zr->strm),Z_SYNC_FLUSH);
       switch (rc) {
       case Z_STREAM_END: eoz = 1;
+      case Z_BUF_ERROR:
       case Z_OK:
 	if (zr->strm.avail_out == 0 || eoz) {
 	  /* If this was at the start of a block, try submitting it */
@@ -538,7 +539,7 @@ int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off64_t of
 	}
 	break;
       default:
-	fprintf(stderr,"zlib error: %s\n",zr->strm.msg);
+	fprintf(stderr,"zlib error: %s (%d)\n",zr->strm.msg, rc);
 	eoz=1; ret = -1; break;
       }
     }

@@ -90,7 +90,7 @@ static void** append_ptrlist(int *n, void** p, void* a) {
   return p;
 }
 
-struct zsync_state* read_zsync_control_file(const char* p)
+struct zsync_state* read_zsync_control_file(const char* p, const char* fn)
 {
   FILE* f;
   struct zsync_state* zs;
@@ -98,17 +98,15 @@ struct zsync_state* read_zsync_control_file(const char* p)
 
   f = fopen(p,"r");
   if (!f) {
-    char* fn;
     if (memcmp(p,"http://",7)) {
       perror(p); exit(2);
     }
-    f = http_get(p,NULL,200,&lastpath,&fn);
+    f = http_get(p,&lastpath,fn);
     if (!f) {
       fprintf(stderr,"could not read control file from URL %s\n",p);
       exit(3);
     }
     referer = lastpath;
-    unlink(fn); free(fn);
   }
   if ((zs = zsync_begin(f)) == NULL) { exit(1); }
   if (fclose(f) != 0) { perror("fclose"); exit(2); }
@@ -218,7 +216,7 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
     if (!no_progress)
       do_progress(&p,calc_zsync_progress(z),range_fetch_bytes_down(rf));
 
-    while ((len = get_range_block(rf, &zoffset, buf, BUFFERSIZE)) > 0) {
+    while (!ret && (len = get_range_block(rf, &zoffset, buf, BUFFERSIZE)) > 0) {
       if (zsync_receive_data(zr, buf, zoffset, len) != 0)
 	ret = 1;
       
@@ -283,14 +281,18 @@ int main(int argc, char** argv) {
   int nseedfiles = 0;
   char* filename = NULL;
   long long local_used;
+  char* zfname = NULL;
 
   srand(getpid());
   {
     int opt;
-    while ((opt = getopt(argc,argv,"o:i:Vsu:")) != -1) {
+    while ((opt = getopt(argc,argv,"k:o:i:Vsu:")) != -1) {
       switch (opt) {
+      case 'k':
+	free(zfname); zfname = strdup(optarg);
+	break;
       case 'o':
-	filename = strdup(optarg);
+	free(filename); filename = strdup(optarg);
 	break;
       case 'i':
 	seedfiles = append_ptrlist(&nseedfiles,seedfiles,optarg);
@@ -321,7 +323,7 @@ int main(int argc, char** argv) {
     char *pr = getenv("http_proxy");
     if (pr != NULL) set_proxy_from_string(pr);
   }
-  if ((zs = read_zsync_control_file(argv[optind])) == NULL)
+  if ((zs = read_zsync_control_file(argv[optind],zfname)) == NULL)
     exit(1);
 
   if (!filename) filename = get_filename(zs, argv[optind]);

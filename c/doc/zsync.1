@@ -1,10 +1,10 @@
-.TH "zsync" "1" "0.3.2" "Colin Phipps" "File Transfer"
+.TH "zsync" "1" "0.3.3" "Colin Phipps" "File Transfer"
 .SH "NAME"
 .LP 
 zsync \- Partial/differential file download client over HTTP
 .SH "SYNTAX"
 .LP 
-zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-s ] { \fIfilename\fP | \fIurl\fR }
+zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-s ] [ \-k \fIfile\fR.zsync ] { \fIfilename\fP | \fIurl\fR }
 .LP 
 zsync \-V
 .SH "DESCRIPTION"
@@ -21,6 +21,9 @@ zsync retrieves the rest of the target file over HTTP. Once the download is fini
 .TP 
 \fB\-i\fR \fIinputfile\fP
 Specifies (extra) input files. \fIinputfile\fP is scanned to identify blocks in common with the target file and zsync uses any blocks found. Can be used multiple times.
+.TP 
+\fB\-k\fR \fIfile\fP.zsync
+Indicates that zsync should save the zsync file that it downloads, with the given filename. If that file already exists, then zsync will make a conditional request to the web server, such that it will only download it again if the server's copy is newer. zsync will append .part to the filename for storing it while it is downloading, and will only overwrite the main file once the download is done - and if the download is interrupted, it will resume using the data in the .part file.
 .TP 
 \fB\-o\fR \fIoutputfile\fP
 Override the default output file name.

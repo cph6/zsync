@@ -18,16 +18,19 @@
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include "config.h"
 
 #include <arpa/inet.h>
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
-#else
-#include <sys/types.h>
 #endif
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include "makegz.h"
 #include "librcksum/rcksum.h"
 #include "libzsync/zmap.h"
 #include "libzsync/sha1.h"
@@ -35,7 +38,7 @@
 
 SHA1_CTX shactx;
 
-size_t blocksize = 1024;
+size_t blocksize = 0;
 long long len = 0;
 
 void stream_error(const char* func, FILE* stream)
@@ -75,7 +78,7 @@ static void write_zmap_delta(long long *prev_in, long long *prev_out, long long 
   {
     uint16_t inbits = new_in - *prev_in;
 
-    if (*prev_in + inbits != new_in) { fprintf(stderr,"too long between blocks?"); exit(1); }
+    if (*prev_in + inbits != new_in) { fprintf(stderr,"too long between blocks (try a smaller block size with -b)\n"); exit(1); }
 
     inbits = htons(inbits);
     g.inbitoffset = inbits;
@@ -83,7 +86,7 @@ static void write_zmap_delta(long long *prev_in, long long *prev_out, long long 
   }
   {
     uint16_t outbytes = new_out - *prev_out;
-    
+
     outbytes &= ~GZB_NOTBLOCKSTART;
     if ((long long)outbytes + *prev_out != new_out) { fprintf(stderr,"too long output of block blocks?"); exit(1); }
     if (!blockstart) outbytes |= GZB_NOTBLOCKSTART;
@@ -125,7 +128,7 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
 
   if (inflateInit2(&zs,-MAX_WBITS) != Z_OK) exit(-1);
 
-  { /* Skip gzip header and do iniital buffer fill */
+  { /* Skip gzip header and do initial buffer fill */
     const char *p = skip_zhead(bufsofar);
 
     {
@@ -281,7 +284,7 @@ static int read_sample_and_close(FILE* f, size_t l, void* buf)
 {
   int rc = 0;
   if (fread(buf,1,l,f) == l) rc = 1;
-  else perror("read");
+  else if (errno != EBADF) perror("read");
   fclose(f);
   return rc;
 }
@@ -321,7 +324,7 @@ const char* guess_gzip_options(const char* f)
 
     for (i=0; (o = try_opts[i]) != NULL; i++) {
       char cmd[1024];
-      snprintf(cmd,sizeof(cmd),"zcat %s | gzip -n %s",enc_f,o);
+      snprintf(cmd,sizeof(cmd),"zcat %s | gzip -n %s 2> /dev/null",enc_f,o);
 
       {
 	FILE* p = popen(cmd,"r");
@@ -347,6 +350,15 @@ const char* guess_gzip_options(const char* f)
   }
 }
 
+off64_t get_len(FILE* f)
+{
+  struct stat s;
+
+  if (fstat(fileno(f),&s) == -1)
+    return 0;
+  return s.st_size;
+}
+
 #include <libgen.h>
 #include <math.h>
 
@@ -362,15 +374,27 @@ int main(int argc, char** argv) {
   FILE* fout;
   char *infname = NULL;
   int rsum_len, checksum_len, seq_matches;
+  int do_compress = 0;
+  int do_recompress = -1; // -1 means we decide for ourselves
+  int do_exact = 0;
+  const char* gzopts = NULL;
 
   {
     int opt;
-    while ((opt = getopt(argc,argv,"o:f:b:u:U:Z")) != -1) {
+    while ((opt = getopt(argc,argv,"b:Ceo:f:u:U:zZ")) != -1) {
       switch (opt) {
+      case 'e':
+	do_exact = 1;
+	break;
+      case 'C':
+	do_recompress = 0;
+	break;
       case 'o':
+	if (outfname) { fprintf(stderr,"specify -o only once\n"); exit(2); }
 	outfname = strdup(optarg);
 	break;
       case 'f':
+	if (fname) { fprintf(stderr,"specify -f only once\n"); exit(2); }
 	fname = strdup(optarg);
 	break;
       case 'b':
@@ -385,20 +409,47 @@ int main(int argc, char** argv) {
 	Uurl = realloc(Uurl,(nUurls+1)*sizeof *Uurl);
 	Uurl[nUurls++] = optarg;
 	break;
+      case 'z':
+	do_compress = 1;
+	break;
       case 'Z':
 	no_look_inside = 1;
 	break;
       }
     }
     if (optind == argc-1) {
-      instream = fopen(argv[optind],"rb");
-      if (!instream) { perror("open"); exit(2); }
       infname = strdup(argv[optind]);
+      instream = fopen(infname,"rb");
+      if (!instream) { perror("open"); exit(2); }
       if (!fname) fname = basename(argv[optind]);
     }
     else {
       instream = stdin;
     }
+  }
+
+  /* If not user-specified, take a best guess */
+  if (!blocksize) {
+    blocksize = (get_len(instream) < 100000000) ? 2048 : 4096;
+  }
+
+  if (do_compress) {
+    char* newfname;
+
+    {
+      char* tryfname = infname;
+      if (!tryfname) { tryfname = fname; }
+      if (tryfname) {
+	newfname = malloc(strlen(tryfname)+4); strcpy(newfname,tryfname); strcat(newfname,".gz");
+      }
+    }
+    if (!newfname) {
+      newfname = strdup("zsync-target.gz");
+    }
+    instream = optimal_gzip(instream, newfname, blocksize);
+    if (!instream) { fprintf(stderr,"failed to compress\n"); exit(-1); }
+    if (infname) { free(infname); infname = newfname; }
+    else free(newfname);
   }
 
   SHA1Init(&shactx);
@@ -414,6 +465,32 @@ int main(int argc, char** argv) {
       int checksum_len2 = (7.9 + (20 + log(1+len/blocksize)/log(2))) / 8;
       if (checksum_len < checksum_len2) checksum_len = checksum_len2;
     }
+  }
+
+  /* The only danger of the client not getting the original file is if we have compressed;
+   * in that case we want to recompress iff the compressed version was supplied
+   * (i.e. we weren't told to generate it ourselves with -z). */
+  if (do_exact) {
+    int old_do_recompress = do_recompress;
+    do_recompress = (zmapentries && !do_compress) ? 2 : 0;
+    if (old_do_recompress != -1 && (!old_do_recompress) != (!do_recompress)) {
+      fprintf(stderr,"conflicting request for compression and exactness\n"); exit(2);
+    }
+  }
+
+  /* We recompress if we were told to, OR if
+   *  we were left to make our own decision about recompression
+   *  the original was compressed & the zsync is of the uncompressed (i.e. there is a zmap)
+   *  AND this compressed original isn't one we made ourselves just for transmission
+   */
+  if ((do_recompress > 0) || (do_recompress == -1 && zmapentries && !do_compress))
+    gzopts = guess_gzip_options(infname);
+  /* We now know whether to recompress - if the above and guess_gzip_options worked */ 
+  if (do_recompress == -1)
+    do_recompress = (gzopts != NULL) ? 1 : 0;
+  if (do_recompress > 1 && gzopts == NULL) {
+    fprintf(stderr,"recompression required, but %s\n", zmap ? "could not determine gzip options to reproduce this archive" : "we are not looking into a compressed stream");
+    exit(2);
   }
 
   if (fname && zmapentries) {
@@ -441,15 +518,13 @@ int main(int argc, char** argv) {
   fprintf(fout,"zsync: " VERSION "\n");
   
   /* Lines we might include but which older clients can ignore */
-  if (zhead && zfname)
-    fprintf(fout,"Safe: Z-Filename Recompress\n");
-  else if (zhead)
-    fprintf(fout,"Safe: Recompress\n");
-  else if (zfname)
-    fprintf(fout,"Safe: Z-Filename\n");
+  if (do_recompress)
+    if (zfname)
+      fprintf(fout,"Safe: Z-Filename Recompress\nZ-Filename: %s\n",zfname);
+    else
+      fprintf(fout,"Safe: Recompress\n");
 
   if (fname) fprintf(fout,"Filename: %s\n",fname);
-  if (zfname) fprintf(fout,"Z-Filename: %s\n",zfname);
   fprintf(fout,"Blocksize: %d\n",blocksize);
   fprintf(fout,"Length: %lld\n",len);
   fprintf(fout,"Hash-Lengths: %d,%d,%d\n",seq_matches,rsum_len,checksum_len);
@@ -481,14 +556,9 @@ int main(int argc, char** argv) {
       fprintf(fout,"%02x",digest[i]);
   }
   fputc('\n',fout);
-  if (zhead && infname) {
-    const char* gzopts = guess_gzip_options(infname);
-    if (gzopts)
-      fprintf(fout,"Recompress: %s %s\n",zhead,gzopts);
-    else
-      fprintf(stderr,"omitting recompress, not able to determine options\n");
-    
-  }
+  if (do_recompress)
+    fprintf(fout,"Recompress: %s %s\n",zhead,gzopts);
+
   if (zmapentries) {
     fprintf(fout,"Z-Map2: %d\n",zmapentries);
     fcopy(zmap,fout);

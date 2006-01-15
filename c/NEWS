@@ -1,3 +1,9 @@
+Changes in 0.3.3
+- build in gzip in zsyncmake which produces .gz files optimised for zsync
+- quickly stop downloading from a URL producing bad data
+- -k option to keep the .zsync file, and redownload only when it changes
+- fixes some possible crashes that could occur with unexpected remote responses
+
 Changes in 0.3.2
 - automatically decompress local seed data when this is appropriate
 - progress bars with rate and ETA for all downloads

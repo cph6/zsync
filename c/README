@@ -1,4 +1,4 @@
-zsync 0.3.2
+zsync 0.3.3
 ===========
 
 zsync is a file transfer program. It allows you to download a file from a
@@ -122,6 +122,7 @@ emacs, the essential development tools. Also I would thank Sourceforge for
 providing the hosting facilities for the downloads and mailing list, and the
 compile farm for testing portability.
 
-Also, thanks to Érsek László, saul@alien-science.org, Kent Mein and  Marc
-Lehmann for useful feedback about previous versions.
+Also, thanks to Érsek László, saul@alien-science.org, Kent Mein, Marc Lehmann,
+Robert Lemmen, and Ricardo Correia for useful feedback and bug reports for
+previous versions.
 

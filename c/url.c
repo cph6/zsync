@@ -31,6 +31,10 @@ char* get_host_port(const char* url, char* hostn, int hnlen, char** port)
   q+=3;
   
   p = strchr(q,':');
+  if (p) { /* if : is after teh first /, we have looked too far ahead */
+    char *r = strchr(q,'/');
+    if (r && r < p) p = NULL;
+  }
   if (!p) { *port = strdup("http"); p = strchr(q,'/'); }
   
   if (!p) return NULL;

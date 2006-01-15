@@ -87,6 +87,7 @@ struct zsync_receiver;
 struct zsync_receiver* zsync_begin_receive(struct zsync_state*zs, int url_type);
 void zsync_end_receive(struct zsync_receiver* zr);
 
-/* Supply data buf of length len received corresponding to offset offset from the URL */
+/* Supply data buf of length len received corresponding to offset offset from the URL.
+ * Returns 0 for success; if not, you should not submit more data. */
 int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off64_t offset, size_t len);
 

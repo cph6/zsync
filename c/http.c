@@ -22,8 +22,10 @@
 #include "config.h"
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <time.h>
 
 #include "http.h"
 #include "url.h"
@@ -124,21 +126,52 @@ int set_proxy_from_string(const char* s)
   }
 }
 
-FILE* http_get(const char* orig_url, const char* extraheader, int require_code, char** track_referer, char** pfname)
+char* http_date_string(time_t t, char* buf)
+{	       
+  struct tm d;
+  if (localtime_r(&t,&d) != NULL) {
+    if (asctime_r(&d,buf) != NULL) {
+      if (buf[24] == '\n') buf[24] = 0;
+      return buf;
+    }
+  }
+  return NULL;
+}
+
+FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
 {
   int allow_redirects = 5;
-  char* url = strdup(orig_url);
+  char* url;
   FILE* f = NULL;
   FILE* g;
-  char* fname = strdup("/var/tmp/http-XXXXXX");
+  char* fname = NULL;
+  char ifrange[200] = { "" };
+  int code;
 
-  {
-    int fd = mkstemp(fname);
-    if (fd == -1) { perror("open"); free(url); return NULL; }
-    g = fdopen(fd,"w+");
-    if (!g) { close(fd); perror("fdopen"); free(url); return NULL; }
+  if (tfname) {
+    int fd;
+    struct stat st;
+    
+    fname = malloc(strlen(tfname) + 6);
+    strcpy(fname,tfname); strcat(fname,".part");
+
+    if (stat(fname,&st) == 0) {
+      char buf[50];
+
+      if (http_date_string(st.st_mtime,buf) != NULL)
+	snprintf(ifrange,sizeof(ifrange),"If-Unmodified-Since: %s\r\nRange: bytes=%u-\r\n",buf,st.st_size);
+
+    } else if (errno == ENOENT && stat(tfname,&st) == 0) {
+      char buf[50];
+
+      if (http_date_string(st.st_mtime,buf) != NULL)
+	snprintf(ifrange,sizeof(ifrange),"If-Modified-Since: %s\r\n",buf);
+    }
   }
       
+  url = strdup(orig_url);
+  if (!url) { free(fname); return NULL; }
+
   for (;allow_redirects-- && url && !f;) {
     char hostn[256];
     const char* connecthost;
@@ -154,7 +187,6 @@ FILE* http_get(const char* orig_url, const char* extraheader, int require_code, 
     }
     {
       int sfd = connect_to(connecthost, port);
-      int code;
 
       free(port);
 
@@ -162,10 +194,9 @@ FILE* http_get(const char* orig_url, const char* extraheader, int require_code, 
 
       {
 	char buf[1024];
-	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: zsync/%s\r\n%s%s\r\n",
+	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s\r\nAccept-Ranges: bytes\r\nUser-Agent: zsync/%s\r\n%s\r\n",
 		 proxy ? url : p, hostn, VERSION,
-		 extraheader ? extraheader : "",
-		 extraheader ? "\r\n" : ""
+		 ifrange[0] ? ifrange : ""
 		 );
 	if (send(sfd,buf,strlen(buf),0) == -1) {
 	  perror("sendmsg"); close(sfd); break;
@@ -179,16 +210,37 @@ FILE* http_get(const char* orig_url, const char* extraheader, int require_code, 
 	url = get_location_url(f, oldurl);
 	free(oldurl);
 	fclose(f); f = NULL;
-      } else if (code != require_code) {
-	fclose(f); f = NULL;
+      } else if (code == 412) { // Precondition (i.e. if-unmodified-since) failed
+	ifrange[0] = 0;
+	fclose(f); f = NULL; // and go round again without the conditional Range:
+      } else if (code == 200) { // Downloading whole file
+	g = fname ? fopen(fname,"w+") : tmpfile();
+      } else if (code == 206 && fname) { // Had partial content and server confirms not modified
+	g = fopen(fname,"a+");
+      } else if (code == 304) { // Unchanged (if-modified-since was false)
+	g = fopen(tfname,"r");
+      } else {
+	fclose(f); f = NULL; break;
       }
     }
   }
 
-  if (!f)
-    fprintf(stderr,"failed on url %s\n",url ? url : "(missing redirect)");
   if (track_referer)
     *track_referer = url;
+  else free(url);
+
+  if (code == 304) {
+    fclose(f);
+    free(fname);
+    return g;
+  }
+
+  if (!f) {
+    fprintf(stderr,"failed on url %s\n",url ? url : "(missing redirect)");
+    return NULL;
+  }
+
+  if (!g) { fclose(f); perror("fopen"); return NULL; }
 
   {
     size_t len = 0;
@@ -232,9 +284,13 @@ FILE* http_get(const char* orig_url, const char* extraheader, int require_code, 
     }
     fclose(f);
   }
-  if (pfname) *pfname = fname;
-  else { unlink(fname); free(fname); }
   rewind(g);
+
+  if (fname) {
+    rename(fname,tfname);
+    free(fname);
+  }
+
   return g;
 }
 

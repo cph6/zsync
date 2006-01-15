@@ -20,7 +20,7 @@ extern char *referer;
 
 int set_proxy_from_string(const char* s);
 
-FILE* http_get(const char* orig_url, const char* extraheader, int require_code, char** track_referer, char** pfname);
+FILE* http_get(const char* orig_url, char** track_referer, const char* tfname);
 
 struct range_fetch;
 

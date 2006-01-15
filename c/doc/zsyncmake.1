@@ -1,10 +1,10 @@
-.TH "zsyncmake" "1" "0.3.2" "Colin Phipps" "File Transfer"
+.TH "zsyncmake" "1" "0.3.3" "Colin Phipps" "File Transfer"
 .SH "NAME"
 .LP 
 zsyncmake \- Build control file for zsync(1)
 .SH "SYNTAX"
 .LP 
-zsyncmake [ \-Z ] [ \-u \fIurl\fR ] [ \-U \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] [ \-f \fItargetfilename\fR ] \fIfilename\fP
+zsyncmake [ { \-z | \-Z } ] [ \-e ] [ \-C ] [ \-u \fIurl\fR ] [ \-U \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] [ \-f \fItargetfilename\fR ] \fIfilename\fP
 .SH "DESCRIPTION"
 .LP 
 Constructs a metafile for the zsync client program to use to perform partial file downloads. \fIfilename\fR is the file that users wish to downloads; zsyncmake constructs the appropriate metafile and writes \fIfilename\fR.zsync in the current directory.
@@ -28,13 +28,37 @@ Override the default output file name.
 Set the filename to include in the output file (this is what the file will be called when a user finished downloading it).
 .TP 
 \fB\-b\fR \fIblocksize\fR
-Specify the blocksize to the underlying rsync algorithm. A smaller blocksize may be more efficient for files where there are likely to be lots of small, scattered changes between downloads; a larger blocksize may be more efficient for files with larger blocks of contiguous new or old data. This blocksize must be a power of two. The default of 1024 is sensible for most text files/source code; for small files with very scattered changes 512 might do better. For compressed files you should stick to 1024 or 2048 \- zsyncmake may fail for larger block sizes. For larger files, like ISO files, a blocksize of 4096 is recommended.
+Specify the blocksize to the underlying rsync algorithm. A smaller blocksize may be more efficient for files where there are likely to be lots of small, scattered changes between downloads; a larger blocksize is more efficient for files with fewer or less scattered changes. This blocksize must be a power of two. If not specified, zsyncmake chooses one which it thinks is best for this file (currently either 2048 or 4096 depending on file size) - so normally tyou should not need to override the default.
+.TP 
+\fB\-z\fR
+Compress the file to transfer. Note that this overwrites any file called \fIfilename\fP.gz without warning (if you don't give a filename, e.g. because you are reading from stdin, then zsync will use the name supplied with -f, or as a last fallback, zsync-target.gz).
+.TP
+zsync can work with compressed data, and, in most cases where the data is not already compressed, it is more efficient to compress it first. While you can just compress the file to transfer with gzip, if you use this option then zsyncmake will compress the file for you, producing a .gz file which is optimised for zsync. This can be 30% more efficient at download time than compressing with gzip --best - but the compressed file will not be as small at that produced by gzip.
 .TP 
 \fB\-Z\fR
 zsyncmake automatically looks inside gzip compressed files and exports the underlying, uncompressed data to the zsyncmake file. In testing this has proved to provide greater download efficiency. \-Z overrides the default behaviour and treats gzip files as just binary data. Use this if it is essential that the user receives the compressed data (for instance because a cryptographic signature is available only for the compressed data). zsync is typically no use if you specify \-Z, unless the gzip file was compressed with the special \-\-rsync option to make it friendly to differential transfers.
+.TP 
+\fB\-e\fR
+Tells zsyncmake that the client must be able to receive the exact file that was supplied. Without this option, zsyncmake only gives a weaker guarantee - that the client will receive the data it contains (e.g. it might transfer the uncompressed version of a .gz to the client). Note that this still doesn't guarantee that the client will get it - the client could ignore the directives in the zsync file, or might be incapable of exactly reproducing the compression used. But with -e you know that zsyncmake has made it possible to get the exact data - it will exit with an error if it cannot.
+.TP 
+\fB\-C\fR
+Tells zsyncmake not to generate any instructions in the .zsync telling the client to compress the data it receives. This is implied by -z, but this option is here in case you compress a file yourself only for the transfer, but want the client to end up with the uncompressed file (e.g. you are transferring an ISO, which is held compressed on the server, but which the client cannot use unless it is uncompressed). Without -C, zsyncmake will produce directions for the client to compress the file it receives where appropriate; -C is here so you can stop it telling the client to do that.
 .SH "EXAMPLES"
 .LP 
-zsyncmake \-u http://ftp.uk.debian.org/debian/dists/sarge/main/binary\-i386/Packages.gz Packages.gz
+zsyncmake \-C \-u http://ftp.uk.debian.org/debian/dists/sarge/main/binary\-i386/Packages.gz Packages.gz
+.LP
+Note use of -C to save the client compressing the file on receipt; the Debian package system uses the file uncompressed.
+.LP
+zsyncmake \-z my-subversion-dump
+.LP
+In this case there is a large, compressible file to transfer. This creates a gzipped version of the file (optimised for zsync), and a .zsync file. A URL is automatically added assuming that the two files will be served from the same directory on the web server.
+.LP
+zsyncmake \-e \-u http://www.mirrorservice.org/sites/ftp.freebsd.org/pub/FreeBSD/ports/distfiles/zsync-0.2.2.tar.gz zsync-0.2.2.tar.gz
+.LP
+This creates a zsync referring to the named source tarball, which the client
+should download from the given URL. This example is for downloading a source
+tarball for a FreeBSD port, hence \-e is specified so the client will be able
+to match its md5sum.
 
 .SH "AUTHORS"
 .LP 
