@@ -34,7 +34,9 @@ struct zsync_state {
   int hashmask;
   struct hash_entry* blockhashes;
   struct hash_entry** rsum_hash;
+
   struct rsum current_rsum;
+  int skip; /* skip forward on next submit_source_data */
 
   int gotblocks;
   int numranges;
@@ -46,10 +48,15 @@ struct zsync_state {
 
 static inline zs_blockid get_HE_blockid(const struct zsync_state* z, const struct hash_entry* e) { return e - z->blockhashes; }
 
-const struct hash_entry* get_first_hash_entry(struct zsync_state* z, struct rsum r);
-
 void add_to_ranges(struct zsync_state* z, zs_blockid n);
 int already_got_block(struct zsync_state* z, zs_blockid n);
 
 struct hash_entry* calc_hash_entry(void* data, size_t len);
+
+static inline int calc_rhash(const struct zsync_state* z, struct rsum r) { return r.b & z->hashmask; }
+
+static inline const struct hash_entry* __attribute__((pure)) get_first_hash_entry(const struct zsync_state* z, struct rsum r) {
+  return z->rsum_hash[calc_rhash(z, r)];
+}
+
 

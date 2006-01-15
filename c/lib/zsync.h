@@ -46,7 +46,7 @@ int zsync_filehandle(struct zsync_state* z);
 void add_target_block(struct zsync_state* z, zs_blockid b, struct rsum r, void* checksum);
 
 int submit_blocks(struct zsync_state* z, unsigned char* data, zs_blockid bfrom, zs_blockid bto);
-int submit_source_data(struct zsync_state* z, unsigned char* data, size_t len, int current_rsum_valid);
+int submit_source_data(struct zsync_state* z, unsigned char* data, size_t len, long long offset);
 int submit_source_file(struct zsync_state* z, FILE* f);
 
 /* This reads back in data which is already known. */

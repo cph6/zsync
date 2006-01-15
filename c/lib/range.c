@@ -90,7 +90,7 @@ int get_needed_block_ranges(struct zsync_state* z, zs_blockid* r, int max, zs_bl
 
   for (i = 0; i<z->numranges; i++) {
     if (z->ranges[2*i] > r[2*n-1]) continue;
-    if (z->ranges[2*i+1] < from) break;
+    if (z->ranges[2*i+1] < from) continue;
     
     /* Okay, they intersect */
     if (n == 1 && z->ranges[2*i] <= from) { /* Overlaps the start of our window */

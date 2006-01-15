@@ -28,7 +28,7 @@
 
 int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, struct gzblock* zblock, int nzblocks)
 {
-#define MAXRANGES 10
+#define MAXRANGES 100
     long long zbyterange[MAXRANGES*2];
     long long rangestart[MAXRANGES];
     unsigned int zdiscardbits[MAXRANGES];
@@ -103,8 +103,8 @@ int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, str
       }
     }
     {
-      struct range_fetch* rf = range_fetch_start(url, zbyterange, nrange);
-      size_t len;
+      struct range_fetch* rf = range_fetch_start(url);
+      int len;
       unsigned char* buf;
       unsigned char* obuf;
       unsigned char* wbuf;
@@ -115,6 +115,7 @@ int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, str
       long outoffset = -1;
       
       if (!rf) return -1;
+      range_fetch_addranges(rf, zbyterange, nrange);
 
       buf = malloc(4*blocksize);
       if (!buf) { http_down += range_fetch_bytes_down(rf); range_fetch_end(rf); return -1; }
@@ -189,6 +190,7 @@ int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, str
 	  }
 	}
       }
+      if (len < 0) ret = -1;
       if (outoffset != -1) { inflateEnd(&zs); }
       free(wbuf);
       free(obuf);

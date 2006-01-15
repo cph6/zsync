@@ -114,61 +114,92 @@ int submit_blocks(struct zsync_state* z, unsigned char* data, zs_blockid bfrom, 
   return 0;
 }
 
-int submit_source_data(struct zsync_state* z, unsigned char* data, size_t len, int current_rsum_valid) {
+static int check_checksums_on_hash_chain(struct zsync_state* z, const struct hash_entry* e, const char* data, struct rsum r)
+{
+  unsigned char md4sum[CHECKSUM_SIZE];
+  int done_md4 = 0;
+  int got_blocks = 0;
+  
+  for (;e;e = e->next) {
+    zs_blockid id;
+    /* Begin checksum and offer block */
+    /* Should probably be a separate function, but it's too fiddly to transfer all this state about which parts of which buffers we refer to to another place */
+    
+    if (e->r.a != r.a || e->r.b != r.b) continue;
+    
+    id = get_HE_blockid(z,e);
+    
+    if (already_got_block(z, id)) continue;
+    
+    /* We only calculate the MD4 once we need it; but need not do so twice */
+    if (!done_md4) {
+      calc_checksum(&md4sum[0], data, z->blocksize);
+      done_md4 = 1;
+    }
+    
+    /* Now check the strong checksum for this block */
+    if (!memcmp(&md4sum, e->checksum, sizeof e->checksum)) {
+      write_blocks(z, data, id, id);
+      got_blocks++;
+    }
+    
+    /* End checksum and offer block */
+  }
+  return got_blocks;
+}
+
+int submit_source_data(struct zsync_state* z, unsigned char* data, size_t len, long long offset)
+{
   int x = 0;
   struct rsum r;
   register int bs = z->blocksize;
   int got_blocks = 0;
 
-  if (current_rsum_valid) {
+  if (offset) {
     r = z->current_rsum;
-  } else {
-    r = calc_rsum_block(data, bs);
+    x = z->skip;
   }
+  if (x || !offset) {
+    r = calc_rsum_block(data+x, bs);
+  }
+  z->skip = 0;
 
-  while (1) {
+  for (;;) {
+#if 0
+    {
+      struct rsum c = calc_rsum_block(data+x, bs);
+      if (c.a != r.a || c.b != r.b) {
+	fprintf(stderr,"rsum miscalc at %lld\n",offset+x);
+	exit(3);
+      }
+    }
+#endif
     {
       const struct hash_entry* e = get_first_hash_entry(z, r);
       if (e) {
-	unsigned char md4sum[CHECKSUM_SIZE];
-	int done_md4 = 0;
-	
-	for (;e;e = e->next) {
-	  zs_blockid id;
-	  /* Begin checksum and offer block */
-	  /* Should probably be a separate function, but it's too fiddly to transfer all this state about which parts of which buffers we refer to to another place */
-
-	  if (e->r.a != r.a || e->r.b != r.b) continue;
-
-	  id = get_HE_blockid(z,e);
-
-	  if (already_got_block(z, id)) continue;
-
-	  /* We only calculate the MD4 once we need it; but need not do so twice */
-	  if (!done_md4) {
-	    calc_checksum(&md4sum[0], &data[x], bs);
-	    done_md4 = 1;
+	int thismatch = check_checksums_on_hash_chain(z, e, data+x, r);
+	got_blocks += thismatch;
+	if (thismatch) {
+	  x += bs;
+	  if (x+bs > len) {
+	    /* can't calculate rsum for block after this one, because it's not in the buffer. So leave a hint for next time so we kow we need to recalculate */
+	    z->skip = x+bs-len;
+	    return got_blocks;
 	  }
-
-	  /* Now check the strong checksum for this block */
-	  if (!memcmp(&md4sum, e->checksum, sizeof e->checksum)) {
-	    write_blocks(z,&data[x],id,id);
-	    got_blocks++;
-	  }
-
-	  /* End checksum and offer block */
+	  r = calc_rsum_block(data+x, bs);
+	  continue;
 	}
       }
     }
 
-    if (x == len-bs) {
+    if (x+bs == len) {
       z->current_rsum = r;
       return got_blocks;
     }
     
     {
-      unsigned char oc = data[x];
       unsigned char nc = data[x+bs];
+      unsigned char oc = data[x];
       UPDATE_RSUM(r.a,r.b,oc,nc,z->blockshift);
     }
     x++;
@@ -179,26 +210,31 @@ int submit_source_file(struct zsync_state* z, FILE* f)
 {
   register int bufsize = z->blocksize*16;
   char *buf = malloc(bufsize);
-  int first = 1;
   int got_blocks = 0;
+  long long in = 0;
+  int in_mb = 0;
 
   if (!buf) return 0;
 
   while (!feof(f)) {
     size_t len;
-    if (first) {
+    long long start_in = in;
+
+    if (!in) {
       len = fread(buf,1,bufsize,f);
-      first = 0;
       if (len < z->blocksize) return 0;
+      in += len;
     } else {
       memcpy(buf, buf + (bufsize - z->blocksize), z->blocksize);
-      len = z->blocksize + fread(buf,1,bufsize - z->blocksize,f);
+      in += bufsize - z->blocksize;
+      len = z->blocksize + fread(buf + z->blocksize,1,bufsize - z->blocksize,f);
     }
     if (ferror(f)) {
       perror("fread");
       return got_blocks;
     }
-    got_blocks += submit_source_data(z,buf,len,!first);
+    got_blocks += submit_source_data(z,buf,len,start_in);
+    if (in_mb != in / 1000000) { in_mb = in / 1000000; fputc('*',stderr); }
   }
   return got_blocks;
 }

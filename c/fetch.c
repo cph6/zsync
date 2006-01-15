@@ -26,31 +26,37 @@
 
 int fetch_remaining_blocks_http(struct zsync_state* z, const char* url)
 {
-#define MAXRANGES 10
-    long long byterange[MAXRANGES*2];
-    int nrange;
-    int ret = 0;
+  struct range_fetch* rf = range_fetch_start(url);
+  int nrange;
+  int lowwatermark = 0;
+  int ret = 0;
+  int lastmegsdown = 0;
 
+  if (!rf) return -1;
+  fprintf(stderr,"downloading from %s:",url);
+
+  do {
     {
+#define MAXRANGES 100
       zs_blockid blrange[MAXRANGES*2];
+      long long byterange[MAXRANGES*2];
       int i;
 
-      nrange = get_needed_block_ranges(z, &blrange[0], MAXRANGES, 0, 0x7fffffff);
-      if (nrange == 0) return 0;
-
+      nrange = get_needed_block_ranges(z, &blrange[0], MAXRANGES, lowwatermark, 0x7fffffff);
       for (i=0; i<nrange; i++) {
 	byterange[2*i] = blrange[2*i]*blocksize;
 	byterange[2*i+1] = (blrange[2*i+1]+1)*blocksize-1;
+	lowwatermark = blrange[2*i+1]+1; /* Don't queue these again */
       }
+      
+      if (nrange)
+        range_fetch_addranges(rf, byterange, nrange);
     }
     {
-      struct range_fetch* rf = range_fetch_start(url, byterange, nrange);
-      size_t len;
+      int len;
       unsigned char* buf;
       long long offset;
       
-      if (!rf) return -1;
-
       buf = malloc(4*blocksize);
       if (!buf) { http_down += range_fetch_bytes_down(rf); range_fetch_end(rf); return -1; }
 
@@ -64,11 +70,22 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url)
 	  ret |= submit_blocks(z, buf, offset/blocksize, (offset+len-1)/blocksize);
 	} else
 	  fprintf(stderr,"got misaligned data? %lld\n",offset);
+
+	if (nrange) break;
+	{
+	  int md = range_fetch_bytes_down(rf)/1000000;
+	  if (md != lastmegsdown) {
+	    lastmegsdown = md; fputc('.',stderr);
+	  }
+	}
       }
+      if (len == -1) ret = -1;
       free(buf);
-      http_down += range_fetch_bytes_down(rf);
-      range_fetch_end(rf);
     }
-    return ret;
+  } while (!ret && nrange);
+  http_down += range_fetch_bytes_down(rf);
+  range_fetch_end(rf);
+  fputc('\n',stderr);
+  return ret;
 }
 

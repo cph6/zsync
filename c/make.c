@@ -17,7 +17,6 @@
  *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -260,6 +259,7 @@ void fcopy(FILE* fin, FILE* fout)
 
 int main(int argc, char** argv) {
   FILE* tf = tmpfile();
+  FILE* instream;
   char * fname = NULL;
   char ** url = NULL;
   int nurls = 0;
@@ -271,7 +271,7 @@ int main(int argc, char** argv) {
     while ((opt = getopt(argc,argv,"o:b:u:Z")) != -1) {
       switch (opt) {
       case 'o':
-	outfname = optarg;
+	outfname = strdup(optarg);
 	break;
       case 'b':
 	blocksize = atoi(optarg);
@@ -287,16 +287,18 @@ int main(int argc, char** argv) {
       }
     }
     if (optind == argc-1) {
-      fclose(stdin);
-      stdin = fopen(argv[optind],"r");
-      if (!stdin) { perror("open"); exit(2); }
+      instream = fopen(argv[optind],"r");
+      if (!instream) { perror("open"); exit(2); }
       fname = basename(argv[optind]);
+    }
+    else {
+      instream = stdin;
     }
   }
 
   SHA1_Init(&shactx);
 
-  read_stream_write_blocksums(stdin,tf);
+  read_stream_write_blocksums(instream,tf);
 
   if (fname && zmapentries) {
     /* Remove any trailing .gz, as it is the uncompressed file being transferred */
@@ -305,11 +307,13 @@ int main(int argc, char** argv) {
     if (!strcmp(p,".tgz")) strcpy(p,".tar");
   }
   if (!outfname && fname) {
-    asprintf(&outfname,"%s.zsync",fname);
+    outfname = malloc(strlen(fname) + 10);
+    sprintf(outfname,"%s.zsync",fname);
   }
   if (outfname) {
     fout = fopen(outfname,"w");
     if (!fout) { perror("open"); exit(2); }
+    free(outfname);
   } else {
     fout = stdout;
   }

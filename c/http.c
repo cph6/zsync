@@ -29,11 +29,16 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-int connect_to(const char* node, const char* service)
+#include "http.h"
+
+int connect_to(const char* node, unsigned short p)
 {
   struct addrinfo hint;
   struct addrinfo *ai;
   int rc;
+  const char *service = "http";
+
+  if (p == 8080) service = "webcache";
 
   bzero(&hint,sizeof hint);
   hint.ai_family = AF_UNSPEC;
@@ -59,31 +64,42 @@ int connect_to(const char* node, const char* service)
   }
 }
 
-FILE* http_get_stream(int fd, const char* url, const char* hostname, const char* extraheader, int* code)
+FILE* http_get_stream(int fd, int* code)
 {
-  {
-    FILE* f = fdopen(fd, "r+");
-
-    fprintf(f, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: zsync %s\r\n%s%s\r\n",
-	    url, hostname, VERSION,
-	    extraheader ? extraheader : "",
-	    extraheader ? "\r\n" : ""
-	    );
-    fflush(f);
-
-    {
-      char buf[256];
-      char *p;
-
-      if (fgets(buf,sizeof(buf),f) == NULL || memcmp(buf, "HTTP/1", 6) != 0 || (p = strchr(buf, ' ')) == NULL) {
-	*code = 0; fclose(f); return NULL;
-      }
-
-      *code = atoi(++p);
-
-      return f;
-    }
+  FILE* f = fdopen(fd, "r");
+  char buf[256];
+  char *p;
+  
+  if (fgets(buf,sizeof(buf),f) == NULL || memcmp(buf, "HTTP/1", 6) != 0 || (p = strchr(buf, ' ')) == NULL) {
+    *code = 0; fclose(f); return NULL;
   }
+  
+  *code = atoi(++p);
+  
+  return f;
+}
+
+char* get_host_port(const char* url, char* hostn, int hnlen, int* port)
+{
+  char *p;
+  char *q = strstr(url,"://");
+  /* Must parse the url to get the hostname */
+  if (!q) return NULL;
+  q+=3;
+  
+  p = strchr(q,':');
+  if (!p) { *port = 80; p = strchr(q,'/'); }
+  else { *port = atoi(p+1); }
+  
+  if (!p) return NULL;
+  
+  if (p-q < hnlen-1) {
+    memcpy(hostn,q,p-q);
+    hostn[p-q] = 0;
+  }
+  
+  if (*p == ':') p = strchr(p,'/');
+  return p;
 }
 
 char* get_location_url(FILE* f) {
@@ -105,33 +121,31 @@ FILE* http_open(const char* orig_url, const char* extraheader, int require_code)
     char *p;
     int port;
 
+    if ( (p = get_host_port(url,hostn,sizeof(hostn),&port)) == NULL) break;
     if (!proxy) {
-      /* Must parse the url to get the hostname */
-      if (memcmp(url,"http://",7)) break;
-      
-      p = strchr(url+7,':');
-      if (!p) { port = 80; p = strchr(url+7,'/'); }
-      else { port = atoi(p+1); }
-
-      if (!p) break;
-
-      memcpy(hostn,url+7,p-&url[7]);
-      hostn[p-&url[7]] = 0;
       connecthost = hostn;
-
-      if (*p == ':') p = strchr(p,'/');
-      if (!p) break;
     } else {
       connecthost = proxy;
       port = pport;
     }
     {
-      int sfd = connect_to(connecthost, proxy ? "webcache" : "http");
+      int sfd = connect_to(connecthost, port);
       int code;
 
       if (sfd == -1) break;
 
-      f = http_get_stream(sfd, proxy ? url : p, hostn, extraheader, &code);
+      {
+	char buf[1024];
+	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: zsync %s\r\n%s%s\r\n",
+		 proxy ? url : p, hostn, VERSION,
+		 extraheader ? extraheader : "",
+		 extraheader ? "\r\n" : ""
+		 );
+	if (send(sfd,buf,strlen(buf),0) == -1) {
+	  perror("sendmsg"); close(sfd); break;
+	}
+      }
+      f = http_get_stream(sfd, &code);
 
       if (!f) break;
       if (code == 301 || code == 302) {
@@ -158,93 +172,247 @@ FILE* http_open(const char* orig_url, const char* extraheader, int require_code)
 
 struct range_fetch {
   char* boundary;
+  char* url;
+  char hostn[256];
+
+  char* chost;
+  int cport;
+
   size_t block_left;
   long long offset;
-  FILE* stream;
+  int sd;
+  char buf[4096];
+  int buf_start, buf_end;
   long long bytes_down;
+  int server_close;
+
+  long long* ranges_todo;
+  int nranges;
+  int rangesdone;
 };
+
+static int get_more_data(struct range_fetch* rf) 
+{
+  if (rf->buf_start) {
+    memmove(rf->buf, &(rf->buf[rf->buf_start]), rf->buf_end - rf->buf_start);
+    rf->buf_end -= rf->buf_start; rf->buf_start = 0;
+  }
+  {
+    int n = read(rf->sd, &(rf->buf[rf->buf_end]), sizeof(rf->buf) - rf->buf_end);
+    if (n < 0) {
+      perror("read");
+    } else {
+      rf->bytes_down += n;
+      rf->buf_end += n;
+    }
+    return n;
+  }
+}
 
 static char* rfgets(char* buf, size_t len, struct range_fetch* rf) 
 {
-  char *p = fgets(buf,len,rf->stream);
-  if (p) rf->bytes_down += strlen(p);
-  return p;
-}
+  char *p;
 
-struct range_fetch* range_fetch_start(const char* orig_url, long long* ranges, int nranges)
-{
-  struct range_fetch* rf = malloc(sizeof(struct range_fetch));
+  while (1) {
+    char *bufstart = &(rf->buf[rf->buf_start]);
+    p = memchr(bufstart, '\n', rf->buf_end - rf->buf_start);
 
-  if (!rf) return NULL;
-
-  {
-    char rangestring[512] = { "Accept-Ranges: bytes\r\nRange: bytes=" };
-    int i;
-
-    for (i=0; i<nranges; i++) {
-      int l = strlen(rangestring);
-      snprintf(rangestring + l, sizeof(rangestring)-l, "%lld-%lld%s", ranges[2*i], ranges[2*i+1], (i < nranges-1) ? "," : "");
-    }
-
-    rf->stream = http_open(orig_url, rangestring, 206);
-    if (!rf->stream) {
-      free(rf); return NULL;
+    if (!p) {
+      int n = get_more_data(rf);
+      if (n <= 0) { /* If cut off, return the rest of the buffer */
+	p = &(rf->buf[rf->buf_end]);
+      }
+    } else p++; /* Step past \n */
+    
+    if (p) {
+      len--; /* allow for trailing \0 */
+      if (len > p-bufstart) len = p-bufstart;
+      memcpy(buf, bufstart, len);
+      buf[len] = 0;
+      rf->buf_start += len;
+      return buf;
     }
   }
+}
+
+struct range_fetch* range_fetch_start(const char* orig_url)
+{
+  struct range_fetch* rf = malloc(sizeof(struct range_fetch));
+  char *p;
+
+  if (!rf) return NULL;
+  p = get_host_port(orig_url, rf->hostn, sizeof(rf->hostn), &(rf->cport));
+  if (!p) { free(rf); return NULL; }
+  
+  if (proxy) {
+    // URL must be absolute; throw away cport and get port for proxy
+    rf->url = strdup(orig_url);
+    rf->cport = pport;
+  } else {
+    // cport already set; set url to relative part and chost to the target
+    rf->url = strdup(p);
+    rf->chost = rf->hostn;
+  }
+
   rf->block_left = 0;
   rf->bytes_down = 0;
   rf->boundary = NULL;
-  /* From here, rf is valid and must be freed accordingly */
-  {
-    while (!feof(rf->stream)) {
-      char buf[512];
-      char *p;
 
-      if (rfgets(buf,sizeof(buf),rf) == NULL) break;
-      if (buf[0] == '\r' || buf[0] == '\0') {
-	/* End of headers. We are happy provided we got the block boundary */
-	if ((rf->boundary || rf->block_left) && !(rf->boundary && rf->block_left)) return rf;
-	break;
-      }
-      p = strstr(buf,": ");
-      if (!p) break;
-      *p = 0; p+=2;
-      /* buf is the header name, p the value */
-      if (!strcmp(buf,"Content-Range")) {
-	unsigned long long from,to;
-	sscanf(p,"bytes %llu-%llu/",&from,&to);
-	if (from <= to) {
-	  rf->block_left = to + 1 - from;
-	  rf->offset = from;
-	}
-      }
-      if (!strcasecmp(buf,"Content-Type") && !strncasecmp(p,"multipart/byteranges",20)) {
-	char *q = strstr(p,"boundary=");
-	if (!q) break;
-	rf->boundary = strdup(q+9); /* length of the above */
-	q = rf->boundary + strlen(rf->boundary)-1;
+  rf->buf_start = rf->buf_end = 0;
 
-	while (*q == '\r' || *q == ' ') *q-- = '\0';
-      }
-    }
-    fclose(rf->stream);
-    free(rf);
-  }
-  return NULL;
+  rf->sd = -1;
+
+  rf->ranges_todo = NULL; rf->nranges = rf->rangesdone = 0;
+
+  return rf;
 }
 
-int get_range_block(struct range_fetch* rf, long long* offset, unsigned char* data, size_t dlen) {
-  {
-    char buf[512];
-    if (!rf->block_left && rf->boundary) {
+void range_fetch_addranges(struct range_fetch* rf, long long* ranges, int nranges)
+{
+  int existing_ranges = rf->nranges - rf->rangesdone;
+  long long* nr = malloc(2*sizeof(*ranges)*(nranges + existing_ranges));
+  
+  if (!nr) return;
+  /* Copy existing queue over */
+  memcpy(nr,&(rf->ranges_todo[2*rf->rangesdone]),2*sizeof(*ranges)*existing_ranges);
+  /* And append the new stuff */
+  memcpy(&nr[2*existing_ranges], ranges, 2*sizeof(*ranges)*nranges);
+
+  rf->rangesdone = 0; rf->nranges = existing_ranges + nranges;
+  free(rf->ranges_todo);
+  rf->ranges_todo = nr;
+}
+
+static void range_fetch_connect(struct range_fetch* rf)
+{
+  rf->sd = connect_to(rf->chost, rf->cport);
+  if (rf->sd == -1) perror("connect");
+}
+
+static void range_fetch_getmore(struct range_fetch* rf)
+{
+  char request[2048];
+  int l;
+  int max_range_per_request = 20;
+  
+  /* Only if there's stuff queued to get */
+  if (rf->rangesdone == rf->nranges) return;
+
+  snprintf(request,sizeof(request), 
+	   "GET %s HTTP/1.1\r\n"
+	   "User-Agent: zsync/" VERSION "\r\n"
+	   "Host: %s\r\n"
+	   "Accept-Ranges: bytes\r\nRange: bytes=",
+	   rf->url, rf->hostn);
+  
+  /* The for loop here is just a sanity check, lastrange is the real loop control */
+  for (; rf->rangesdone < rf->nranges; ) {
+    int i = rf->rangesdone;
+    int lastrange = 0;
+
+    l = strlen(request);
+    if (l > 1200 || !(--max_range_per_request) || i == rf->nranges-1) lastrange = 1;
+    
+    snprintf(request + l, sizeof(request)-l, "%lld-%lld%s", rf->ranges_todo[2*i], rf->ranges_todo[2*i+1], lastrange ? "" : ",");
+
+    rf->rangesdone++;
+    if (lastrange) break;
+  }
+  l = strlen(request);
+  snprintf(request + l, sizeof(request)-l, "\r\n%s\r\n", rf->rangesdone == rf->nranges ? "Connection: close\r\n" : "");
+  
+  if (send(rf->sd,request,strlen(request),0) == -1) {
+    perror("send");
+  }
+}
+
+int range_fetch_read_http_headers(struct range_fetch* rf)
+{
+  char buf[512];
+
+  rf->server_close = 0;
+  { /* read status line */
+    char *p;
+    int c;
+
+    if (rfgets(buf,sizeof(buf),rf) == NULL || memcmp(buf, "HTTP/1", 6) != 0 || (p = strchr(buf, ' ')) == NULL) {
+      return -1;
+    }
+    if ((c = atoi(p+1)) != 206) {
+      fprintf(stderr,"bad status code %d\n",c);
+      return -1;
+    }
+    if (*(p-1) == '0') { /* HTTP/1.0 server? */
+      rf->server_close = 1;
+    }
+  }
+
+  while (1) {
+    char *p;
+    
+    if (rfgets(buf,sizeof(buf),rf) == NULL) return -1;
+    if (buf[0] == '\r' || buf[0] == '\0') {
+      /* End of headers. We are happy provided we got the block boundary */
+      if ((rf->boundary || rf->block_left) && !(rf->boundary && rf->block_left)) return 0;
+      break;
+    }
+    p = strstr(buf,": ");
+    if (!p) break;
+    *p = 0; p+=2;
+      /* buf is the header name, p the value */
+    if (!strcmp(buf,"Content-Range")) {
+      unsigned long long from,to;
+      sscanf(p,"bytes %llu-%llu/",&from,&to);
+      if (from <= to) {
+	rf->block_left = to + 1 - from;
+	rf->offset = from;
+      }
+    }
+    if (!strcmp(buf,"Connection") && !strcmp(buf,"close")) {
+      rf->server_close = 1;
+    }
+    if (!strcasecmp(buf,"Content-Type") && !strncasecmp(p,"multipart/byteranges",20)) {
+      char *q = strstr(p,"boundary=");
+      if (!q) break;
+      rf->boundary = strdup(q+9); /* length of the above */
+      q = rf->boundary + strlen(rf->boundary)-1;
+      
+      while (*q == '\r' || *q == ' ' || *q == '\n') *q-- = '\0';
+    }
+  }
+  return -1;
+}
+
+int get_range_block(struct range_fetch* rf, long long* offset, unsigned char* data, size_t dlen)
+{
+  size_t bytes_to_caller = 0;
+
+  if (!rf->block_left) {
+check_boundary:
+    if (!rf->boundary) {
+      if (rf->sd == -1) {
+	range_fetch_connect(rf);
+	if (rf->sd == -1) return -1;
+	range_fetch_getmore(rf);
+      }
+      if (range_fetch_read_http_headers(rf) == -1) {
+	return -1;
+      }
+      if (!rf->server_close) range_fetch_getmore(rf);
+    }
+    if (rf->boundary) {
+      char buf[512];
       if (!rfgets(buf,sizeof(buf),rf)) return 0;
       /* Get, hopefully, boundary marker */
       if (!rfgets(buf,sizeof(buf),rf)) return 0;
       if (buf[0] != '-' || buf[1] != '-') return 0;
       //      fprintf(stderr,"boundary %s comparing to %s\n",rf->boundary,buf);
-      if (memcmp(&buf[2],rf->boundary,strlen(rf->boundary))) return 0;
+      if (memcmp(&buf[2],rf->boundary,strlen(rf->boundary))) {
+	fprintf(stderr,"got bad block boundary: %s != %s",rf->boundary, buf);
+	return -1; /* This is an error now */
+      }
       /* Look for last record marker */
-      if (buf[2+strlen(rf->boundary)] == '-') return 0;
+      if (buf[2+strlen(rf->boundary)] == '-') { free(rf->boundary); rf->boundary = NULL; goto check_boundary; }
       
       for(;buf[0] != '\r' && buf[0] != '\n' && buf[0] != '\0';) {
 	int from, to;
@@ -257,18 +425,31 @@ int get_range_block(struct range_fetch* rf, long long* offset, unsigned char* da
   }
   /* Now the easy bit - we are reading a block */
   if (!rf->block_left) return 0;
-  {
-    size_t rl = rf->block_left;
-    if (rl > dlen) rl = dlen;
-    rl = fread(data, 1, rl, rf->stream);
-    if (rl <= 0) return 0;
-    rf->bytes_down += rl;
+  *offset = rf->offset;
 
-    /* Successful read. Update the state fields, and return the offset and length to the caller. */
-    if (offset) *offset = rf->offset;
+  for (;;) {
+    size_t rl = rf->block_left;
+    int n = get_more_data(rf);
+
+    /* We want to send rf->block_left to the caller, but we may have less in the buffer, and they may have less buffer space, so reduce appropriately */
+    if (rl > dlen) rl = dlen;
+    if (rf->buf_end - rf->buf_start < rl)
+      rl = rf->buf_end - rf->buf_start;
+
+    if (!rl) {
+      return bytes_to_caller;
+    }
+
+    /* Copy as much as we can to their buffer, freeing space in rf->buf */
+    memcpy(data, &(rf->buf[rf->buf_start]), rl);
+    rf->buf_start += rl; /* Track pos in our buffer... */
+    data += rl; dlen -= rl; /* ...and caller's */
+    bytes_to_caller += rl; /* ...and the return value */
+
+    /* Keep track of our location in the stream */
     rf->block_left -= rl;
     rf->offset += rl;
-    return rl;
+
   }
 }
 
@@ -276,7 +457,8 @@ long long range_fetch_bytes_down(const struct range_fetch* rf)
 { return rf->bytes_down; }
 
 void range_fetch_end(struct range_fetch* rf) {
-  if (rf->stream) fclose(rf->stream);
+  if (rf->sd) close(rf->sd);
+  free(rf->ranges_todo);
   free(rf->boundary);
   free(rf);
 }

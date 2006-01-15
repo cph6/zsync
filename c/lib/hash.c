@@ -25,12 +25,6 @@
 #include "zsync.h"
 #include "internal.h"
 
-static inline int calc_rhash(struct zsync_state* z, struct rsum r) { return r.b & z->hashmask; }
-
-const struct hash_entry* get_first_hash_entry(struct zsync_state* z, struct rsum r) {
-  return z->rsum_hash[calc_rhash(z, r)];
-}
-
 void add_target_block(struct zsync_state* z, zs_blockid b, struct rsum r, void* checksum)
 {
  if (b < z->blocks) {

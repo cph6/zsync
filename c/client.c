@@ -49,40 +49,8 @@ long known_blocks;
 
 #endif
 
-#ifdef HAVE_MMAP
-#include <sys/mman.h>
-
-int load_file_mmap(struct zsync_state* z, const char* path) {
-  int fh = open(path,O_RDONLY);
-  void *m;
-  off_t len;
-  
-  if (fh == -1)
-    return -1;
-  len = lseek(fh, 0, SEEK_END);
-  if (len == -1) {
-    close(fh); return -1;
-  }
-  m = mmap(NULL, len, PROT_READ, MAP_SHARED, fh, 0);
-  if (!m) {
-    close(fh);
-    return -1;
-  }
-  /* Might as well tell the kernel what we're up to */
-  madvise(m, len, MADV_SEQUENTIAL);
-
-  known_blocks += submit_source_data(z, m, len, 0);
-  munmap(m, len);
-
-  if (close(fh) != 0) { perror("close"); return -1; }
-  return 0;
-}
-#endif
-
 void read_seed_file(struct zsync_state* z, const char* fname) {
-#ifdef HAVE_MMAP
-  if (load_file_mmap(z, fname))
-#endif
+  fprintf(stderr,"reading seed file %s: ",fname);
   {
     /* mmap failed, try streaming it */
     FILE* f = fopen(fname,"r");
@@ -95,6 +63,7 @@ void read_seed_file(struct zsync_state* z, const char* fname) {
       }
     }
   }
+  fputc('\n',stderr);
 }
 
 int blocksize;
@@ -110,7 +79,7 @@ char* sha1sum;
 
 static void** append_ptrlist(int *n, void** p, void* a) {
   if (!a) return p;
-  p = realloc(p,*n * sizeof *p);
+  p = realloc(p,(*n + 1) * sizeof *p);
   if (!p) { fprintf(stderr,"out of memory\n"); exit(1); }
   p[*n] = a;
   (*n)++;
@@ -153,7 +122,8 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
 	    char *s = strdup(source_name);
 	    char *t = strrchr(s,'/');
 	    char *u;
-	    *t++ = 0;
+	    if (t) *t++ = 0;
+	    else t = s;
 	    u = t;
 	    while (isalnum(*u)) { u++; }
 	    *u = 0;
@@ -259,7 +229,7 @@ int fetch_remaining_blocks(struct zsync_state* zs)
   zs_blockid blrange[2];
   
   /* Use get_needed_block_ranges with a wide range and a dummy storage area. If we get at least once range, there is still data to transfer. */
-  while (get_needed_block_ranges(zs, &blrange[0], 2, 0, 0x7fffffff) != 0) {
+  while (get_needed_block_ranges(zs, &blrange[0], 1, 0, 0x7fffffff) != 0) {
     char **ptryurl = NULL;
     int zfetch = 0;
 
@@ -379,6 +349,7 @@ int main(int argc, char** argv) {
 
   {
     int i;
+
     for (i=0; i<nseedfiles; i++) {
       read_seed_file(zs, seedfiles[i]);
     }
@@ -387,6 +358,14 @@ int main(int argc, char** argv) {
     }
     if (!access(temp_file,R_OK)) {
       read_seed_file(zs, temp_file);
+    }
+    if (!known_blocks) {
+      fputs("No relevent local data found - I would have to download the whole file. You should specify the local file is the old version of the file to download with -i (you might have to decompress it with gzip -d first). Or you just really have no data to help download the file - in which case use wget :-)",stderr);
+      exit(3);
+    } else {
+      zs_blockid blocks;
+      blocks = (filelen + blocksize - 1)/blocksize;
+      fprintf(stderr,"%d known/%d total\n",known_blocks,blocks);
     }
   }
   { /* Get the working file from libzsync */
