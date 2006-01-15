@@ -1,3 +1,7 @@
+Changes in 0.4.3
+- make -s suppress summary info too
+- add HTTP authentication support
+
 Changes in 0.4.2
 - fix CAN-2005-1849 for embedded zlib
 - obey -s flag
