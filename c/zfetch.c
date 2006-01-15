@@ -200,6 +200,7 @@ int fetch_remaining_blocks_zlib_http(struct zsync_state* z, const char* url, str
       http_down += range_fetch_bytes_down(rf);
       range_fetch_end(rf);
     }
+    fputc('\n',stderr);
     return ret;
 }
 

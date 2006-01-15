@@ -271,10 +271,13 @@ int main(int argc, char** argv) {
 
   {
     int opt;
-    while ((opt = getopt(argc,argv,"o:b:u:U:Z")) != -1) {
+    while ((opt = getopt(argc,argv,"o:f:b:u:U:Z")) != -1) {
       switch (opt) {
       case 'o':
 	outfname = strdup(optarg);
+	break;
+      case 'f':
+	fname = strdup(optarg);
 	break;
       case 'b':
 	blocksize = atoi(optarg);
@@ -294,10 +297,10 @@ int main(int argc, char** argv) {
       }
     }
     if (optind == argc-1) {
-      instream = fopen(argv[optind],"r");
+      instream = fopen(argv[optind],"rb");
       if (!instream) { perror("open"); exit(2); }
       infname = strdup(argv[optind]);
-      fname = basename(argv[optind]);
+      if (!fname) fname = basename(argv[optind]);
     }
     else {
       instream = stdin;
@@ -311,15 +314,17 @@ int main(int argc, char** argv) {
   if (fname && zmapentries) {
     /* Remove any trailing .gz, as it is the uncompressed file being transferred */
     char *p = strrchr(fname,'.');
-    if (!strcmp(p,".gz")) *p = 0;
-    if (!strcmp(p,".tgz")) strcpy(p,".tar");
+    if (p) {
+      if (!strcmp(p,".gz")) *p = 0;
+      if (!strcmp(p,".tgz")) strcpy(p,".tar");
+    }
   }
   if (!outfname && fname) {
     outfname = malloc(strlen(fname) + 10);
     sprintf(outfname,"%s.zsync",fname);
   }
   if (outfname) {
-    fout = fopen(outfname,"w");
+    fout = fopen(outfname,"wb");
     if (!fout) { perror("open"); exit(2); }
     free(outfname);
   } else {
@@ -327,7 +332,7 @@ int main(int argc, char** argv) {
   }
 
   /* Okay, start writing the zsync file */
-  fprintf(fout,"zsync: " VERSION "\n");
+  fprintf(fout,"zsync: " VERSION "\nMin-Version: 0.0.5\n");
   if (fname) fprintf(fout,"Filename: %s\n",fname);
   fprintf(fout,"Blocksize: %d\n",blocksize);
   fprintf(fout,"Length: %lld\n",len);

@@ -1,4 +1,4 @@
-zsync 0.0.4
+zsync 0.0.5
 ===========
 
 zsync is a file transfer program. It allows you to download a file from a
@@ -102,7 +102,6 @@ it if you mail the mailing list above if you have general questions about
 zsync). It is copyright (C) 2004 Colin Phipps. zsync is made available under
 the GNU General Public License - see the file COPYING for details.
 
-zsync is based on the rsync algorithm, by Andrew Tridgell; and there is a
-little of his code from rsync included in zsync (lib/mdfour.c). zsync also
-includes code from zlib - see zlib/README for details.
+zsync is based on the rsync algorithm, by Andrew Tridgell. zsync also includes
+code from zlib - see zlib/README for details.
 

@@ -6,12 +6,14 @@ system. These are mostly generic instructions on how to use the normal
 configure/make/gcc tools to build zsync - apart from the one paragraph below,
 nothing else is specific to zsync here.
 
-   zsync uses the crypto library from OpenSSL. This is used to provide and
-verify SHA-1 checksums on downloaded files. If your OS comes with OpenSSL, you
-should install the OpenSSL development headers (usually in a package called
-openssl-devel or libssl-dev or something of that kind). zsync will compile
-without OpenSSL - but you lose the signature verification, and zsync will warn
-you about this.
+   zsync uses the crypto library from OpenSSL. You will have to have the
+library and development headers installed. If these are not installed in /usr
+or /usr/local (most Linux distributions and FreeBSD include them here, but not
+the commercial Unix versions) then the configure script should find it
+automatically. Otherwise you must specify extra flags to the configure script
+to tell it the location of the library files, such as:
+
+CFLAGS="-I/usr/local/ssl/lib -L/usr/local/ssl/lib" ./configure
 
    The `configure' shell script attempts to guess correct values for
 various system-dependent variables used during compilation.  It uses
@@ -40,9 +42,8 @@ The simplest way to compile this package is:
      Running `configure' takes awhile.  While running, it prints some
      messages telling which features it is checking for. If you see the
      message "checking for SHA1_Init in -lcrypto... no" it means that
-     configure was unable to find your OpenSSL headers - zsync will still
-     be compiled, but without support for checksum verification on the
-     downloaded file.
+     configure was unable to find your OpenSSL headers - you will need to 
+     set the path to OpenSSL as described above.
 
   2. Type `make' to compile the package.
 

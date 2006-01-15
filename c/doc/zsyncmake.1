@@ -4,7 +4,7 @@
 zsyncmake \- Build control file for zsync(1)
 .SH "SYNTAX"
 .LP 
-zsyncmake [ \-Z ] [ \-u \fIurl\fR ] [ \-U \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] \fIfilename\fP
+zsyncmake [ \-Z ] [ \-u \fIurl\fR ] [ \-U \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] [ \-f \fItargetfilename\fR ] \fIfilename\fP
 .SH "DESCRIPTION"
 .LP 
 Constructs a metafile for the zsync client program to use to perform partial file downloads. \fIfilename\fR is the file that users wish to downloads; zsyncmake constructs the appropriate metafile and writes \fIfilename\fR.zsync in the current directory.
@@ -23,6 +23,9 @@ Specifies a URL corresponding to the decompressed content of the file (only appl
 .TP 
 \fB\-o\fR \fIoutputfile\fR
 Override the default output file name.
+.TP 
+\fB\-f\fR \fIfilename\fR
+Set the filename to include in the output file (this is what the file will be called when a user finished downloading it).
 .TP 
 \fB\-b\fR \fIblocksize\fR
 Specify the blocksize to the underlying rsync algorithm. A smaller blocksize may be more efficient for files where there are likely to be lots of small, scattered changes between downloads; a larger blocksize may be more efficient for files with larger blocks of contiguous new or old data. This blocksize must be a power of two \- don't use anything other than 512, 1024 or 2048 unless you know what you are doing (although in that case you probably shouldn't even think of changing it anyway :\-).

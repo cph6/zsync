@@ -25,12 +25,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-
 #include <unistd.h>
+
+#include <openssl/md4.h>
 
 #include "zsync.h"
 #include "internal.h"
-#include "mdfour.h"
 
 #define UPDATE_RSUM(a, b, oldc, newc, bshift) do { (a) += ((unsigned char)(newc)) - ((unsigned char)(oldc)); (b) += (a) - ((oc) << (bshift)); } while (0)
 
@@ -54,11 +54,7 @@ struct rsum  __attribute__((pure)) calc_rsum_block(const unsigned char* data, si
 
 void calc_checksum(unsigned char *c, const unsigned char* data, size_t len)
 {
-  struct mdfour MD;
-  
-  mdfour_begin(&MD);
-  mdfour_update(&MD, data, len);
-  mdfour_result(&MD, c);
+  MD4(data,len,c);
 }
 
 static void write_blocks(struct zsync_state* z, unsigned char* data, zs_blockid bfrom, zs_blockid bto)
@@ -225,7 +221,7 @@ int submit_source_data(struct zsync_state* z, unsigned char* data, size_t len, l
 int submit_source_file(struct zsync_state* z, FILE* f)
 {
   register int bufsize = z->blocksize*16;
-  char *buf = malloc(bufsize);
+  char *buf = malloc(bufsize + z->blocksize);
   int got_blocks = 0;
   long long in = 0;
   int in_mb = 0;
@@ -246,12 +242,16 @@ int submit_source_file(struct zsync_state* z, FILE* f)
       len = z->blocksize + fread(buf + z->blocksize,1,bufsize - z->blocksize,f);
     }
     if (ferror(f)) {
-      perror("fread");
+      perror("fread"); free(buf);
       return got_blocks;
+    }
+    if (feof(f)) { /* 0 pad to complete a block */
+      memset(buf+len,0,z->blocksize); len += z->blocksize;
     }
     got_blocks += submit_source_data(z,buf,len,start_in);
     if (in_mb != in / 1000000) { in_mb = in / 1000000; fputc('*',stderr); }
   }
+  free(buf);
   return got_blocks;
 }
 

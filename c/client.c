@@ -17,7 +17,6 @@
  *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,6 +112,15 @@ int read_zsync_control_stream(FILE* f, struct zsync_state** z, const char* sourc
       *p++ = 0;
       p++;
       if (!strcmp(buf, "zsync")) {
+	if (!strcmp(p,"0.0.4")) {
+	  fprintf(stderr,"This version of zsync is not compatible with zsync 0.0.4 streams.\n");
+	  exit(3);
+	}
+      } else if (!strcmp(buf, "Min-Version")) {
+	if (strcmp(p,VERSION) > 0) {
+	  fprintf(stderr,"control file indicates that zsync-%s or better is required\n",p);
+	  exit(3);
+	}
       } else if (!strcmp(buf, "Length")) {
 	filelen = atol(p);
       } else if (!strcmp(buf, "Filename")) {
@@ -359,8 +367,11 @@ int main(int argc, char** argv) {
     exit(3);
   }
   read_zsync_control_file(argv[optind], &zs);
-  if (filename)
-    asprintf(&temp_file,"%s.part",filename);
+  if (filename) {
+    temp_file = malloc(strlen(filename)+6);
+    strcpy(temp_file,filename);
+    strcat(temp_file,".part");
+  }
 
   {
     int i;
@@ -407,10 +418,12 @@ int main(int argc, char** argv) {
   }
 
   if (filename) {
-    char* oldfile_backup;
+    char* oldfile_backup = malloc(strlen(filename)+8);
     int ok = 1;
 
-    asprintf(&oldfile_backup, "%s.zs-old", filename);
+    strcpy(oldfile_backup,filename);
+    strcat(oldfile_backup,".zs-old");
+
     if (!access(filename,F_OK)) {
       /* backup of old file */
       unlink(oldfile_backup); /* Don't care if this fails - the link below will catch any failure */

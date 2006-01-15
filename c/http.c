@@ -41,7 +41,7 @@ int connect_to(const char* node, unsigned short p)
 
   if (p == 8080) service = "webcache";
 
-  bzero(&hint,sizeof hint);
+  memset(&hint,0,sizeof hint);
   hint.ai_family = AF_UNSPEC;
   hint.ai_socktype = SOCK_STREAM;
 
