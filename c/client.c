@@ -286,8 +286,22 @@ int main(int argc, char** argv) {
   srand(getpid());
   {
     int opt;
-    while ((opt = getopt(argc,argv,"k:o:i:Vsu:")) != -1) {
+    while ((opt = getopt(argc,argv,"A:k:o:i:Vsu:")) != -1) {
       switch (opt) {
+      case 'A':
+	{ /* Scan string as hostname=username:password */
+	  char* p = strdup(optarg);
+	  char* q = strchr(p, '=');
+	  char* r = q ? strchr(q, ':') : NULL;
+	  if (!q || !r) {
+	    fprintf(stderr, "-A takes hostname=username:password\n");
+	    exit(1);
+	  } else {
+	    *q++ = *r++ = 0;
+	    add_auth(p, q, r);
+	  }
+	}
+	break;
       case 'k':
 	free(zfname); zfname = strdup(optarg);
 	break;

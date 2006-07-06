@@ -30,6 +30,8 @@ int get_range_block(struct range_fetch* rf, off64_t* offset, unsigned char* data
 long long range_fetch_bytes_down(const struct range_fetch* rf);
 void range_fetch_end(struct range_fetch* rf);
 
+void add_auth(char* host, char* user, char* pass);
+
 /* base64.c */
 char* base64(const char*);
 

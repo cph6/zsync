@@ -4,7 +4,7 @@
 zsync \- Partial/differential file download client over HTTP
 .SH "SYNTAX"
 .LP 
-zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-s ] [ \-k \fIfile\fR.zsync ] { \fIfilename\fP | \fIurl\fR }
+zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-s ] [ \-k \fIfile\fR.zsync ] [ -A \fIhostname\fP=\fIusername\fR:\fIpassword\fR ] { \fIfilename\fP | \fIurl\fR }
 .LP 
 zsync \-V
 .SH "DESCRIPTION"
@@ -18,6 +18,14 @@ zsync downloads to your current directory. It looks for any file in the director
 zsync retrieves the rest of the target file over HTTP. Once the download is finished, the old version (if the new file wants the same name) is moved aside (a .zs\-old extension is appended).
 .SH "OPTIONS"
 .LP 
+.TP 
+\fB\-A\fR \fIhostname\fP=\fIusername\fR:\fIpassword\fR
+Specifies a username and password to be used with the given hostname. \fB-A\fR
+can be used multiple times (with different hostnames), in cases where e.g. the
+.zsync file is on a different server from the download, or there are multiple
+download servers (there could be different auth details for different servers -
+and zsync never assumes that your password should be sent to a server other
+than the one named - otherwise redirects would be dangerous!).
 .TP 
 \fB\-i\fR \fIinputfile\fP
 Specifies (extra) input files. \fIinputfile\fP is scanned to identify blocks in common with the target file and zsync uses any blocks found. Can be used multiple times.
