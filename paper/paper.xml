@@ -8,9 +8,11 @@
 		2004-10-24 &#8212; First published
 		2004-12-04 &#8212; Updated for zsync 0.1.2's improved compressed file support
 		2005-01-29 &#8212; Completed references, and other minor ammendments for first static release
+		2005-01-30 &#8212; Published as 'zsync — Principles and Implementation'
 		2005-01-30 &#8212; Added hash length calculations
 		2005-02-05 &#8212; Added half-block alignment calculations
 		2005-03-25 &#8212; Added recompression and optimised gzip method
+		2005-03-25 &#8212; Published as 'zsync — Optimised rsync over HTTP'
 	 </para>
 	</printhistory>
 	</bookinfo>

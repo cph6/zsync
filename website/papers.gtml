@@ -6,6 +6,10 @@
 
 <p>As I develop, I am updating the original technical paper in which I laid out the algorithms, ideas and design decisions behind zsync. The paper is therefore a work in progress. Some sections may be incomplete, or refer to earlier versions of zsync or of the implementation; I have given zsync version numbers and indicate out-of-date sections wherever possible. This work-in-progress version is at:</p>
 <p><a href="http://zsync.moria.org.uk/paper/">http://zsync.moria.org.uk/paper/</a></p>
+<h3>March 2005 Paper — <i>zsync — Optimised rsync over HTTP</i></h3>
+<p>I have frozen the version of the technical paper as it stood in March 2005, because this when I stopped working on zsync for a while. This is also the point where I had completed my work on matching the efficiency of rsync, so it is a good moment to take a snapshot of where the work stands.</p>
+<p>This is a frozen, finished version of the technical paper as it stood at zsync-0.4.x, and can be used for citations.</p>
+<p><a href="http://zsync.moria.org.uk/paper200503/">http://zsync.moria.org.uk/paper200503/</a></p>
 <h3>Jan 2005 Paper — <i>zsync — Principles and Implementation</i></h3>
 <p>I have frozen the version of the technical paper as it stood at the time of zsync-0.1.x, because I think it is an interesting insight into the original justification for the look-inside method, and I have not seen this approach discussed elsewhere.</p>
 <p>In the light of subsequent improvements to zsync these ideas may be overtaken, so I want this present as a permanent reference for the original reasoning. This can also be used as a citation if other people take up the idea. This version of the paper is now fixed and will remain at:</p>
