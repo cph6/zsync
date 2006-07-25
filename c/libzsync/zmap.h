@@ -28,7 +28,7 @@ struct z_stream_s;
 struct zmap* zmap_make(const struct gzblock* zb, int n);
 void zmap_free(struct zmap*);
 
-off64_t* zmap_to_compressed_ranges(const struct zmap* zm, off64_t* byterange, int nrange, int* num);
+off_t* zmap_to_compressed_ranges(const struct zmap* zm, off_t* byterange, int nrange, int* num);
 void configure_zstream_for_zdata(const struct zmap* zm, struct z_stream_s* zs, long zoffset, long long* poutoffset);
 
 /* gzip flag byte */

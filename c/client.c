@@ -13,6 +13,8 @@
  *   COPYING file for details.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,8 +23,6 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
-
-#include "config.h"
 
 #include "libzsync/zsync.h"
 
@@ -196,7 +196,7 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
 
   {
     int nrange;
-    off64_t *zbyterange;
+    off_t *zbyterange;
 
     zbyterange = zsync_needed_byte_ranges(z, &nrange, type);
     if (!zbyterange) return 1;
@@ -209,7 +209,7 @@ int fetch_remaining_blocks_http(struct zsync_state* z, const char* url, int type
 
   {
     int len;
-    off64_t zoffset;
+    off_t zoffset;
     struct progress p = {0,0,0,0};
 
     if (!no_progress) fputc('\n',stderr);

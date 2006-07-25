@@ -60,11 +60,11 @@ const char * const * zsync_get_urls(struct zsync_state* zs, int* n, int* t);
 
 /* zsync_needed_byte_ranges - get the byte ranges needed from a URL.
  * Returns the number of ranges in *num, and a malloc'd array (to be freed 
- * by the caller) of 2*(*num) off64_t's which are the starts and ends 
+ * by the caller) of 2*(*num) off_t's which are the starts and ends 
  * of byte ranges.
  */
 
-off64_t* zsync_needed_byte_ranges(struct zsync_state* zs, int* num, int type);
+off_t* zsync_needed_byte_ranges(struct zsync_state* zs, int* num, int type);
 
 /* zsync_complete - set file length and verify checksum if available
  * Returns -1 for failure, 1 for success, 0 for unable to verify (e.g. no checksum in the .zsync) */
@@ -89,5 +89,5 @@ void zsync_end_receive(struct zsync_receiver* zr);
 
 /* Supply data buf of length len received corresponding to offset offset from the URL.
  * Returns 0 for success; if not, you should not submit more data. */
-int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off64_t offset, size_t len);
+int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off_t offset, size_t len);
 

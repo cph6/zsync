@@ -14,13 +14,13 @@
  *   COPYING file for details.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-
-#include "config.h"
 
 #include "md4.h"
 #include "rcksum.h"
@@ -72,7 +72,7 @@ static void unlink_block(struct rcksum_state* z, zs_blockid id)
 }
 
 #ifndef HAVE_PWRITE
-size_t pwrite(int d, const void* buf, size_t nbytes, off64_t offset)
+size_t pwrite(int d, const void* buf, size_t nbytes, off_t offset)
 {
   if (lseek(d, offset, SEEK_SET) == -1) return -1;
   return write(d, buf, nbytes);
@@ -81,14 +81,14 @@ size_t pwrite(int d, const void* buf, size_t nbytes, off64_t offset)
 
 static void write_blocks(struct rcksum_state* z, const unsigned char* data, zs_blockid bfrom, zs_blockid bto)
 {
-  off64_t len = ((off64_t)(bto - bfrom + 1)) << z->blockshift;
-  off64_t offset = ((off64_t)bfrom) << z->blockshift;
+  off_t len = ((off_t)(bto - bfrom + 1)) << z->blockshift;
+  off_t offset = ((off_t)bfrom) << z->blockshift;
 
   while (len) {
     size_t l = len;
     int rc;
 
-    if ((off64_t)l < len) l = 0x8000000;
+    if ((off_t)l < len) l = 0x8000000;
 
     rc = pwrite(z->fd,data,l,offset);
     
@@ -111,7 +111,7 @@ static void write_blocks(struct rcksum_state* z, const unsigned char* data, zs_b
   }
 }
 
-int rcksum_read_known_data(struct rcksum_state* z, unsigned char* buf, off64_t offset, size_t len)
+int rcksum_read_known_data(struct rcksum_state* z, unsigned char* buf, off_t offset, size_t len)
 {
   int rc = pread(z->fd,buf,len,offset);
   return rc;
@@ -200,7 +200,7 @@ static int check_checksums_on_hash_chain(struct rcksum_state* const z, const str
   return got_blocks;
 }
 
-int rcksum_submit_source_data(struct rcksum_state* const z, unsigned char* data, size_t len, off64_t offset)
+int rcksum_submit_source_data(struct rcksum_state* const z, unsigned char* data, size_t len, off_t offset)
 {
   int x = 0;
   register int bs = z->blocksize;
@@ -299,7 +299,7 @@ int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress)
   register int bufsize = z->blocksize*16;
   char *buf = malloc(bufsize + z->context);
   int got_blocks = 0;
-  off64_t in = 0;
+  off_t in = 0;
   int in_mb = 0;
 
   if (!buf) return 0;
@@ -310,7 +310,7 @@ int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress)
 
   while (!feof(f)) {
     size_t len;
-    off64_t start_in = in;
+    off_t start_in = in;
 
     if (!in) {
       len = fread(buf,1,bufsize,f);

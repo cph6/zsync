@@ -25,9 +25,9 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname);
 struct range_fetch;
 
 struct range_fetch* range_fetch_start(const char* orig_url);
-void range_fetch_addranges(struct range_fetch* rf, off64_t* ranges, int nranges);
-int get_range_block(struct range_fetch* rf, off64_t* offset, unsigned char* data, size_t dlen);
-long long range_fetch_bytes_down(const struct range_fetch* rf);
+void range_fetch_addranges(struct range_fetch* rf, off_t* ranges, int nranges);
+int get_range_block(struct range_fetch* rf, off_t* offset, unsigned char* data, size_t dlen);
+off_t range_fetch_bytes_down(const struct range_fetch* rf);
 void range_fetch_end(struct range_fetch* rf);
 
 void add_auth(char* host, char* user, char* pass);

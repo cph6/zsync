@@ -13,10 +13,10 @@
  *   COPYING file for details.
  */
 
+#include "config.h"
+
 #include <string.h>
 #include <stdlib.h>
-
-#include "config.h"
 
 /* Very crude URL parsing */
 

@@ -42,11 +42,11 @@ int rcksum_filehandle(struct rcksum_state* z);
 void rcksum_add_target_block(struct rcksum_state* z, zs_blockid b, struct rsum r, void* checksum);
 
 int rcksum_submit_blocks(struct rcksum_state* z, unsigned char* data, zs_blockid bfrom, zs_blockid bto);
-int rcksum_submit_source_data(struct rcksum_state* z, unsigned char* data, size_t len, off64_t offset);
+int rcksum_submit_source_data(struct rcksum_state* z, unsigned char* data, size_t len, off_t offset);
 int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress);
 
 /* This reads back in data which is already known. */
-int rcksum_read_known_data(struct rcksum_state* z, unsigned char* buf, off64_t offset, size_t len);
+int rcksum_read_known_data(struct rcksum_state* z, unsigned char* buf, off_t offset, size_t len);
 
 /* rcksum_needed_block_ranges tells you what blocks, within the given range,
  * are still unknown. It returns a list of block ranges in r[]

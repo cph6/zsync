@@ -13,14 +13,14 @@
  *   COPYING file for details.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <errno.h>
-
-#include "config.h"
 
 #include <arpa/inet.h>
 #ifdef HAVE_STDINT_H
@@ -41,7 +41,7 @@ SHA1_CTX shactx;
 size_t blocksize = 0;
 long long len = 0;
 
-void stream_error(const char* func, FILE* stream)
+void __attribute__((noreturn)) stream_error(const char* func, FILE* stream)
 {
   fprintf(stderr,"%s: %s\n",func,strerror(ferror(stream)));
   exit(2);
@@ -350,7 +350,7 @@ const char* guess_gzip_options(const char* f)
   }
 }
 
-off64_t get_len(FILE* f)
+off_t get_len(FILE* f)
 {
   struct stat s;
 
@@ -379,6 +379,7 @@ int main(int argc, char** argv) {
   int do_exact = 0;
   const char* gzopts = NULL;
 
+  fprintf(stderr,"sizeof(off_t) == %d\n",sizeof(off_t));
   {
     int opt;
     while ((opt = getopt(argc,argv,"b:Ceo:f:u:U:zZ")) != -1) {

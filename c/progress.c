@@ -13,13 +13,12 @@
  *   COPYING file for details.
  */
 
-#include <stdio.h>
-
 #include "config.h"
 
+#include <stdio.h>
 #include <time.h>
 
-#include <progress.h>
+#include "progress.h"
 
 int no_progress;
 

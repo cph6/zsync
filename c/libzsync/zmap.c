@@ -13,13 +13,13 @@
  *   COPYING file for details.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
-
-#include "config.h"
 
 #include "zmap.h"
 
@@ -79,12 +79,12 @@ void zmap_free(struct zmap* m)
 
 /* Translate into byte blocks to retrieve from the gzip file */
 
-off64_t* zmap_to_compressed_ranges(const struct zmap* zm, off64_t* byterange, int nrange, int* num)
+off_t* zmap_to_compressed_ranges(const struct zmap* zm, off_t* byterange, int nrange, int* num)
 {
   int i,k;
   long long lastwroteblockstart_inbitoffset = 0;
   int k_at_last_block = -1;
-  off64_t* zbyterange = malloc(2 * 2 * nrange * sizeof *byterange);
+  off_t* zbyterange = malloc(2 * 2 * nrange * sizeof *byterange);
 
   for (i=0,k=0; i<nrange; i++) {
     long long start = byterange[2*i];

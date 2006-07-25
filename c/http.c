@@ -13,13 +13,13 @@
  *   COPYING file for details.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-
-#include "config.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -366,14 +366,14 @@ struct range_fetch {
   char* cport;
 
   size_t block_left;
-  off64_t offset;
+  off_t offset;
   int sd;
   char buf[4096];
   int buf_start, buf_end;
-  off64_t bytes_down;
+  off_t bytes_down;
   int server_close; /* 0: can send more, 1: cannot send more (but one set of headers still to read), 2: cannot send more and all existing headers read */
 
-  off64_t* ranges_todo;
+  off_t* ranges_todo;
   int nranges;
   int rangesdone;
   int rangessent;
@@ -470,10 +470,10 @@ struct range_fetch* range_fetch_start(const char* orig_url)
   return rf;
 }
 
-void range_fetch_addranges(struct range_fetch* rf, off64_t* ranges, int nranges)
+void range_fetch_addranges(struct range_fetch* rf, off_t* ranges, int nranges)
 {
   int existing_ranges = rf->nranges - rf->rangesdone;
-  off64_t* nr = malloc(2*sizeof(*ranges)*(nranges + existing_ranges));
+  off_t* nr = malloc(2*sizeof(*ranges)*(nranges + existing_ranges));
   
   if (!nr) return;
   /* Copy existing queue over */
@@ -599,7 +599,7 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
     buflwr(buf);
       /* buf is the header name (lower-cased), p the value */
     if (!strcmp(buf,"content-range")) {
-      off64_t from,to;
+      off_t from,to;
       sscanf(p,"bytes %llu-%llu/",&from,&to);
       if (from <= to) {
 	rf->block_left = to + 1 - from;
@@ -631,7 +631,7 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
   return -1;
 }
 
-int get_range_block(struct range_fetch* rf, off64_t* offset, unsigned char* data, size_t dlen)
+int get_range_block(struct range_fetch* rf, off_t* offset, unsigned char* data, size_t dlen)
 {
   size_t bytes_to_caller = 0;
 
@@ -736,7 +736,7 @@ check_boundary:
   }
 }
 
-off64_t range_fetch_bytes_down(const struct range_fetch* rf)
+off_t range_fetch_bytes_down(const struct range_fetch* rf)
 { return rf->bytes_down; }
 
 void range_fetch_end(struct range_fetch* rf) {

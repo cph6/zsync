@@ -13,6 +13,8 @@
  *   COPYING file for details.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -22,7 +24,6 @@
 
 #include <arpa/inet.h>
 
-#include "config.h"
 #include "librcksum/rcksum.h"
 #include "zsync.h"
 #include "sha1.h"
@@ -32,7 +33,7 @@
 
 struct zsync_state {
   struct rcksum_state* rs;
-  off64_t filelen;
+  off_t filelen;
   int blocks;
   long blocksize;
 
@@ -237,11 +238,11 @@ const char * const * zsync_get_urls(struct zsync_state* zs, int* n, int* t)
   }
 }
 
-off64_t* zsync_needed_byte_ranges(struct zsync_state* zs, int* num, int type)
+off_t* zsync_needed_byte_ranges(struct zsync_state* zs, int* num, int type)
 {
   int nrange;
   zs_blockid* blrange;
-  off64_t* byterange;
+  off_t* byterange;
   int i;
   
   blrange = rcksum_needed_block_ranges(zs->rs, &nrange, 0, 0x7fffffff);
@@ -262,7 +263,7 @@ off64_t* zsync_needed_byte_ranges(struct zsync_state* zs, int* num, int type)
     return byterange;
   case 1:
     {
-      off64_t* zbyterange = zmap_to_compressed_ranges(zs->zmap, byterange, nrange, &nrange);
+      off_t* zbyterange = zmap_to_compressed_ranges(zs->zmap, byterange, nrange, &nrange);
       if (zbyterange) {
 	*num = nrange;
       }
@@ -457,10 +458,10 @@ struct zsync_receiver {
   struct z_stream_s strm;
   int url_type;
   char* outbuf;
-  off64_t outoffset;
+  off_t outoffset;
 };
 
-static int zsync_submit_data(struct zsync_state* zs, unsigned char* buf, off64_t offset, int blocks)
+static int zsync_submit_data(struct zsync_state* zs, unsigned char* buf, off_t offset, int blocks)
 {
   zs_blockid blstart = offset / zs->blocksize;
   zs_blockid blend = blstart + blocks - 1;
@@ -488,7 +489,7 @@ struct zsync_receiver* zsync_begin_receive(struct zsync_state*zs, int url_type)
   return zr;
 }
 
-int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off64_t offset, size_t len)
+int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off_t offset, size_t len)
 {
   int blocksize = zr->zs->blocksize;
 
