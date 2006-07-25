@@ -379,7 +379,6 @@ int main(int argc, char** argv) {
   int do_exact = 0;
   const char* gzopts = NULL;
 
-  fprintf(stderr,"sizeof(off_t) == %d\n",sizeof(off_t));
   {
     int opt;
     while ((opt = getopt(argc,argv,"b:Ceo:f:u:U:zZ")) != -1) {
