@@ -65,7 +65,7 @@ char* __attribute__((pure)) make_url_absolute(const char* base, const char* url)
 
   if (n == 0 && *url == '/' && base) {
     /* Full path specified */
-    char *p = strchr(base,':');
+    const char *p = strchr(base,':');
     if (!p) return NULL;
 
     if (p[1] != '/' || p[2] != '/') return NULL;
@@ -87,8 +87,8 @@ char* __attribute__((pure)) make_url_absolute(const char* base, const char* url)
   if (n > 0 && url[n] == ':') { return strdup(url); }
 
   if (n > 0 && base) { /* No leading / or scheme - relative */
-    char *q;
-    char *p = strchr(base,'?');
+    const char *q;
+    const char *p = strchr(base,'?');
     if (!p) p = strchr(base,'#');
     if (!p) p = base+strlen(base);
 
