@@ -20,6 +20,9 @@
 #include <string.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#endif
 
 #include "zmap.h"
 

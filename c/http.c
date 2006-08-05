@@ -26,10 +26,17 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <time.h>
+#include <inttypes.h>
 
 #include "http.h"
 #include "url.h"
 #include "progress.h"
+
+#if SIZEOF_OFF_T == 8
+# define OFF_T_PF "%" PRIu64
+#else
+# define OFF_T_PF "%" PRIu32
+#endif
 
 int connect_to(const char* node, const char* service)
 {
@@ -186,7 +193,7 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
   int allow_redirects = 5;
   char* url;
   FILE* f = NULL;
-  FILE* g;
+  FILE* g = NULL;
   char* fname = NULL;
   char ifrange[200] = { "" };
   char *authhdr = NULL;
@@ -202,13 +209,13 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
       char buf[50];
 
       if (http_date_string(st.st_mtime,buf,sizeof(buf)) != NULL)
-	snprintf(ifrange,sizeof(ifrange),"If-Unmodified-Since: %s\r\nRange: bytes=%u-\r\n",buf,st.st_size);
+        snprintf(ifrange,sizeof(ifrange),"If-Unmodified-Since: %s\r\nRange: bytes=" OFF_T_PF "-\r\n",buf,st.st_size);
 
     } else if (errno == ENOENT && stat(tfname,&st) == 0) {
       char buf[50];
 
       if (http_date_string(st.st_mtime,buf,sizeof(buf)) != NULL)
-	snprintf(ifrange,sizeof(ifrange),"If-Modified-Since: %s\r\n",buf);
+        snprintf(ifrange,sizeof(ifrange),"If-Modified-Since: %s\r\n",buf);
     }
   }
       
@@ -238,45 +245,45 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
       if (sfd == -1) break;
 
       {
-	char buf[1024];
-	snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s%s%s\r\nUser-Agent: zsync/%s\r\n%s%s\r\n",
-		 proxy ? url : p,
-		 hostn, !strcmp(port,"http") ? "" : ":", !strcmp(port,"http") ? "" : port,
-		 VERSION,
-		 ifrange[0] ? ifrange : "",
-		 authhdr ? authhdr : ""
-		 );
-	if (send(sfd,buf,strlen(buf),0) == -1) {
-	  perror("sendmsg"); close(sfd); break;
-	}
+        char buf[1024];
+        snprintf(buf, sizeof(buf), "GET %s HTTP/1.0\r\nHost: %s%s%s\r\nUser-Agent: zsync/%s\r\n%s%s\r\n",
+                proxy ? url : p,
+                hostn, !strcmp(port,"http") ? "" : ":", !strcmp(port,"http") ? "" : port,
+                VERSION,
+                ifrange[0] ? ifrange : "",
+                authhdr ? authhdr : ""
+                );
+        if (send(sfd,buf,strlen(buf),0) == -1) {
+          perror("sendmsg"); close(sfd); break;
+        }
       }
       f = http_get_stream(sfd, &code);
 
       if (!f) break;
       if (code == 301 || code == 302 || code == 307) {
-	char *oldurl = url;
-	url = get_location_url(f, oldurl);
-	free(oldurl);
-	fclose(f); f = NULL;
+        char *oldurl = url;
+        url = get_location_url(f, oldurl);
+        free(oldurl);
+        fclose(f); f = NULL;
       } else if (code == 401) { // Authorization required
-	authhdr = get_auth_hdr(hostn);
-	if (authhdr) {
-	  fclose(f); f = NULL;
-	  // And go round again
-	} else {
-	  fclose(f); f = NULL; break;
-	}
+        authhdr = get_auth_hdr(hostn);
+        if (authhdr) {
+          fclose(f); f = NULL;
+          // And go round again
+        } else {
+          fclose(f); f = NULL; break;
+        }
       } else if (code == 412) { // Precondition (i.e. if-unmodified-since) failed
-	ifrange[0] = 0;
-	fclose(f); f = NULL; // and go round again without the conditional Range:
+        ifrange[0] = 0;
+        fclose(f); f = NULL; // and go round again without the conditional Range:
       } else if (code == 200) { // Downloading whole file
-	g = fname ? fopen(fname,"w+") : tmpfile();
+        g = fname ? fopen(fname,"w+") : tmpfile();
       } else if (code == 206 && fname) { // Had partial content and server confirms not modified
-	g = fopen(fname,"a+");
+        g = fopen(fname,"a+");
       } else if (code == 304) { // Unchanged (if-modified-since was false)
-	g = fopen(tfname,"r");
+        g = fopen(tfname,"r");
       } else {
-	fclose(f); f = NULL; break;
+        fclose(f); f = NULL; break;
       }
     }
   }
@@ -305,7 +312,7 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
       do {
 	fgets(buf,sizeof(buf),f);
 	
-	sscanf(buf,"Content-Length: %d",&len);
+	sscanf(buf,"Content-Length: %zd",&len);
 	if (ferror(f)) {
 	  perror("read"); exit(1);
 	}
@@ -317,24 +324,24 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
       int r;
 
       if (!no_progress)
-	do_progress(&p,0,got);
+        do_progress(&p,0,got);
 
       while (!feof(f)) {
-	char buf[1024];
-	r = fread(buf, 1, sizeof(buf), f);
+        char buf[1024];
+        r = fread(buf, 1, sizeof(buf), f);
 	
-	if (r > 0)
-	  if (r > fwrite(buf, 1, r, g)) {
-	    fprintf(stderr,"short write on %s\n",fname);
-	    break;
-	  }
-	if (r < 0) { perror("read"); break; }
+        if (r > 0)
+          if (r > fwrite(buf, 1, r, g)) {
+            fprintf(stderr,"short write on %s\n",fname);
+            break;
+          }
+        if (r < 0) { perror("read"); break; }
 
-	if (r>0) {
-	  got += r;
-	  if (!no_progress)
-	    do_progress(&p, len ? (100.0*got / len) : 0, got);
-	}
+        if (r>0) {
+          got += r;
+          if (!no_progress)
+            do_progress(&p, len ? (100.0*got / len) : 0, got);
+        }
       }
       if (!no_progress) end_progress(&p,feof(f) ? 2 : 0);
     }
@@ -526,7 +533,7 @@ static void range_fetch_getmore(struct range_fetch* rf)
     l = strlen(request);
     if (l > 1200 || !(--max_range_per_request) || i == rf->nranges-1) lastrange = 1;
     
-    snprintf(request + l, sizeof(request)-l, "%lld-%lld%s", rf->ranges_todo[2*i], rf->ranges_todo[2*i+1], lastrange ? "" : ",");
+    snprintf(request + l, sizeof(request)-l, OFF_T_PF "-" OFF_T_PF "%s", rf->ranges_todo[2*i], rf->ranges_todo[2*i+1], lastrange ? "" : ",");
 
     rf->rangessent++;
     if (lastrange) break;
@@ -600,7 +607,7 @@ int range_fetch_read_http_headers(struct range_fetch* rf)
       /* buf is the header name (lower-cased), p the value */
     if (!strcmp(buf,"content-range")) {
       off_t from,to;
-      sscanf(p,"bytes %llu-%llu/",&from,&to);
+      sscanf(p,"bytes " OFF_T_PF "-" OFF_T_PF "/",&from,&to);
       if (from <= to) {
 	rf->block_left = to + 1 - from;
 	rf->offset = from;
@@ -658,8 +665,8 @@ check_boundary:
 
       /* EOF on first connect is fatal */
       if (newconn && header_result == 0) {
-	fprintf(stderr,"EOF from %s\n",rf->url);
-	return -1;
+        fprintf(stderr,"EOF from %s\n",rf->url);
+        return -1;
       }
 
       /* Return EOF or error to caller */
@@ -676,25 +683,28 @@ check_boundary:
       /* Get, hopefully, boundary marker */
       if (!rfgets(buf,sizeof(buf),rf)) return 0;
       if (buf[0] != '-' || buf[1] != '-') return 0;
-      //      fprintf(stderr,"boundary %s comparing to %s\n",rf->boundary,buf);
+
       if (memcmp(&buf[2],rf->boundary,strlen(rf->boundary))) {
-	fprintf(stderr,"got bad block boundary: %s != %s",rf->boundary, buf);
-	return -1; /* This is an error now */
+        fprintf(stderr,"got bad block boundary: %s != %s",rf->boundary, buf);
+        return -1; /* This is an error now */
       }
       /* Look for last record marker */
       if (buf[2+strlen(rf->boundary)] == '-') { free(rf->boundary); rf->boundary = NULL; goto check_boundary; }
       
       for(;buf[0] != '\r' && buf[0] != '\n' && buf[0] != '\0';) {
-	int from, to;
-	if (!rfgets(buf,sizeof(buf),rf)) return 0;
-	buflwr(buf);
-	if (2 == sscanf(buf,"content-range: bytes %d-%d/",&from,&to)) {
-	  rf->offset = from; rf->block_left = to - from + 1; gotr = 1;
-	}
+        off_t from, to;
+        if (!rfgets(buf,sizeof(buf),rf)) return 0;
+
+        /* HTTP headers are case insensitive */
+        buflwr(buf);
+
+        if (2 == sscanf(buf,"content-range: bytes " OFF_T_PF "-" OFF_T_PF "/",&from,&to)) {
+          rf->offset = from; rf->block_left = to - from + 1; gotr = 1;
+        }
       }
       if (!gotr) {
-	fprintf(stderr,"got multipart/byteranges but no Content-Range?");
-	return -1;
+        fprintf(stderr,"got multipart/byteranges but no Content-Range?");
+        return -1;
       }
       rf->rangesdone++;
     }
