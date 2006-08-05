@@ -138,7 +138,7 @@ int rcksum_submit_blocks(struct rcksum_state* const z, unsigned char* data, zs_b
   return 0;
 }
 
-static int check_checksums_on_hash_chain(struct rcksum_state* const z, const struct hash_entry* e, const char* data, int onlyone)
+static int check_checksums_on_hash_chain(struct rcksum_state* const z, const struct hash_entry* e, const unsigned char* data, int onlyone)
 {
   unsigned char md4sum[2][CHECKSUM_SIZE];
   signed int done_md4 = -1;
@@ -297,7 +297,7 @@ int rcksum_submit_source_data(struct rcksum_state* const z, unsigned char* data,
 int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress)
 {
   register int bufsize = z->blocksize*16;
-  char *buf = malloc(bufsize + z->context);
+  unsigned char *buf = malloc(bufsize + z->context);
   int got_blocks = 0;
   off_t in = 0;
   int in_mb = 0;

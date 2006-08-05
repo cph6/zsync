@@ -32,7 +32,7 @@ struct rcksum_state {
   int checksum_bytes;
   int seq_matches;
 
-  int context; /* precalculated blocksize * seq_matches */
+  unsigned int context; /* precalculated blocksize * seq_matches */
 
   /* These are used by the library. Note, not thread safe. */
   const struct hash_entry* rover;

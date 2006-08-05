@@ -50,7 +50,7 @@ struct rcksum_state* rcksum_init(zs_blockid nblocks, size_t blocksize, int rsum_
 	{
 	  int i;
 	  for (i = 0; i < 32; i++)
-	    if (z->blocksize == (1 << i)) {
+	    if (z->blocksize == (1u << i)) {
 	      z->blockshift = i; break;
 	    }
 	}
