@@ -20,13 +20,18 @@ CFLAGS_OPT="-pg"
 dnl --- Header files, typedefs, structures, libraries
 AC_C_CONST
 AC_HEADER_STDC
-# string.h, memory.h, stdlib.h all included in the default header checks
-AC_CHECK_HEADERS([])
+# string.h, memory.h, stdlib.h both included in the default header checks
+# but we do need to give at least one .h to test, or Solaris sh errors
+AC_CHECK_HEADERS([string.h])
 AC_TYPE_SIZE_T
 AC_CHECK_FUNCS(memcpy pwrite)
 AC_TYPE_SOCKLEN_T
 AC_TYPE_IN_PORT_T
 AC_DECL_H_ERRNO
+
+dnl Solaris needs -lsocket - and we need this for the getaddrinfo test
+AC_CHECK_LIB(socket,socket)
+
 AC_REPLACE_FUNCS(getaddrinfo)
 
 dnl - Large file support if available
@@ -34,9 +39,6 @@ AC_SYS_LARGEFILE
 AC_FUNC_FSEEKO
 AC_CHECK_SIZEOF(size_t)
 AC_CHECK_SIZEOF(off_t)
-
-dnl Solaris needs -lsocket
-AC_CHECK_LIB(socket,socket)
 
 AM_WITH_DMALLOC
 AH_BOTTOM([
