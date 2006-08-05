@@ -26,22 +26,16 @@
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
 #endif
-#include <inttypes.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
-
-#if SIZEOF_OFF_T == 8
-# define OFF_T_PF "%" PRIu64
-#else
-# define OFF_T_PF "%" PRIu32
-#endif
 
 #include "makegz.h"
 #include "librcksum/rcksum.h"
 #include "libzsync/zmap.h"
 #include "libzsync/sha1.h"
 #include "zlib/zlib.h"
+#include "format_string.h"
 
 SHA1_CTX shactx;
 
@@ -148,9 +142,9 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
 
       zhead = malloc(1+2*header_bytes);
       for (i = 0; i < header_bytes; i++)
-	sprintf(zhead + 2*i, "%02x", (unsigned char)bufsofar[i]);
+        sprintf(zhead + 2*i, "%02x", (unsigned char)bufsofar[i]);
     }
-    if (got > inbufsz) { fprintf(stderr,"internal failure, %zd > %zd input buffer available\n",got,inbufsz); exit(2); }
+    if (got > inbufsz) { fprintf(stderr,"internal failure, " SIZE_T_PF " > " SIZE_T_PF " input buffer available\n",got,inbufsz); exit(2); }
     memcpy(inbuf,p,got);
     /* Fill the buffer up to offset inbufsz of the input file - we want to try and keep the input blocks aligned with block boundaries in the underlying filesystem and physical storage */
     zs.avail_in = got;
@@ -539,7 +533,7 @@ int main(int argc, char** argv) {
       fprintf(fout,"Safe: Recompress\n");
 
   if (fname) fprintf(fout,"Filename: %s\n",fname);
-  fprintf(fout,"Blocksize: %zd\n",blocksize);
+  fprintf(fout,"Blocksize: " SIZE_T_PF "\n",blocksize);
   fprintf(fout,"Length: " OFF_T_PF "\n",len);
   fprintf(fout,"Hash-Lengths: %d,%d,%d\n",seq_matches,rsum_len,checksum_len);
   { /* Write URLs */

@@ -26,17 +26,11 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <time.h>
-#include <inttypes.h>
 
 #include "http.h"
 #include "url.h"
 #include "progress.h"
-
-#if SIZEOF_OFF_T == 8
-# define OFF_T_PF "%" PRIu64
-#else
-# define OFF_T_PF "%" PRIu32
-#endif
+#include "format_string.h"
 
 int connect_to(const char* node, const char* service)
 {
@@ -312,7 +306,7 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
       do {
 	fgets(buf,sizeof(buf),f);
 	
-	sscanf(buf,"Content-Length: %zd",&len);
+	sscanf(buf,"Content-Length: " SIZE_T_PF,&len);
 	if (ferror(f)) {
 	  perror("read"); exit(1);
 	}
