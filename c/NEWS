@@ -1,5 +1,7 @@
 Changes in 0.5
 - get large file support where possible
+- replacement getaddrinfo on systems that lack it
+- fix compilation on MacOS X
 
 Changes in 0.4.3
 - make -s suppress summary info too

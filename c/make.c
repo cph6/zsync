@@ -23,8 +23,8 @@
 #include <errno.h>
 
 #include <arpa/inet.h>
-#ifdef HAVE_STDINT_H
-#include <stdint.h>
+#ifdef HAVE_INTTYPES_H
+#include <inttypes.h>
 #endif
 
 #include <sys/types.h>

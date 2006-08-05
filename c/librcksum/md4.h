@@ -18,8 +18,8 @@
 
 #include "config.h"
 
-#ifdef HAVE_STDINT_H
-#include <stdint.h>
+#ifdef HAVE_INTTYPES_H
+#include <inttypes.h>
 #else
 #include <sys/types.h>
 #endif
