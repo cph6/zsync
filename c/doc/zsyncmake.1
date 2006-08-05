@@ -4,7 +4,7 @@
 zsyncmake \- Build control file for zsync(1)
 .SH "SYNTAX"
 .LP 
-zsyncmake [ { \-z | \-Z } ] [ \-e ] [ \-C ] [ \-u \fIurl\fR ] [ \-U \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] [ \-f \fItargetfilename\fR ] \fIfilename\fP
+zsyncmake [ { \-z | \-Z } ] [ \-e ] [ \-C ] [ \-u \fIurl\fR ] [ \-U \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] [ \-f \fItargetfilename\fR ] [ \-v ] \fIfilename\fP
 .SH "DESCRIPTION"
 .LP 
 Constructs a metafile for the zsync client program to use to perform partial file downloads. \fIfilename\fR is the file that users wish to downloads; zsyncmake constructs the appropriate metafile and writes \fIfilename\fR.zsync in the current directory.
@@ -43,6 +43,9 @@ Tells zsyncmake that the client must be able to receive the exact file that was 
 .TP 
 \fB\-C\fR
 Tells zsyncmake not to generate any instructions in the .zsync telling the client to compress the data it receives. This is implied by -z, but this option is here in case you compress a file yourself only for the transfer, but want the client to end up with the uncompressed file (e.g. you are transferring an ISO, which is held compressed on the server, but which the client cannot use unless it is uncompressed). Without -C, zsyncmake will produce directions for the client to compress the file it receives where appropriate; -C is here so you can stop it telling the client to do that.
+.TP 
+\fB\-v\fR
+Enable verbose messages.
 .SH "EXAMPLES"
 .LP 
 zsyncmake \-C \-u http://ftp.uk.debian.org/debian/dists/sarge/main/binary\-i386/Packages.gz Packages.gz

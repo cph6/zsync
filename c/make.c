@@ -39,7 +39,8 @@
 SHA1_CTX shactx;
 
 size_t blocksize = 0;
-long long len = 0;
+off_t len = 0;
+int verbose = 0;
 
 void __attribute__((noreturn)) stream_error(const char* func, FILE* stream)
 {
@@ -227,8 +228,8 @@ void read_stream_write_blocksums(FILE* fin, FILE* fout)
 
     if (got > 0) {
       if (!no_look_inside && len == 0 && buf[0] == 0x1f && buf[1] == 0x8b) {
-	do_zstream(fin,fout,buf,got);
-	break;
+        do_zstream(fin,fout,buf,got);
+        break;
       }
 
       /* The SHA-1 sum, unlike our internal block-based sums, is on the whole file and nothing else - no padding */
@@ -238,7 +239,7 @@ void read_stream_write_blocksums(FILE* fin, FILE* fout)
       len += got;
     } else {
       if (ferror(fin))
-	stream_error("fread",fin);
+        stream_error("fread",fin);
     }
   }
 }
@@ -327,22 +328,23 @@ const char* guess_gzip_options(const char* f)
       snprintf(cmd,sizeof(cmd),"zcat %s | gzip -n %s 2> /dev/null",enc_f,o);
 
       {
-	FILE* p = popen(cmd,"r");
-	char samp[SAMPLE];
+	    FILE* p = popen(cmd,"r");
+        char samp[SAMPLE];
 
-	fprintf(stderr,"running %s to determine gzip options\n", cmd);
+        if (verbose)
+          fprintf(stderr,"running %s to determine gzip options\n", cmd);
 
-	if (!p) {
-	  perror(cmd);
-	} else if (!read_sample_and_close(p,SAMPLE,samp)) {
-	  ;
-	} else {
-	  char *a = skip_zhead(orig);
-	  char *b = skip_zhead(samp);
+        if (!p) {
+          perror(cmd);
+        } else if (!read_sample_and_close(p,SAMPLE,samp)) {
+          ;
+        } else {
+          char *a = skip_zhead(orig);
+          char *b = skip_zhead(samp);
 
-	  if (!memcmp(a,b,900))
-	    break;
-	}
+          if (!memcmp(a,b,900))
+            break;
+        }
       }
     }
     free(enc_f);
@@ -381,40 +383,43 @@ int main(int argc, char** argv) {
 
   {
     int opt;
-    while ((opt = getopt(argc,argv,"b:Ceo:f:u:U:zZ")) != -1) {
+    while ((opt = getopt(argc,argv,"b:Ceo:f:u:U:vzZ")) != -1) {
       switch (opt) {
       case 'e':
-	do_exact = 1;
-	break;
+	    do_exact = 1;
+        break;
       case 'C':
-	do_recompress = 0;
-	break;
+        do_recompress = 0;
+        break;
       case 'o':
-	if (outfname) { fprintf(stderr,"specify -o only once\n"); exit(2); }
-	outfname = strdup(optarg);
-	break;
+        if (outfname) { fprintf(stderr,"specify -o only once\n"); exit(2); }
+        outfname = strdup(optarg);
+        break;
       case 'f':
-	if (fname) { fprintf(stderr,"specify -f only once\n"); exit(2); }
-	fname = strdup(optarg);
-	break;
+	    if (fname) { fprintf(stderr,"specify -f only once\n"); exit(2); }
+        fname = strdup(optarg);
+        break;
       case 'b':
-	blocksize = atoi(optarg);
-	if ((blocksize & (blocksize-1)) != 0) { fprintf(stderr,"blocksize must be a power of 2 (512, 1024, 2048, ...)\n"); exit(2); }
-	break;
+        blocksize = atoi(optarg);
+        if ((blocksize & (blocksize-1)) != 0) { fprintf(stderr,"blocksize must be a power of 2 (512, 1024, 2048, ...)\n"); exit(2); }
+        break;
       case 'u':
-	url = realloc(url,(nurls+1)*sizeof *url);
-	url[nurls++] = optarg;
-	break;
+        url = realloc(url,(nurls+1)*sizeof *url);
+        url[nurls++] = optarg;
+        break;
       case 'U':
-	Uurl = realloc(Uurl,(nUurls+1)*sizeof *Uurl);
-	Uurl[nUurls++] = optarg;
-	break;
+        Uurl = realloc(Uurl,(nUurls+1)*sizeof *Uurl);
+        Uurl[nUurls++] = optarg;
+        break;
+      case 'v':
+        verbose++;
+        break;
       case 'z':
-	do_compress = 1;
-	break;
+        do_compress = 1;
+        break;
       case 'Z':
-	no_look_inside = 1;
-	break;
+        no_look_inside = 1;
+        break;
       }
     }
     if (optind == argc-1) {
@@ -434,17 +439,20 @@ int main(int argc, char** argv) {
   }
 
   if (do_compress) {
-    char* newfname;
+    char* newfname = NULL;
 
     {
       char* tryfname = infname;
       if (!tryfname) { tryfname = fname; }
       if (tryfname) {
-	newfname = malloc(strlen(tryfname)+4); strcpy(newfname,tryfname); strcat(newfname,".gz");
+        newfname = malloc(strlen(tryfname)+4);
+        if (!newfname) exit(1);
+        strcpy(newfname,tryfname); strcat(newfname,".gz");
       }
     }
     if (!newfname) {
       newfname = strdup("zsync-target.gz");
+      if (!newfname) exit(1);
     }
     instream = optimal_gzip(instream, newfname, blocksize);
     if (!instream) { fprintf(stderr,"failed to compress\n"); exit(-1); }
@@ -542,7 +550,7 @@ int main(int argc, char** argv) {
     if (zmapentries && fname && !access(fname,R_OK)) {
       fprintf(fout,"URL: %s\n",fname);
     }
-    fprintf(stderr,"Relative URL included in .zsync file - you must keep the file being served and the .zsync in the same public directory\n");
+    fprintf(stderr,"No URL given, so I am including a relative URL in the .zsync file - you must keep the file being served and the .zsync in the same public directory. Use -u %s to get this same result without this warning.\n",infname);
   }
   fputs("SHA-1: ",fout);
   {
