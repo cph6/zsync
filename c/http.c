@@ -27,6 +27,10 @@
 #include <netdb.h>
 #include <time.h>
 
+#ifndef HAVE_GETADDRINFO
+#include "getaddrinfo.h"
+#endif
+
 #include "http.h"
 #include "url.h"
 #include "progress.h"
