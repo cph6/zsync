@@ -18,6 +18,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 #include "rcksum.h"
 #include "internal.h"
