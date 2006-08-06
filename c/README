@@ -102,9 +102,14 @@ a number of optimisations, based on ideas in academic papers by Utku Irmak,
 Svilen Mihaylov and Torsten Suel (primarily "Improved Single-Round Protocols
 for Remote File Synchronization", Sept 2004).
 
-zsync also uses a large part of zlib - this code, in the zlib subdirectory,  is
+zsync uses a large part of zlib - this code, in the zlib subdirectory, is
 copyright 1995-2003 Jean-loup Gailly and Mark Adler, see zlib/README for
 details.
+
+zsync includes an implementation of getaddrinfo by Motoyuki Kasahara. See
+getaddrinfo.c for the license, it's a BSD-style license; but normally zsync
+compiles against the getaddrinfo() in the system libc, so this code is not
+normally used.
 
 zsync also includes checksum code taken from OpenBSD. The MD4 code is public
 domain, by Colin Plumb and Todd C. Miller. The SHA1 code is also public
