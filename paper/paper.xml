@@ -1,18 +1,18 @@
 <?xml version="1.0"?>
-<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN" "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
-<book xmlns:ml="http://www.w3.org/1998/Math/MathML">
+<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN" "http://www.oasis-open.org/docbook/xml/4.4/docbookx.dtd">
+<book>
 	<title>zsync &#8212; Optimised rsync over HTTP</title><bookinfo><abstract><para>This document describes the thinking behind zsync, a new file transfer program which implements efficient download of only the content of a file which is not already known to the receiver. zsync uses the rsync algorithm, but implemented on the client side, so that only one-off pre-calculations are required on the server, and no special server software or new protocol is required to use zsync.</para></abstract>
-	<pubdate>(work in progress)</pubdate><author><surname>Phipps</surname><firstname>Colin</firstname><email>cph&#64;moria.org.uk</email></author>
+	<pubdate>(work in progress)</pubdate><author><surname>Phipps</surname><firstname>Colin</firstname><affiliation><address><email>cph&#64;moria.org.uk</email></address></affiliation></author>
 	<printhistory>
 	 <para>
 		2004-10-24 &#8212; First published
 		2004-12-04 &#8212; Updated for zsync 0.1.2's improved compressed file support
 		2005-01-29 &#8212; Completed references, and other minor ammendments for first static release
-		2005-01-30 &#8212; Published as 'zsync — Principles and Implementation'
+		2005-01-30 &#8212; Published as 'zsync &#8212; Principles and Implementation'
 		2005-01-30 &#8212; Added hash length calculations
 		2005-02-05 &#8212; Added half-block alignment calculations
 		2005-03-25 &#8212; Added recompression and optimised gzip method
-		2005-03-25 &#8212; Published as 'zsync — Optimised rsync over HTTP'
+		2005-03-25 &#8212; Published as 'zsync &#x2014; Optimised rsync over HTTP'
 	 </para>
 	</printhistory>
 	</bookinfo>
@@ -67,12 +67,12 @@
 		</sect2>
 		<sect2><title>Strong Checksum</title>
 		 <para>The strong checksum is a different problem. It must be sufficiently string such that, in combination with the weak checksum, there is no significant risk of a block being identified in common between the available local data and the target file when in practice the blocks differ. rsync uses an MD4 checksum of each block for this purpose.</para>
-		<para>I have continued to use MD4 for the moment. There are probably alternatives which would be more efficient with CPU time, but this is not a scarce quantity for zsync. What is of interest is the amount of data that must be transmitted to the client: a full MD4 checksum requires 16 bytes. Given a file of length N, blocksize b, there are <inlineequation>N/b</inlineequation> blocks in a file; and assume that the client also has, for simplicity, N bytes of potential local data (and so ~N possible blocks of local data). If there is no data in common, and k bits of checksum transmitted, and the checksums are uniformly and independently distributed, then the chance of no collisions (data incorrectly believed to be in common, and ignoring the weak checksum for now):</para>
+		<para>I have continued to use MD4 for the moment. There are probably alternatives which would be more efficient with CPU time, but this is not a scarce quantity for zsync. What is of interest is the amount of data that must be transmitted to the client: a full MD4 checksum requires 16 bytes. Given a file of length N, blocksize b, there are <literal>N/b</literal> blocks in a file; and assume that the client also has, for simplicity, N bytes of potential local data (and so ~N possible blocks of local data). If there is no data in common, and k bits of checksum transmitted, and the checksums are uniformly and independently distributed, then the chance of no collisions (data incorrectly believed to be in common, and ignoring the weak checksum for now):</para>
 		<informalequation>
 		<alt>p &gt;=  {left (2^k-N over b right )^N} over {(2^k)^N} = left (  1 - N over b 1 over 2^k right ) ^N newline</alt>
 		<graphic fileref="math/ss1.png" />
 		</informalequation>
-		<para>(bound derived by assuming the worst case, <inlineequation>N/b</inlineequation> distinct hashes from the server; the hashes on the client must not include any of these from the server.) To derive a value for k, we want this probability to be arbitrarily close to 1; say for some d:</para>
+		<para>(bound derived by assuming the worst case, <literal>N/b</literal> distinct hashes from the server; the hashes on the client must not include any of these from the server.) To derive a value for k, we want this probability to be arbitrarily close to 1; say for some d:</para>
 		<informalequation>
 		<alt>left ( 1 - N over  b 1 over 2^k  right ) ^ N > 1-2^-d newline</alt>
 		<graphic fileref="math/ss2.png" />
@@ -84,29 +84,31 @@ drarrow N^2 over b &lt; 2 ^ {k-d}
 drarrow k &gt; d + log_2 N + log_2 { N over b}</alt>
 		<graphic fileref="math/ss3.png" />
 		</informalequation>
-		<para>To get a reasonable certainty of no false matches, say one in a million, we can have say <inlineequation>d=20</inlineequation>, so this formula then gives us an easy way to calculate how many bits of the strong checksum have to be included in the .zsync file. It can be rounded up to the nearest byte for convenience; but by keeping this value low, we reduce the size of the .zsync. This reduces the storage requirement on the server, and the total amount that the client must download.</para> 
+		<para>To get a reasonable certainty of no false matches, say one in a million, we can have say <literal>d=20</literal>, so this formula then gives us an easy way to calculate how many bits of the strong checksum have to be included in the .zsync file. It can be rounded up to the nearest byte for convenience; but by keeping this value low, we reduce the size of the .zsync. This reduces the storage requirement on the server, and the total amount that the client must download.</para> 
 		</sect2>
 		</sect1>
 		<sect1><title>Match Continuation</title>
 		 <para>Another source of information that can help in determining a match is the matching status of neighbouring blocks. There is no reason to believe that matching data in the target file will end neatly on block boundaries - quite the opposite, we will expect to see that after one block matches, neighbouring blocks of the source data will match corresponding neighbours in the target data, giving long areas in the source file that can be copied to the target file.</para>
 		 <para>One way to use this is by rejecting matches unless a certain number of consecutive neighbouring blocks also match (see <citation><xref linkend="CIS2004"/></citation>). If we insist on, say, 2 matching blocks in sequence, we greatly reduce the chance of false positives - assuming the checksums of these blocks remain independent, then we can halve the number of bytes of strong checksum transmitted per block. The only matches we lose by this restriction are single-block matches - but these are rare anyway, and are the least serious matches to miss (because we will normally have unmatched data either side that needs to be fetched, so the loss of transmitting the data for the extra block is partially offset by the reduced overhead of downloading a single range instead of the two ranges either side). (Alternatively, one can think of this as splitting a larger matching block into two parts and allowing half-block aligned matches, as discussed in <citation><xref linkend="CIS2004"/></citation>.)</para>
 		 <para>The first match of a sequence will involve two neighbouring blocks matching together; assuming this is equivalent to a single block matching with the hash lengths combined, then we can directly halve the required checksum bits from the previous section. For subsequent blocks, while we are testing with a reduced hash length, we are only testing against a single, specific location in the target file, so again the chance of a false match is reduced. So, to avoid false positives in these two cases, we must have enough hash bits to satisfy the following two conditions:</para>
-		 <inlineequation>
+		 <para><inlineequation>
 		 <alt>2k &gt; d + log_2 N + log_2 { N over b} newline k &gt; d + log_2 { N over b}</alt>
 		 <graphic fileref="math/hba.png" />
-		 </inlineequation>
+		 </inlineequation></para>
 		 <para>(from <citation><xref linkend="CIS2004"/></citation>; I have checked that this seems right, but haven't verified in detail)</para>
 		 <para>At the block sizes that zsync uses, the latter inequality is usually the stricter one, but the difference is small, so the saving in transmitted data is near, if not quite, 50%. For zsync in particular &#8212; which, unlike rsync, must always calculate and transmit the strong checksum data for every block in the target file &#8212; this is a worthwhile saving.</para>
 		 <para>Note that we can also reduce the amount of weak checksum data transmitted, by assuming that matches for consecutive blocks are needed - in testing it proved more efficient to calculate the weak checksum for both blocks, rather than testing the weak checksum of only the first and then calculating the strong checksum for both (because in a situation where a given block occurred very often in a file, for example an all-null block in an ISO image, a prior block match provides much weaker information about the likelyhood of a following block match). Once we are calculating both weak checksums, we can halve the amount of weak checksum data transmitted. In testing this was upheld, and checking both weak checksums did not significantly harm performance, while providing a definite reduction in the metadata transferred.</para>
 		</sect1>
 		<sect1><title>rsync Speed</title>
-		<para>Moving the work to the client relieves the server, but the client then has to deal with the problem of computing the rolling checksum over the old file. As explained in <citation><xref linkend="Rsync1998"/></citation>, although it is necessary to calculate the weak checksum at every possible offset in the old file, due to the choice of checksum the checksum at offset <inlineequation>x+1</inlineequation> can be calculated using the checksum at offset x in combination with the bytes at <inlineequation>x</inlineequation> and <inlineequation>x+blocksize</inlineequation>.</para>
+		<para>Moving the work to the client relieves the server, but the client then has to deal with the problem of computing the rolling checksum over the old file. As explained in <citation><xref linkend="Rsync1998"/></citation>, although it is necessary to calculate the weak checksum at every possible offset in the old file, due to the choice of checksum the checksum at offset <literal>x+1</literal> can be calculated using the checksum at offset x in combination with the bytes at <literal>x</literal> and <literal>x+blocksize</literal>.</para>
 		<para>Despite this, when working on large files, for instance ISO files, the calculation can take some time &#8212; my Athlon XP 1600+ took roughly 3 minutes to pass over an entire ISO file in zsync-0.2.0. Various optimisations in the implementation helped get it to this level. The client skips forward to the end of a block once a match is obtained (there would not be a match overlapping with an existing match except if the target file contains unusual redundancy), allowing it to parse files faster when there is a large amount in common with the target. The half-block alignment data transfer optimisation also helps speed up strong checksum checking, because often only the first of the two blocks needs to be checksummed in order to get a rejection (whereas using a larger blocksize, we would have to strong checksum the entire block to get a rejection).</para>
 		<sect2><title>Negative Hash Table</title>
 		<para>To further improve performance, it was necessary to reconsider the use of a hash table to locate target blocks with a matching checksum value. Normally, the size of a hash table should be of the order of the size of the number of records to be stored. But, normally, we are more interested in the speed of sucessful lookups than failed ones. In the rsync algorithm, the vast majority of lookups are negative (that is, they are only to prove that no such entry exists); consequently, what we need is a data structure which makes negative lookups very quick.</para>
 		<para>I opted to retain the existing hash table for locating positive matches, but adding an additional compact hash table as a pre-filter. This extra, negative hash table just contains one bit per entry (so 8 entries per byte), with the bit indicating whether there is any entry with this hash value or not. Whereas the main hash table has at most 2^16 entries (which, as each is a 32-bit pointer value, is 0.25MB in size), the negative hash table is allowed 2^19 entries (so taking just 65536 bytes, but providing a higher resolution than the main hash table). I experimented with the number of extra bits that the negative hash table should have - each extra bit roughly halved the number of hash hits on large files, as expected, and on large test files it cut over a minute from the total processing time (figures for zsync-0.2.2, before the optimisation was added, shown for comparison):</para>
-		<informaltable><tgroup cols="3"><tbody>
-		<row><entry>Version</entry><entry>Extra bits resolved by negative hash</entry><entry>Total time (s) to process 640MB ISO file</entry></row>
+		<informaltable pgwide="1"><tgroup cols="3">
+        <thead>
+	    	<row><entry>Version</entry><entry>Extra bits resolved by negative hash</entry><entry>Total time (s) to process 640MB ISO file</entry></row>
+        </thead><tbody>
 		<row><entry>zsync-0.2.2</entry><entry>n/a</entry><entry>191</entry></row>
 		<row><entry>zsync-0.2.3 (pre-release)</entry><entry>1</entry><entry>165</entry></row>
 		<row><entry>zsync-0.2.3 (pre-release)</entry><entry>2</entry><entry>142</entry></row>
@@ -205,7 +207,7 @@ Content-range: bytes 3072-4095
 		<para>A simple implementation on the client side can then work out, for each block of data that it needs, which block(s) in the deflated data contains it. It then retrieves these blocks and inflates them, and takes out the chunk of data that it wanted. It will end up transferring the whole deflated block, which will contain more data than it needs &#8212; but it will benefit from the data being compressed. The client must also be intelligent about spotting overlaps and merges in the ranges to be retrieve: for instance, two non-adjacent blocks from the uncompressed stream might lie in the same deflate block, or in adjacent deflate blocks, so the client should retrieve a single range from the server and decompress it in one pass. zsync-0.0.1 up to zsync-0.1.0 implemented this approach.</para>
 		<para>A more sophisticated implementation can use the pointers within blocks. In order to decompress part of the stream, we need to know: the header for the block (or its location in the file, so we can download it); an offset into the compressed stream for that block (which is an offset in bits, as the gzip format used variable-length codes); and a number of leading bytes of output to skip (because it may not be possible to provide an index in the compressed stream corresponding to the desired offset in the uncompressed stream, for example when a backreference generates several bytes of output for a single compressed code). Given this information, we can download the header and the relevant section from the compressed stream, and inflate it; it is no longer necessary to download the whole compressed block.</para>
 		<mediaobject>
-		<imageobject><imagedata fileref="compressed-stream.png" format="PNG" width="400" height="130" /></imageobject>
+		<imageobject><imagedata fileref="compressed-stream.png" format="PNG" width="400" /></imageobject>
 		<caption><para>This image illustrates a hypothetical compressed stream for "The quick fox jumped over the lazy dog.", showing the inflated version of part of the stream (underscores are used to denote spaces in this, for clarity). Note that the first compressed code shown expands to 3 characters, "he " (it is a backreference to the occurrence of the same 3 characters earlier in the sentence).</para>
 		<para>To extract a block starting at "e lazy dog.", we need to know the offset of the code containing the backreference for "he " in the compressed stream, and the offset at the end of the block, so that we can download the compressed data; <emphasis>and</emphasis> the offset (1 character) from the start of "he " to the character we want; and the location of the block header (shown in blue).</para></caption>
 		</mediaobject>
@@ -254,11 +256,11 @@ Content-range: bytes 3072-4095
 	
 	<sect1>
 	<title>Compressed Delta Transfer</title>
-	<para>The comparison with <command>rsync -z</command> suggests another way of looking at the problem. We want to apply the rsync algorithm to the uncompressed data &#8212; which is what zsync's look-inside does &#8212; and then transfer the needed blocks compressed. While zsync with look-inside combined with <code>gzip --best</code> is effectively doing this, it is far from optimal - the code for decompressing from the middle of a compressed block is a workaround, not an optimal solution. For instance, zsync is often forced to transfer extra bytes at the start and end of blocks, and must often make a separate range request for the zlib block header, if that is some distance away from the needed compressed data.</para>
+	<para>The comparison with <command>rsync -z</command> suggests another way of looking at the problem. We want to apply the rsync algorithm to the uncompressed data &#8212; which is what zsync's look-inside does &#8212; and then transfer the needed blocks compressed. While zsync with look-inside combined with <command>gzip --best</command> is effectively doing this, it is far from optimal - the code for decompressing from the middle of a compressed block is a workaround, not an optimal solution. For instance, zsync is often forced to transfer extra bytes at the start and end of blocks, and must often make a separate range request for the zlib block header, if that is some distance away from the needed compressed data.</para>
 	<para>This suggests that we should try compressing blocks individually. One approach to this would be to use on-the-fly compression of the needed data by the server (effectively what rsync does), by using a web server module like mod_gzip (<xref linkend="ModGzip"/>) or mod_deflate (<xref linkend="ModDeflate"/>). But this would be against zsync's main aim, to avoid server load; in any case, on-the-fly content compression with these modules is not that widely deployed, and servers might choose not to enable it for partial file transfers. So relying on this to improve zsync's transfer efficiency would not benefit many users.</para>
 	<para>So ideally blocks should be individually compressed and stored on the server in advance. Compressing blocks separately is a special requirement which gzip is not designed to meet, so to do this zsync will need to do the compresion itself. It is still possible for the result to be a gzip file though: it could be a gzip file which happens to have a new zlib block for each zsync block in the file.</para>
 	<para>So it is sufficient to compress a file 1024 bytes (or whatever the blocksize is) at a time, telling zlib to start a new block after each input block, and then apply zsync's look-inside method. With this optimised gzip file, zsync should never need to request data from other blocks than the ones it is downloading; the map of the .gz file will point it straight to the start of the compressed data for that block.</para>
-	<para>Note that this technique is totally unrelated to <code>gzip --rsync</code>.</para>
+	<para>Note that this technique is totally unrelated to <command>gzip --rsync</command>.</para>
 	</sect1>
 	<sect1>
 	<title>Compression Results</title>
@@ -325,13 +327,13 @@ SHA-1: 97edb7d0d7daa7864c45edf14add33ec23ae94f8
 	        <author><firstname>Andrew</firstname><surname>Tridgell</surname></author>
 	        <author><firstname>Paul</firstname><surname>Mackerras</surname></author>
 	    </authorgroup>
-	    <ulink url="http://rsync.samba.org/tech_report/" />
+	    <bibliomisc><ulink url="http://rsync.samba.org/tech_report/" /></bibliomisc>
 	  </biblioentry>
 	  <biblioentry id="CVSup1999">
 	    <title>How Does CVSup Go So Fast?</title>
 	    <pubdate>1999-02-10</pubdate>
 	    <author><firstname>John D.</firstname><surname>Polstra</surname></author>
-	    <ulink url="http://www.cvsup.org/howsofast.html" />
+	    <bibliomisc><ulink url="http://www.cvsup.org/howsofast.html" /></bibliomisc>
 	  </biblioentry>
 	  <biblioentry id="Pipe1999">
 	    <title>Network Performance Effects of HTTP/1.1, CSS1, and PNG</title>
@@ -345,23 +347,23 @@ SHA-1: 97edb7d0d7daa7864c45edf14add33ec23ae94f8
 	     <author><firstname>Håkon Wium</firstname><surname>Lie</surname></author>
 	     <author><firstname>Chris</firstname><surname>Lilley</surname></author>
 	    </authorgroup>
-	    <ulink url="http://www.w3.org/TR/NOTE-pipelining-970624" />
+	    <bibliomisc><ulink url="http://www.w3.org/TR/NOTE-pipelining-970624" /></bibliomisc>
 	  </biblioentry>
 	  <biblioentry id="BitT2003">
 	    <title>Incentives Build Robustness in BitTorrent</title>
 	    <pubdate>2003-05-22</pubdate>
 	    <author><firstname>Bram</firstname><surname>Cohen</surname></author>
-	    <ulink url="http://bittorrent.com/bittorrentecon.pdf" />
+	    <bibliomisc><ulink url="http://bittorrent.com/bittorrentecon.pdf" /></bibliomisc>
 	  </biblioentry>
 	  <biblioentry id="RProxy">
 	    <title>rproxy</title>
 	    <pubdate>2002/10/03</pubdate>
 	    <author><firstname>Martin</firstname><surname>Pool</surname></author>
-	    <ulink url="http://rproxy.samba.org/" />
+	    <bibliomisc><ulink url="http://rproxy.samba.org/" /></bibliomisc>
 	  </biblioentry>
 	  <biblioentry id="GzipRsync">
 	    <title>(gzip --rsync patch)</title>
-	    <ulink url="http://ozlabs.org/~rusty/gzip.rsync.patch2" />
+	    <bibliomisc><ulink url="http://ozlabs.org/~rusty/gzip.rsync.patch2" /></bibliomisc>
 	  </biblioentry>
 	  <biblioentry id="CIS2004">
 	    <title>Improved Single-Round Protocols for Remote File Synchronization</title>
@@ -371,17 +373,17 @@ SHA-1: 97edb7d0d7daa7864c45edf14add33ec23ae94f8
 	    <author><firstname>Svilen</firstname><surname>Mihaylov</surname></author>
 	    <author><firstname>Torsten</firstname><surname>Suel</surname></author>
 	    </authorgroup>
-	    <ulink url="http://cis.poly.edu/suel/papers/erasure.pdf" />
+	    <bibliomisc><ulink url="http://cis.poly.edu/suel/papers/erasure.pdf" /></bibliomisc>
 	  </biblioentry>
 	  <biblioentry id="ModGzip">
 	    <title>mod_gzip - serving compressed content by the Apache webserver</title>
 	    <author><firstname>Michael</firstname><surname>Schröpl</surname></author>
-	    <ulink url="http://www.schroepl.net/projekte/mod_gzip/" />
+	    <bibliomisc><ulink url="http://www.schroepl.net/projekte/mod_gzip/" /></bibliomisc>
 	  </biblioentry>
 	  <biblioentry id="ModDeflate">
 	    <title>mod_deflate</title>
 	    <publishername>The Apache Software Foundation</publishername>
-	    <ulink url="http://httpd.apache.org/docs-2.0/mod/mod_deflate.html" />
+	    <bibliomisc><ulink url="http://httpd.apache.org/docs-2.0/mod/mod_deflate.html" /></bibliomisc>
 	  </biblioentry>
 	</bibliography>
 	
