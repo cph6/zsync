@@ -5,18 +5,18 @@
 <h2>Debian Package Lists</h2>
 
 <p>I am offering .zsync's for the main Debian Packages files (downloading these rather bulky files is a daily nuisance for Debian users) &#8212; these are updated every 30 minutes. Feel free to use them:</p>
-<pre>
-zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages http://zsync.moria.org.uk/s/sarge/Packages.zsync
-su root
-mv Packages /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages
-</pre>
+<p style="font-family: monospace;">
+$ zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages http://zsync.moria.org.uk/s/sarge/Packages.zsync <br />
+$ su root <br />
+$ mv Packages /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages
+</p>
 
 <p>Or for unstable:</p> 
-<pre>
-zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_unstable_main_binary-i386_Packages http://zsync.moria.org.uk/s/unstable/Packages.zsync
-su root
-mv Packages /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_unstable_main_binary-i386_Packages
-</pre>
+<p style="font-family: monospace;">
+$ zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_unstable_main_binary-i386_Packages http://zsync.moria.org.uk/s/unstable/Packages.zsync <br />
+$ su root <br />
+$ mv Packages /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_unstable_main_binary-i386_Packages
+</p>
 
 <p>Typicaly zsync only has to download the ~70kB control, file, and ~100kB to update the local Packages file. It's a big saving on downloading the whole file.</p>
 <blockquote>

@@ -5,12 +5,11 @@
 <ul>
  <li><a href="index">Home</a></li>
  <li><a href="http://www.moria.org.uk/computers/zsync/">News</a></li>
+ <li><a href="downloads">Download</a></li>
  <li><a href="client">Client use</a></li>
  <li><a href="server">Server use</a></li>
  <li><a href="papers">Technical Paper</a></li>
- <li><a href="http://sourceforge.net/project/showfiles.php?group_id=122399">Download</a></li>
  <li><a href="https://lists.sourceforge.net/lists/listinfo/zsync-users">Mailing List</a></li>
- <li><a href="http://sourceforge.net/tracker/?group_id=122399">Bugs, Patches &amp; Support Tracker</a></li>
  <li><a href="author">Credits &amp; Contact</a></li>
 </ul>
 </div>

@@ -1,0 +1,48 @@
+#include "header.gtml"
+<title>zsync Client Use</title>
+#include "head.gtml"
+
+<h2>Download</h2>
+
+<h3>Current Version</h3>
+
+<p>Download <a href="download/zsync-0.5.tar.bz2">zsync-0.5.tar.bz2</a>.</p> 
+
+<p>To install, it is the usual <code>configure</code>, <code>make</code>, <code>make install</code> sequence — see the INSTALL file for step-by-step instructions. You do not have to install zsync if you are just trying it out, as both zsync and zsyncmake require no data files installed; installation just puts the programs and manual pages into the normal paths on your system.</p>
+
+<h3>In-development &amp; Source Code History</h3>
+<p>The code repository for zsync is now available online. It is a <a href="http://bazaar-vcs.org/">Bazaar branch</a>, so to access it you need to install bazaar (<code>apt-get install bazaar</code> on Debian/Ubuntu).</p>
+<p>Then run <code>bzr get http://zsync.moria.org.uk/zsync</code> for the initial checkout; and use <code>bzr pull</code> from within the zsync directory to get future updates.</p>
+
+<h3>Download Details &amp; Old Versions</h3>
+
+<ul>
+<li><a href="download/zsync-0.5.tar.bz2">zsync-0.5.tar.bz2</a> — 188KB, md5sum 215cad0e33a4523268ff59cc1c75a669</li>
+<li><a href="download/zsync-0.4.3.tar.gz">zsync-0.4.3.tar.gz</a> — 245KB, md5sum 28668c1526997ec059f23ddebfaaefe4</li>
+<li><a href="download/zsync-0.4.2.tar.gz">zsync-0.4.2.tar.gz</a> — 243KB, md5sum f9891b412717a18805ea19211bdf1407</li>
+<li><a href="download/zsync-0.4.1.tar.gz">zsync-0.4.1.tar.gz</a> — 243KB, md5sum dfdf4cd0856fb88f58d6a4169ddb2835</li>
+<li><a href="download/zsync-0.4.0.tar.gz">zsync-0.4.0.tar.gz</a> — 243KB, md5sum 8840d1b6c7b1b7dc2ec4895eac613beb</li>
+<li><a href="download/zsync-0.3.3.tar.gz">zsync-0.3.3.tar.gz</a> — 241KB, md5sum 71efef80525276990cf8af97ee2b8f97</li>
+<li><a href="download/zsync-0.3.2.tar.gz">zsync-0.3.2.tar.gz</a> — 207KB, md5sum 0ee66f3a9800eab67fe9625b7aa3e40a</li>
+<li><a href="download/zsync-0.3.1.tar.gz">zsync-0.3.1.tar.gz</a> — 203KB, md5sum 7ac99a418a8eafc7bfc4676d3f83e7d2</li>
+<li><a href="download/zsync-0.3.0.tar.gz">zsync-0.3.0.tar.gz</a> — 203KB, md5sum 94f9b8f7826ad9f9686e7c258f1bb659</li>
+<li><a href="download/zsync-0.2.4.tar.gz">zsync-0.2.4.tar.gz</a> — 203KB, md5sum 14ccdfc4a4993775068945bf10f3555d</li>
+<li><a href="download/zsync-0.2.3.tar.gz">zsync-0.2.3.tar.gz</a> — 174KB, md5sum f9314753080ff8a16d4c8a91f334e419</li>
+<li><a href="download/zsync-0.2.2.tar.gz">zsync-0.2.2.tar.gz</a> — 174KB, md5sum bee5581951d3a60e05de81102ca128d3</li>
+<li><a href="download/zsync-0.2.1.tar.gz">zsync-0.2.1.tar.gz</a> — 174KB, md5sum 6b60084dc58ed8f1e9fc38f1dcf24d72</li>
+<li><a href="download/zsync-0.2.0.tar.gz">zsync-0.2.0.tar.gz</a> — 173KB, md5sum afa7aa6260c8b5c43b1e96fe4fb8e9a6</li>
+<li><a href="download/zsync-0.1.6.tar.gz">zsync-0.1.6.tar.gz</a> — 199KB, md5sum f85eb0fe7331e16adfc7d4e6b0467a0d</li>
+<li><a href="download/zsync-0.1.5.tar.gz">zsync-0.1.5.tar.gz</a> — 198KB, md5sum c6d0eecaf63965b9cc4bf81a9a5f0874</li>
+<li><a href="download/zsync-0.1.4.tar.gz">zsync-0.1.4.tar.gz</a> — 198KB, md5sum e0deb769ecf57c3d302069b266201908</li>
+<li><a href="download/zsync-0.1.3.tar.gz">zsync-0.1.3.tar.gz</a> — 198KB, md5sum 6d144dc2697ed6d95ae44e1a85981005</li>
+<li><a href="download/zsync-0.1.2.tar.gz">zsync-0.1.2.tar.gz</a> — 197KB, md5sum 739db46e3dc27b17212549016dfa38e5</li>
+<li><a href="download/zsync-0.1.1.tar.gz">zsync-0.1.1.tar.gz</a> — 198KB, md5sum d84e7cb0380b44267d4e3f88f6d25077</li>
+<li><a href="download/zsync-0.1.0.tar.gz">zsync-0.1.0.tar.gz</a> — 198KB, md5sum a548191c4313b1b6d571ab1d8b918e73</li>
+<li><a href="download/zsync-0.0.6.tar.gz">zsync-0.0.6.tar.gz</a> — 193KB, md5sum 674d0790c1c4b5a6dd02bfabf694c504</li>
+<li><a href="download/zsync-0.0.5.tar.gz">zsync-0.0.5.tar.gz</a> — 188KB, md5sum 6ba6aa5896ecee62c40b668b516e06d5</li>
+<li><a href="download/zsync-0.0.4.tar.gz">zsync-0.0.4.tar.gz</a> — 187KB, md5sum 46f31e4e9e39759ee6a00727325a23af</li>
+<li><a href="download/zsync-0.0.3.tar.gz">zsync-0.0.3.tar.gz</a> — 186KB, md5sum b121bb5c1d75d80a5a41b0a35d2f30a5</li>
+<li><a href="download/zsync-0.0.2.tar.gz">zsync-0.0.2.tar.gz</a> — 185KB, md5sum e1f1d614781e0a5daaca85de5274c074</li>
+</ul>
+
+#include "foot.gtml"

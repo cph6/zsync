@@ -1,5 +1,5 @@
-PAGES:=author client server index papers
-OTHER:=style.css paper200501 paper200503 images
+PAGES:=author client server index papers downloads
+OTHER:=style.css paper200501 paper200503 images download
 
 UPHOST:=www-uploader@moria
 UPPATH:=/var/www/zsync

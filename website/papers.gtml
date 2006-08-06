@@ -4,8 +4,11 @@
 
 <h2>Technical Paper</h2>
 
-<p>As I develop, I am updating the original technical paper in which I laid out the algorithms, ideas and design decisions behind zsync. The paper is therefore a work in progress. Some sections may be incomplete, or refer to earlier versions of zsync or of the implementation; I have given zsync version numbers and indicate out-of-date sections wherever possible. This work-in-progress version is at:</p>
-<p><a href="http://zsync.moria.org.uk/paper/">http://zsync.moria.org.uk/paper/</a></p>
+<p>As I develop, I am updating the original technical paper in which I laid out the algorithms, ideas and design decisions behind zsync. The paper is therefore a work in progress. Some sections may be incomplete, or refer to earlier versions of zsync or of the implementation; I have given zsync version numbers and indicate out-of-date sections wherever possible.</p>
+<ul>
+ <li><a href="http://zsync.moria.org.uk/paper/">On-line browseable version</li>
+ <li><a href="http://zsync.moria.org.uk/paper/onepage.html">All on one page, for printing or offline reading</a></li>
+</ul>
 <h3>March 2005 Paper — <i>zsync — Optimised rsync over HTTP</i></h3>
 <p>I have frozen the version of the technical paper as it stood in March 2005, because this when I stopped working on zsync for a while. This is also the point where I had completed my work on matching the efficiency of rsync, so it is a good moment to take a snapshot of where the work stands.</p>
 <p>This is a frozen, finished version of the technical paper as it stood at zsync-0.4.x, and can be used for citations.</p>
