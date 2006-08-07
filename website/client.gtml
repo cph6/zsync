@@ -11,6 +11,13 @@ $ su root <br />
 $ mv Packages /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages
 </p>
 
+<p>Or for etch:</p> 
+<p style="font-family: monospace;">
+$ zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_etch_main_binary-i386_Packages http://zsync.moria.org.uk/s/etch/Packages.zsync <br />
+$ su root <br />
+$ mv Packages /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_etch_main_binary-i386_Packages
+</p>
+
 <p>Or for unstable:</p> 
 <p style="font-family: monospace;">
 $ zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_unstable_main_binary-i386_Packages http://zsync.moria.org.uk/s/unstable/Packages.zsync <br />

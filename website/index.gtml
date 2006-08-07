@@ -39,7 +39,7 @@
 
 <h2>Current Status</h2>
 
-<p>zsync is currently a beta. I am fairly happy with how it works so far, but I am still open to new ideas and optimisations. But I have made sure that the format is fairly extensible in a compatible way; I expect that users of the current version of zsync will not experience compatibility problems with later versions for the foreseeable future.</p>
+<p>I am fairly happy with how zsync works so far, but I am still open to new ideas and optimisations. I have made sure that the format is fairly extensible in a compatible way; I expect that users of the current version of zsync will not experience compatibility problems with later versions for the foreseeable future.</p>
 
 <p>I am also looking to freeze the interface between the zsync library and the
 current command-line client; I will at some point split zsync into a dynamic
@@ -48,6 +48,6 @@ programs, and the client program. This to some extent depends on whether anyone
 is interested in embedding zsync into other programs; if I don't hear of anyone
 intending to do so, this might wait until I have a use for it myself.</p>
 
-<p>I am interested in <a href="author">hearing feedback about zsync</a>. Bugs, crashes, and feature suggestions are welcome. Perhaps most of all I am interested in hearing about uses of zsync: I would like to hear about any serious use of zsync, because knowing how people are using it will affect which features I work on; and if there are features that you need to enable a particular use, then I would like to hear about that too.</p>
+<p>I am interested in <a href="author">hearing feedback about zsync</a>. Bugs, crashes, and feature suggestions are welcome. Perhaps most of all I am interested in hearing about uses of zsync: I would like to hear about any serious use of zsync, because knowing how people are using it will affect which features I work on. If there are features that you need to enable a particular use, then I would like to hear about that too, particularly anyone that is interested in using zsync as a library as part of a larger program; please note that support for multiple files has already been asked about many times, but due to lack of time I am not likely to work on this in the near future.</p>
 
 #include "foot.gtml"
