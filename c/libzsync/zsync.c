@@ -24,12 +24,12 @@
 
 #include <arpa/inet.h>
 
+#include "zlib/zlib.h"
+
 #include "librcksum/rcksum.h"
 #include "zsync.h"
 #include "sha1.h"
 #include "zmap.h"
-#include "../url.h"
-#include "zlib/zlib.h"
 
 struct zsync_state {
   struct rcksum_state* rs;

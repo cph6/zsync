@@ -128,6 +128,7 @@ providing the hosting facilities for the downloads and mailing list, and the
 compile farm for testing portability.
 
 Also, thanks to Érsek László, James Antill, saul@alien-science.org, Kent Mein,
-Marc Lehmann, Robert Lemmen, Ricardo Correia, Karl Kalleberg, Michael Stone and
-Richard Lucassen for useful feedback and bug reports for previous versions.
+Marc Lehmann, Robert Lemmen, Ricardo Correia, Karl Kalleberg, Michael Stone,
+Richard Lucassen and Duncan Mac-Vicar for useful feedback and bug reports for
+previous versions.
 
