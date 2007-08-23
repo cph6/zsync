@@ -319,7 +319,7 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
     {
       size_t got = 0;
       struct progress p = {0,0,0,0};
-      int r;
+      size_t r;
 
       if (!no_progress)
         do_progress(&p,0,got);
@@ -328,14 +328,14 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
         char buf[1024];
         r = fread(buf, 1, sizeof(buf), f);
 	
-        if (r > 0)
+        if (r == 0 && ferror(f)) { perror("read"); break; }
+
+        if (r > 0) {
           if (r > fwrite(buf, 1, r, g)) {
             fprintf(stderr,"short write on %s\n",fname);
             break;
           }
-        if (r < 0) { perror("read"); break; }
 
-        if (r>0) {
           got += r;
           if (!no_progress)
             do_progress(&p, len ? (100.0*got / len) : 0, got);
@@ -407,6 +407,7 @@ static int get_more_data(struct range_fetch* rf)
   }
 }
 
+/* rfgets - get a line (terminated by LF or end-of-file) from the buffer */
 static char* rfgets(char* buf, size_t len, struct range_fetch* rf) 
 {
   char *p;
@@ -417,14 +418,19 @@ static char* rfgets(char* buf, size_t len, struct range_fetch* rf)
     if (!p) {
       int n = get_more_data(rf);
       if (n <= 0) { /* If cut off, return the rest of the buffer */
-	p = &(rf->buf[rf->buf_end]);
+        p = &(rf->buf[rf->buf_end]);
       }
     } else p++; /* Step past \n */
     
     if (p) {
       register char *bufstart = &(rf->buf[rf->buf_start]);
-      len--; /* allow for trailing \0 */
-      if (len > p-bufstart) len = p-bufstart;
+
+      /* Work out how much data to return - the line, or at most 'len' bytes */
+      len--; /* leave space for trailing \0 */
+      if (len > (size_t)(p-bufstart)) len = p-bufstart;
+
+      /* Copy from input buffer to return buffer, nul terminate, and advance
+       * current position in the input buffer */
       memcpy(buf, bufstart, len);
       buf[len] = 0;
       rf->buf_start += len;
@@ -718,7 +724,7 @@ check_boundary:
 
     /* We want to send rf->block_left to the caller, but we may have less in the buffer, and they may have less buffer space, so reduce appropriately */
     if (rl > dlen) rl = dlen;
-    if (rf->buf_end - rf->buf_start < rl) {
+    if ((size_t)(rf->buf_end - rf->buf_start) < rl) {
       rl = rf->buf_end - rf->buf_start;
 
       /* If we have exhausted the buffer, get more data.

@@ -39,7 +39,7 @@ void configure_zstream_for_zdata(const struct zmap* zm, struct z_stream_s* zs, l
 #define GZ_COMMENT      0x10 /* bit 4 set: file comment present */
 #define GZ_RESERVED     0xE0 /* bits 5..7: reserved */
 
-static inline char* skip_zhead(char* p)
+static inline const char* skip_zhead(const char* p)
 {
   int flags = p[3];
   

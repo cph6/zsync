@@ -49,7 +49,7 @@ void __attribute__((noreturn)) stream_error(const char* func, FILE* stream)
   exit(2);
 }
 
-static void write_block_sums(char* buf, size_t got, FILE* f)
+static void write_block_sums(unsigned char* buf, size_t got, FILE* f)
 {
   struct rsum r;
   unsigned char checksum[CHECKSUM_SIZE];
@@ -228,7 +228,7 @@ void read_stream_write_blocksums(FILE* fin, FILE* fout)
 
     if (got > 0) {
       if (!no_look_inside && len == 0 && buf[0] == 0x1f && buf[1] == 0x8b) {
-        do_zstream(fin,fout,buf,got);
+        do_zstream(fin, fout, (char*)buf, got);
         break;
       }
 
@@ -261,7 +261,7 @@ void fcopy(FILE* fin, FILE* fout)
   }
 }
 
-void fcopy_hashes(FILE* fin, FILE* fout, int rsum_bytes, int hash_bytes)
+void fcopy_hashes(FILE* fin, FILE* fout, size_t rsum_bytes, size_t hash_bytes)
 {
   unsigned char buf[20];
   size_t len;
@@ -339,8 +339,8 @@ const char* guess_gzip_options(const char* f)
         } else if (!read_sample_and_close(p,SAMPLE,samp)) {
           ;
         } else {
-          char *a = skip_zhead(orig);
-          char *b = skip_zhead(samp);
+          const char *a = skip_zhead(orig);
+          const char *b = skip_zhead(samp);
 
           if (!memcmp(a,b,900))
             break;
@@ -526,11 +526,12 @@ int main(int argc, char** argv) {
   fprintf(fout,"zsync: " VERSION "\n");
   
   /* Lines we might include but which older clients can ignore */
-  if (do_recompress)
+  if (do_recompress) {
     if (zfname)
       fprintf(fout,"Safe: Z-Filename Recompress\nZ-Filename: %s\n",zfname);
     else
       fprintf(fout,"Safe: Recompress\n");
+  }
 
   if (fname) fprintf(fout,"Filename: %s\n",fname);
   fprintf(fout,"Blocksize: " SIZE_T_PF "\n",blocksize);
@@ -555,7 +556,7 @@ int main(int argc, char** argv) {
   fputs("SHA-1: ",fout);
   {
     unsigned char digest[SHA1_DIGEST_LENGTH];
-    int i;
+    unsigned int i;
 
 
     SHA1Final(digest, &shactx);
