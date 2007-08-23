@@ -72,7 +72,7 @@ static void unlink_block(struct rcksum_state* z, zs_blockid id)
 }
 
 #ifndef HAVE_PWRITE
-size_t pwrite(int d, const void* buf, size_t nbytes, off_t offset)
+ssize_t pwrite(int d, const void* buf, size_t nbytes, off_t offset)
 {
   if (lseek(d, offset, SEEK_SET) == -1) return -1;
   return write(d, buf, nbytes);

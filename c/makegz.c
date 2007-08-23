@@ -86,7 +86,7 @@ FILE* optimal_gzip(FILE* ffin, const char* fout, size_t blocksize)
       case Z_STREAM_END:
       case Z_OK:
 	{
-	  int w = zs.next_out - outbuf;
+	  size_t w = zs.next_out - outbuf;
 	  
 	  if (w != fwrite(outbuf, 1, w, ffout)) { perror("write"); r = -1; }
 	}
