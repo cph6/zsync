@@ -98,7 +98,6 @@
 
 /* function prototypes */
 local void fixedtables OF((struct inflate_state FAR *state));
-int updatewindow OF((z_streamp strm, unsigned out));
 #ifdef BUILDFIXED
    void makefixed OF((void));
 #endif

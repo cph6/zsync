@@ -21,4 +21,10 @@
 #  include "config.h"
 #endif
 
+#if defined(__GNUC__) && defined (__OpenBSD__)
+#  define ZS_DECL_BOUNDED(x,y,z) __attribute__((__bounded__(x,y,z)))
+#else
+#  define ZS_DECL_BOUNDED(x,y,z)
+#endif /* ZS_DECL_BOUNDED */
+
 #endif
