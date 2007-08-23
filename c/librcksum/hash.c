@@ -1,7 +1,7 @@
 /*
  *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
- *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005,2007 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -14,7 +14,7 @@
  *   COPYING file for details.
  */
 
-#include "config.h"
+#include "zsglobal.h"
 
 #include <stdlib.h>
 #include <string.h>

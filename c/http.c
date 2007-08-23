@@ -1,6 +1,6 @@
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005,2007 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -13,7 +13,7 @@
  *   COPYING file for details.
  */
 
-#include "config.h"
+#include "zsglobal.h"
 
 #include <stdio.h>
 #include <stdlib.h>

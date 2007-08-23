@@ -13,4 +13,12 @@
  *   COPYING file for details.
  */
 
-FILE* optimal_gzip(FILE* fin, const char* fout, size_t blocksize);
+#ifndef ZSGLOBAL_H
+#define ZSGLOBAL_H
+
+
+#ifdef HAVE_CONFIG_H
+#  include "config.h"
+#endif
+
+#endif

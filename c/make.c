@@ -13,7 +13,7 @@
  *   COPYING file for details.
  */
 
-#include "config.h"
+#include "zsglobal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
