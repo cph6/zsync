@@ -29,7 +29,7 @@ dnl *
 dnl * 
 dnl * Check for socklen_t.
 dnl * 
-AC_DEFUN([AC_TYPE_SOCKLEN_T],
+AC_DEFUN([X_TYPE_SOCKLEN_T],
 [AC_CACHE_CHECK([for socklen_t], ac_cv_type_socklen_t,
 [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 #include <sys/types.h>
@@ -44,7 +44,7 @@ fi])
 dnl * 
 dnl * Check for in_port_t.
 dnl * 
-AC_DEFUN([AC_TYPE_IN_PORT_T],
+AC_DEFUN([X_TYPE_IN_PORT_T],
 [AC_CACHE_CHECK([for in_port_t], ac_cv_type_in_port_t,
 [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 #include <sys/types.h>
@@ -103,7 +103,7 @@ fi])
 dnl * 
 dnl * Check for sa_family_t.
 dnl * 
-AC_DEFUN([AC_TYPE_SA_FAMILY_T],
+AC_DEFUN([X_TYPE_SA_FAMILY_T],
 [AC_CACHE_CHECK([for sa_family_t], ac_cv_type_sa_family_t,
 [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 #include <sys/types.h>

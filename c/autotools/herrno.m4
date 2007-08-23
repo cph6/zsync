@@ -29,7 +29,7 @@ dnl *
 dnl * 
 dnl * Check for h_errno.
 dnl *
-AC_DEFUN([AC_DECL_H_ERRNO],
+AC_DEFUN([X_DECL_H_ERRNO],
 [AC_CACHE_CHECK(for h_errno declaration in netdb.h, ac_cv_decl_h_errno,
 [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 #include <netdb.h>]], [[
