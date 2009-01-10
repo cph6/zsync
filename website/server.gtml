@@ -1,10 +1,10 @@
 #include "header.gtml"
-<title>zsync Client Use</title>
+<title>zsync Server-Side</title>
 #include "head.gtml"
 
 <h2>Making zsync Downloads</h2>
 
-<p>Note that zsync only (currently) supports single-file downloads. I am currently ofthe opinion that this is sufficient: it is a file distribution method, and, like .tar.gz, it is up to the downloader to worry about extraction, permisions, etc. zsync is not competing with rsync for synchronising directory trees between machines and over shell accounts.</p>
+<p>Note that zsync only (currently) supports single-file downloads. I am currently of the opinion that this is sufficient: it is a file distribution method, and, like .tar.gz, it is up to the downloader to worry about extraction, permisions, etc. zsync is not competing with rsync for synchronising directory trees between machines and over shell accounts.</p>
 
 <p>There are three cases:</p>
 <ol>
