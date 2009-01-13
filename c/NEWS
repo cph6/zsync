@@ -1,4 +1,6 @@
 Changes in 0.6
+- fix "try a smaller blocksize" failures when zsyncmakeing for huge compressed
+  files on 32bit systems
 - fix some warnings
 - tidy up autoconf use
 

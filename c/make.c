@@ -66,8 +66,11 @@ static void write_block_sums(unsigned char* buf, size_t got, FILE* f)
   
 }
 
+/* long long pos = in_position(z_stream*)
+ * Returns the position (in bits) that zlib has used in the compressed data
+ * stream so far */
 static inline long long in_position(z_stream* pz)
-{ return pz->total_in * 8 - ( 63 & pz->data_type); }
+{ return pz->total_in * (long long)8 - ( 63 & pz->data_type); }
 
 static FILE* zmap;
 static int zmapentries;
@@ -159,7 +162,9 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
   write_zmap_delta(&prev_in,&prev_out,header_bits, zs.total_out, 1);
   zs.avail_out = blocksize;
  
+  /* keep going until the end of the compressed stream */
   while (!eoz) {
+    /* refill input buffer if empty */
     if (zs.avail_in == 0) {
       int rc = fread(inbuf,1,inbufsz,fin);
       zs.next_in = inbuf;
@@ -169,6 +174,13 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
     {
       int rc;
 
+      /* Okay, decompress more data from inbuf to outbuf.
+       * Z_BLOCK means that decompression will halt if we reach the end of a
+       *  compressed block in the input file.
+       * And decompression will also stop if outbuf is filled (at which point
+       *  we have a whole block of uncompressed data and so should write its
+       *  checksums)
+       */
       rc = inflate(&zs,Z_BLOCK);
       switch (rc) {
       case Z_STREAM_END:
@@ -180,19 +192,34 @@ void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
 	fprintf(stderr,"zlib error %s\n",zs.msg);
 	exit(1);
       }
+
+      /* If the output buffer is filled, i.e. we've now got a whole block of uncompressed data. */
       if (zs.avail_out == 0 || rc == Z_STREAM_END) {
+    /* Add to the running SHA1 of the entire file. */
 	SHA1Update(&shactx, outbuf, blocksize-zs.avail_out);
-	/* Completed a block */
+
+	/* Completed a block; write out its checksums */
 	write_block_sums(outbuf,blocksize-zs.avail_out,fout);
+
+    /* Clear the decompressed data buffer, ready for the next block of uncompressed data. */
 	zs.next_out = outbuf; zs.avail_out = blocksize;
+
+    /* Having passed a block boundary in the uncompressed data */
 	want_zdelta = 1;
       }
+
+      /* If we have reached a block boundary in the compressed data */
       if (zs.data_type & 128 || rc == Z_STREAM_END) {
+        /* write out info on this block */
 	write_zmap_delta(&prev_in,&prev_out,header_bits + in_position(&zs),zs.total_out,1);
 
 	midblock_in = midblock_out = 0;
 	want_zdelta = 0;
       }
+
+      /* If we passed a block boundary in the uncompressed data, record the
+       * next available point at which we could stop or start decompression.
+       * Write a zmap delta with the 1st when we see the 2nd, etc */
       if (want_zdelta && inflateSafePoint(&zs)) {
 	long long cur_in = header_bits + in_position(&zs);
 	if (midblock_in) {
