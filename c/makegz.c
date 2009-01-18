@@ -53,9 +53,9 @@ FILE* optimal_gzip(FILE* ffin, const char* fout, size_t blocksize)
 
   if (!ffout) { perror("open"); return NULL; }
 
-  fwrite("\x1f\x8b\x08\x00",4,1,ffout);
-  fputlong(ffout,mtime);
-  fwrite("\x00\x03",2,1,ffout);
+  if (fwrite("\x1f\x8b\x08\x00",4,1,ffout) != 1) { perror("write"); return NULL; }
+  if (fputlong(ffout,mtime) == -1)               { perror("write"); return NULL; }
+  if (fwrite("\x00\x03",2,1,ffout) != 1)         { perror("write"); return NULL; }
   {
     z_stream zs;
     unsigned char* inbuf = malloc(blocksize);
@@ -101,12 +101,12 @@ FILE* optimal_gzip(FILE* ffin, const char* fout, size_t blocksize)
       }
     }
 
-    fputlong(ffout, crc);
-    fputlong(ffout, zs.total_in);
+    if (fputlong(ffout, crc) == -1)         { perror("write"); return NULL; }
+    if (fputlong(ffout, zs.total_in) == -1) { perror("write"); return NULL; }
     fflush(ffout);
     free(outbuf);
     free(inbuf);
-    if (fclose(ffin) != 0 || r != 0) { fclose(ffout); return NULL; }
+    if (fclose(ffin) != 0 || r != 0)    { fclose(ffout); return NULL; }
   }
   rewind(ffout);
   return ffout;

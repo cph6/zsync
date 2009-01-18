@@ -312,12 +312,12 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
     { /* Skip headers. TODO support content-encodings, Content-Location etc */
       char buf[512];
       do {
-	fgets(buf,sizeof(buf),f);
-	
+        if (fgets(buf,sizeof(buf),f) == NULL) {
+            perror("read"); exit(1);
+        }
+
 	sscanf(buf,"Content-Length: " SIZE_T_PF,&len);
-	if (ferror(f)) {
-	  perror("read"); exit(1);
-	}
+
       } while (buf[0] != '\r' && !feof(f));
     }
     {

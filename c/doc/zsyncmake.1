@@ -5,6 +5,8 @@ zsyncmake \- Build control file for zsync(1)
 .SH "SYNTAX"
 .LP 
 zsyncmake [ { \-z | \-Z } ] [ \-e ] [ \-C ] [ \-u \fIurl\fR ] [ \-U \fIurl\fR ] [ \-b \fIblocksize\fR ] [ \-o \fIoutfile\fR ] [ \-f \fItargetfilename\fR ] [ \-v ] \fIfilename\fP
+.LP 
+zsync \-V
 .SH "DESCRIPTION"
 .LP 
 Constructs a metafile for the zsync client program to use to perform partial file downloads. \fIfilename\fR is the file that users wish to downloads; zsyncmake constructs the appropriate metafile and writes \fIfilename\fR.zsync in the current directory.
@@ -38,6 +40,9 @@ Specifies a URL corresponding to the decompressed content of the file (only appl
 .TP 
 \fB\-v\fR
 Enable verbose messages.
+.TP 
+\fB\-V\fR
+Prints the version of zsync.
 .TP 
 \fB\-z\fR
 Compress the file to transfer. Note that this overwrites any file called \fIfilename\fP.gz without warning (if you don't give a filename, e.g. because you are reading from stdin, then zsync will use the name supplied with -f, or as a last fallback, zsync-target.gz).

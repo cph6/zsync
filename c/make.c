@@ -104,9 +104,16 @@ static void write_zmap_delta(long long *prev_in, long long *prev_out, long long 
     g.outbyteoffset = outbytes;
     *prev_out = new_out;
   }
-  fwrite(&g,sizeof(g),1,zmap);
-  zmapentries++;
-  last_delta_in = new_in;
+
+    /* Write out the zmap delta */
+    if (fwrite(&g,sizeof(g),1,zmap) != 1) {
+        perror("write");
+        exit(1);
+    }
+
+    /* And keep state */
+    zmapentries++;
+    last_delta_in = new_in;
 }
 
 void do_zstream(FILE *fin, FILE* fout, const char* bufsofar, size_t got)
@@ -415,7 +422,7 @@ int main(int argc, char** argv) {
 
   {
     int opt;
-    while ((opt = getopt(argc,argv,"b:Ceo:f:u:U:vzZ")) != -1) {
+    while ((opt = getopt(argc,argv,"b:Ceo:f:u:U:vVzZ")) != -1) {
       switch (opt) {
       case 'e':
 	    do_exact = 1;
@@ -446,6 +453,11 @@ int main(int argc, char** argv) {
       case 'v':
         verbose++;
         break;
+      case 'V':
+	printf(PACKAGE " v" VERSION " (zsyncmake compiled " __DATE__ " " __TIME__ ")\n"
+	       "By Colin Phipps <cph@moria.org.uk>\n"
+	       "Published under the Artistic License v2, see the COPYING file for details.\n");
+	exit(0);
       case 'z':
         do_compress = 1;
         break;
