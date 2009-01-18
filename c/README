@@ -117,9 +117,10 @@ domain, by Steve Reid. This code is in the libhash/ subdirectory, see the
 individual files for their non-copyright notices.
 
 The rest of the code (that is, everything not in the zlib and libhash
-subdirectories) is copyright (C) 2004 Colin Phipps <cph@moria.org.uk>. zsync is
-made available under the (clarified) Artistic License - see the file COPYING
-for details.
+subdirectories) is
+Copyright (C) 2004,2005,2007,2009 Colin Phipps <cph@moria.org.uk>.
+zsync is made available under the (clarified) Artistic License - see the file
+COPYING for details.
 
 Thanks also to:
 

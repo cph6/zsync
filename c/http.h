@@ -1,7 +1,7 @@
 /*
  *   http.h - simple HTTP client for zsync
  *
- *   Copyright (C) 2004,2005 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005,2009 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
