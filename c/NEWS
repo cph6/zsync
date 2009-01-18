@@ -1,4 +1,7 @@
 Changes in 0.6
+- fix out-of-bounds memory access when processing last block of non-compressed
+  download (patch from Timothy Lee). Also fix an error handling fault for the
+  same.
 - fix "try a smaller blocksize" failures when zsyncmakeing for huge compressed
   files on 32bit systems
 - fix potential crash when re/deallocating checksum hash in librcksum (patch

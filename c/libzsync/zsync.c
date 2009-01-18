@@ -567,11 +567,10 @@ int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off_t offs
 	}
 
 	if ( (x + offset) % blocksize == 0)
-	  if (zsync_submit_data(zr->zs, zr->outbuf, zr->outoffset + x - blocksize, blocksize))
+	  if (zsync_submit_data(zr->zs, zr->outbuf, zr->outoffset + x - blocksize, 1))
 	    ret = 1;
       }
       buf += x; len -= x; offset += x;
-      if (!len) return 0;
     }
 
     /* Now we are block-aligned */
