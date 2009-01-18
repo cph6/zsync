@@ -123,10 +123,10 @@ char *referer;
 
 int set_proxy_from_string(const char* s)
 {
-  if (!memcmp(s,"http://",7)) {
+  if (!memcmp(s, http_scheme, strlen(http_scheme))) {
     proxy = malloc(256);
     if (!proxy) return 0;
-    if (!get_host_port(s,proxy,256,&pport))
+    if (!get_http_host_port(s,proxy,256,&pport))
       return 0;
     if (!pport) { pport = strdup("webcache"); }
     return 1;
@@ -231,7 +231,7 @@ FILE* http_get(const char* orig_url, char** track_referer, const char* tfname)
     char *p;
     char *port;
 
-    if ( (p = get_host_port(url,hostn,sizeof(hostn),&port)) == NULL) break;
+    if ( (p = get_http_host_port(url,hostn,sizeof(hostn),&port)) == NULL) break;
     if (!proxy) {
       connecthost = hostn;
       connectport = strdup(port);
@@ -450,7 +450,7 @@ struct range_fetch* range_fetch_start(const char* orig_url)
   char hostn[sizeof(rf->hosth)];
 
   if (!rf) return NULL;
-  p = get_host_port(orig_url, hostn, sizeof(hostn), &(rf->cport));
+  p = get_http_host_port(orig_url, hostn, sizeof(hostn), &(rf->cport));
   if (!p) { free(rf); return NULL; }
   
   if (strcmp(rf->cport,"http") != 0)

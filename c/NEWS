@@ -7,6 +7,7 @@ Changes in 0.6
 - fix potential crash when re/deallocating checksum hash in librcksum (patch
   from Timothy Lee)
 - explain status code errors better
+- better URL handling
 - fix some warnings
 - tidy up autoconf use
 

@@ -13,6 +13,15 @@
  *   COPYING file for details.
  */
 
-char* get_host_port(const char* url, char* hostn, int hnlen, char** port);
+extern const char http_scheme[];
+
+/* Given an HTTP URL, return the path path of the URL as the return value, and
+ * return the hostname in the provided buffer (hostn, length hnlen)
+ * and, if present, return a (malloced) string buffer containing the port string.
+ * Or return NULL if not HTTP or other parsing failure.
+ */
+char* get_http_host_port(const char* url, char* hostn, int hnlen, char** port);
 
 char* __attribute__((pure)) make_url_absolute(const char* base, const char* url);
+
+int __attribute__((pure)) is_url_absolute(const char* url);

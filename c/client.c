@@ -102,7 +102,7 @@ struct zsync_state* read_zsync_control_file(const char* p, const char* fn)
 
   f = fopen(p,"r");
   if (!f) {
-    if (memcmp(p,"http://",7)) {
+    if (!is_url_absolute(p)) {
       perror(p); exit(2);
     }
     f = http_get(p,&lastpath,fn);
