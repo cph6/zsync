@@ -290,7 +290,7 @@ int main(int argc, char** argv) {
   srand(getpid());
   {
     int opt;
-    while ((opt = getopt(argc,argv,"A:k:o:i:Vsu:")) != -1) {
+    while ((opt = getopt(argc,argv,"A:k:o:i:Vsqu:")) != -1) {
       switch (opt) {
       case 'A':
 	{ /* Scan string as hostname=username:password */
@@ -321,6 +321,7 @@ int main(int argc, char** argv) {
 	       "Published under the Artistic License v2, see the COPYING file for details.\n");
 	exit(0);
       case 's':
+      case 'q':
 	no_progress = 1;
 	break;
       case 'u':
@@ -364,7 +365,8 @@ int main(int argc, char** argv) {
     }
     zsync_progress(zs, &local_used, NULL);
     if (!local_used) {
-      fputs("No relevent local data found - I will be downloading the whole file. If that's not what you want, CTRL-C out. You should specify the local file is the old version of the file to download with -i (you might have to decompress it with gzip -d first). Or perhaps you just have no data that helps download the file\n",stderr);
+      if (!no_progress)
+        fputs("No relevent local data found - I will be downloading the whole file. If that's not what you want, CTRL-C out. You should specify the local file is the old version of the file to download with -i (you might have to decompress it with gzip -d first). Or perhaps you just have no data that helps download the file\n",stderr);
     }
   }
 

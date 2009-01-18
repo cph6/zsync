@@ -4,7 +4,7 @@
 zsync \- Partial/differential file download client over HTTP
 .SH "SYNTAX"
 .LP 
-zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-s ] [ \-k \fIfile\fR.zsync ] [ -A \fIhostname\fP=\fIusername\fR:\fIpassword\fR ] { \fIfilename\fP | \fIurl\fR }
+zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ { \-s | \-q } ] [ \-k \fIfile\fR.zsync ] [ -A \fIhostname\fP=\fIusername\fR:\fIpassword\fR ] { \fIfilename\fP | \fIurl\fR }
 .LP 
 zsync \-V
 .SH "DESCRIPTION"
@@ -36,8 +36,11 @@ Indicates that zsync should save the zsync file that it downloads, with the give
 \fB\-o\fR \fIoutputfile\fP
 Override the default output file name.
 .TP 
-\fB\-s\fR
+\fB\-q\fR
 Suppress the progress bar, download rate and ETA display.
+.TP 
+\fB\-s\fR
+Deprecated synonym for -q.
 .TP 
 \fB\-u\fR \fIurl\fP
 This specifies the referring URL.  If you have a .zsync file locally (if you

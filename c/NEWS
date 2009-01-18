@@ -8,6 +8,8 @@ Changes in 0.6
   from Timothy Lee)
 - explain status code errors better
 - better URL handling
+- add -q as a substitute for -s, as -q is more conventional (re wget). -q also
+  suppresses the 'no relevant local data' warning now.
 - fix some warnings
 - tidy up autoconf use
 
