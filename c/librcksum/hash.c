@@ -1,3 +1,4 @@
+
 /*
  *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
@@ -27,48 +28,69 @@
 #include "rcksum.h"
 #include "internal.h"
 
-void rcksum_add_target_block(struct rcksum_state* z, zs_blockid b, struct rsum r, void* checksum)
-{
- if (b < z->blocks) {
-  /* Get hash entry with checksums for this block */
-  struct hash_entry* e = &(z->blockhashes[b]);
+/* rcksum_add_target_block(self, blockid, rsum, checksum)
+ * Sets the stored hash values for the given blockid to the given values.
+ */
+void rcksum_add_target_block(struct rcksum_state *z, zs_blockid b,
+                             struct rsum r, void *checksum) {
+    if (b < z->blocks) {
+        /* Get hash entry with checksums for this block */
+        struct hash_entry *e = &(z->blockhashes[b]);
 
-  /* Enter checksums */
-  memcpy(e->checksum, checksum, z->checksum_bytes);
-  e->r.a = r.a & z->rsum_a_mask;
-  e->r.b = r.b;
-  if (z->rsum_hash) {
-    free(z->rsum_hash); z->rsum_hash = NULL;
-    free(z->bithash); z->bithash = NULL;
-  }
- }
+        /* Enter checksums */
+        memcpy(e->checksum, checksum, z->checksum_bytes);
+        e->r.a = r.a & z->rsum_a_mask;
+        e->r.b = r.b;
+
+        /* New checksums invalidate any existing checksum hash tables */
+        if (z->rsum_hash) {
+            free(z->rsum_hash);
+            z->rsum_hash = NULL;
+            free(z->bithash);
+            z->bithash = NULL;
+        }
+    }
 }
 
-int build_hash(struct rcksum_state* z)
-{
-  zs_blockid id;
-  int i = 16;
-  
-  while ((2<<(i-1)) > z->blocks && i > 4) i--;
-  z->bithashmask = (2<<(i+BITHASHBITS)) - 1;
-  z->hashmask = (2<<i) - 1;
+/* build_hash(self)
+ * Build hash tables to quickly lookup a block based on its rsum value.
+ * Returns non-zero if successful.
+ */
+int build_hash(struct rcksum_state *z) {
+    zs_blockid id;
+    int i = 16;
 
-  z->rsum_hash = calloc(z->hashmask+1, sizeof *(z->rsum_hash));
-  if (!z->rsum_hash) return 0;
+    /* Try hash size of 2^i; step down the value of i until we find a good size
+     */
+    while ((2 << (i - 1)) > z->blocks && i > 4)
+        i--;
 
-  z->bithash = calloc(z->bithashmask+1, 1);
-  if (!z->bithash) { free(z->rsum_hash); z->rsum_hash = NULL; return 0; }
+    /* Allocate hash based on rsum */
+    z->hashmask = (2 << i) - 1;
+    z->rsum_hash = calloc(z->hashmask + 1, sizeof *(z->rsum_hash));
+    if (!z->rsum_hash)
+        return 0;
 
-  for (id = 0; id < z->blocks; id++) {
-    struct hash_entry* e = z->blockhashes + id;
-    /* Prepend to linked list for this hash entry */
-    unsigned h = calc_rhash(z,e);
+    /* Allocate bit-table based on rsum */
+    z->bithashmask = (2 << (i + BITHASHBITS)) - 1;
+    z->bithash = calloc(z->bithashmask + 1, 1);
+    if (!z->bithash) {
+        free(z->rsum_hash);
+        z->rsum_hash = NULL;
+        return 0;
+    }
 
-    e->next = z->rsum_hash[h & z->hashmask];
-    z->rsum_hash[h & z->hashmask] = e;
+    /* Now fill in the hash tables */
+    for (id = 0; id < z->blocks; id++) {
+        struct hash_entry *e = z->blockhashes + id;
 
-    z->bithash[(h & z->bithashmask) >> 3] |= 1 << (h & 7);
-  }
-  return 1;
+        /* Prepend to linked list for this hash entry */
+        unsigned h = calc_rhash(z, e);
+        e->next = z->rsum_hash[h & z->hashmask];
+        z->rsum_hash[h & z->hashmask] = e;
+
+        /* And set relevant bit in the bithash to 1 */
+        z->bithash[(h & z->bithashmask) >> 3] |= 1 << (h & 7);
+    }
+    return 1;
 }
-
