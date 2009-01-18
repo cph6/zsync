@@ -18,6 +18,10 @@
 #include <stdio.h>
 #include <time.h>
 
+#ifdef WITH_DMALLOC
+# include <dmalloc.h>
+#endif
+
 #include "progress.h"
 
 int no_progress;

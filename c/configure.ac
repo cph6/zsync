@@ -45,11 +45,6 @@ AC_CHECK_SIZEOF(size_t)
 AC_CHECK_SIZEOF(off_t)
 
 AM_WITH_DMALLOC
-AH_BOTTOM([
-#ifdef WITH_DMALLOC
-# include <dmalloc.h>
-#endif
-])
 
 case $host_os in
    mingw32)

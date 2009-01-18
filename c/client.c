@@ -24,6 +24,10 @@
 #include <errno.h>
 #include <ctype.h>
 
+#ifdef WITH_DMALLOC
+# include <dmalloc.h>
+#endif
+
 #include "libzsync/zsync.h"
 
 #include "http.h"

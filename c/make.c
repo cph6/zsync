@@ -30,6 +30,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#ifdef WITH_DMALLOC
+# include <dmalloc.h>
+#endif
+
 #include "makegz.h"
 #include "librcksum/rcksum.h"
 #include "libzsync/zmap.h"

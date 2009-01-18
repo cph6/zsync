@@ -24,6 +24,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#ifdef WITH_DMALLOC
+# include <dmalloc.h>
+#endif
+
 static int fputlong (FILE* f, unsigned long x)
 {
   int n;

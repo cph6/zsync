@@ -22,6 +22,10 @@
 #include <errno.h>
 #include <unistd.h>
 
+#ifdef WITH_DMALLOC
+# include <dmalloc.h>
+#endif
+
 #include "md4.h"
 #include "rcksum.h"
 #include "internal.h"

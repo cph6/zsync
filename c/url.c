@@ -18,6 +18,10 @@
 #include <string.h>
 #include <stdlib.h>
 
+#ifdef WITH_DMALLOC
+# include <dmalloc.h>
+#endif
+
 /* Very crude URL parsing */
 
 #include "url.h"

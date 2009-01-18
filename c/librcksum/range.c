@@ -20,6 +20,10 @@
 #include <string.h>
 #include <sys/types.h>
 
+#ifdef WITH_DMALLOC
+# include <dmalloc.h>
+#endif
+
 #include "rcksum.h"
 #include "internal.h"
 
