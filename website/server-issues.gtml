@@ -1,0 +1,24 @@
+#include "header.gtml"
+<title>zsync Server Issues</title>
+#include "head.gtml"
+
+<h2>General</h2>
+
+<p>zsync makes an unusual pattern of requests; because it is retrieving lots of small parts of the target file, it will typically result in more than one hit appearing in the server's log. It could also put slightly more load on the server than a simple download (although it should be much faster and use less bandwidth).</p>
+<p>Of course, if the server operator themselves has created the <code>.zsync</code> file, or has given permission for it, then there is no issue. And in any case, zsync saves bandwidth and doesn't do anything except do selective downloads of bits of files, so it should not cause a problem. Its traffic is not much different to, say, Adobe's PDF viewer that also does partial downloads.</p>
+<p>zsync has been programmed conservatively so that it is unlikely to annoy a webmaster. It even self-imposes a few restrictions to prevent some less-than-ideal traffic patterns that could spook the webmaster. I would just ask that people using zsync exercise the same care in using it.</p>
+
+<h2>Server Partial Content Support</h2>
+
+<p>To make use of zsync, there has to be a server holding a full version of the content that supports partial downloading (<code>Range</code> requests). And, reasonably speaking, zsync needs slightly more: support for multiple byte ranges per request; without this, zsync has to make a large number of requests to do any sync where there are a large number of scattered changes.
+
+<h2>Redirects</h2>
+
+<p>zsync follows redirects on the .zsync file, and sets suitable referer headers.</p>
+
+<p>But zsync refuses to follow redirects (or any other more-action-required response from the server) when retrieving the target file. Some redirects only mean "no, I would rather you looked at this instead"; in theory these should use the 303 status code, but 302 is widely misused for the same purpose.</p>
+<p>Secondly, the most common redirect type, 302 Temporary Redirect, (even when it does genuinely redirect to the same content at a new URL) is only valid for one request: in theory, the client has to request it again every time it wants the content at that URL, and follow to potentially different destinations for every request. But this is totally impractical for zsync, which makes a huge number of requests in a short space of time; and furthermore, to get reasonable download performance, it is essential to pipeline these requests such that multiple requests are outstanding at once. While it would certainly be possible to follow all the redirects independently, it would substantially complicate the client program so I have chosen not to do so at present; and, in any case, it would very much clutter up the logs of the server serving the redirects.</p>
+<p>One could argue that zsync has a case for treating 302 redirects as 301s, which can be followed and not revisited per request. This would work, albeit not being strictly RFC-compliant, but you could still get a redirect half-way through the download at the new URL; again, this could be treated like a 301, but you would need to flush the pipeline of requests and resubmit requests. All possible, but not strictly compliant; and support for 301 redirects is not implemented in the current client.</p>
+<p>In any case, I am of the view that in general you just don't want zsync pointing at a redirect. The .zsync file specifies a URL to retrieve (a) specific (version of the) content from; you should be pointing it an your perma-URL for that version of the content, not at a redirect-to-the-latest-version URL (because you need a new zsync for a new version anyway). If the permanent copy moves, update the <code>.zsync</code>.
+
+#include "foot.gtml"

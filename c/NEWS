@@ -6,6 +6,7 @@ Changes in 0.6
   files on 32bit systems
 - fix potential crash when re/deallocating checksum hash in librcksum (patch
   from Timothy Lee)
+- explain status code errors better
 - fix some warnings
 - tidy up autoconf use
 
