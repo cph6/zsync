@@ -121,8 +121,10 @@ subdirectories) is copyright (C) 2004 Colin Phipps <cph@moria.org.uk>. zsync is
 made available under the (clarified) Artistic License - see the file COPYING
 for details.
 
-Thanks also to Dennis Schridde, for contributing patches to improve
-portability.
+Thanks also to:
+
+* Dennis Schridde, for contributing patches to improve portability.
+* Timothy Lee, for finding bugs and supplying patches.
 
 I must thank the developers above, whose code I have used. Also, I would like
 to thank the Free Software Foundation and its contributors, for gcc, gdb and

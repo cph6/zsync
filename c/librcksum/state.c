@@ -60,8 +60,13 @@ struct rcksum_state* rcksum_init(zs_blockid nblocks, size_t blocksize, int rsum_
 	}
 	
 	z->ranges = NULL;
-	z->rsum_hash = NULL;
 	z->numranges = 0;
+
+    /* Hashes for looking up checksums are generated when needed.
+     * So initially store NULL so we know there's nothing there yet.
+     */
+	z->rsum_hash = NULL;
+	z->bithash = NULL;
 	  
 	z->blockhashes = malloc(sizeof(z->blockhashes[0]) * (z->blocks+z->seq_matches));
 	if (z->blockhashes != NULL)

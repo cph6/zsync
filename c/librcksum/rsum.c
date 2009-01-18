@@ -309,8 +309,10 @@ int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress)
   if (!buf) return 0;
 
   if (!z->rsum_hash)
-    if (!build_hash(z))
+    if (!build_hash(z)) {
+      free(buf);
       return 0;
+    }
 
   while (!feof(f)) {
     size_t len;
@@ -318,7 +320,10 @@ int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress)
 
     if (!in) {
       len = fread(buf,1,bufsize,f);
-      if (len < z->context) return 0;
+      if (len < z->context) {
+        free(buf);
+        return 0;
+      }
       in += len;
     } else {
       memcpy(buf, buf + (bufsize - z->context), z->context);
