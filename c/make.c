@@ -273,6 +273,7 @@ void read_stream_write_blocksums(FILE* fin, FILE* fout)
         stream_error("fread",fin);
     }
   }
+  free(buf);
 }
 
 void fcopy(FILE* fin, FILE* fout)
