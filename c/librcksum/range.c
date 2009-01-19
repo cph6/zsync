@@ -107,7 +107,7 @@ void add_to_ranges(struct rcksum_state *rs, zs_blockid x) {
             rs->numranges++;
         }
     }
-#if 1
+#if 0
     {
         int i;
         for (i = 0; i < rs->numranges; i++)
