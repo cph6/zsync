@@ -15,6 +15,9 @@
  *   COPYING file for details.
  */
 
+/* Functions to manage the rsum and checksum values per block and set up the
+ * hash tables of the rsum values. */
+
 #include "zsglobal.h"
 
 #include <stdlib.h>

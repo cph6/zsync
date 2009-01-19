@@ -55,7 +55,7 @@ static int range_before_block(const struct rcksum_state* rs, zs_blockid x) {
     }
 
     /* If we reach here, we know min = max + 1 and we were below range max+1
-     * and above range min-1; i.e. between ranges min - 1 and min
+     * and above range min-1.
      * So we're between range max and max + 1
      * So we return max + 1  (return value is 1 based)  ( = min )
      */
