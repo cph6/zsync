@@ -39,7 +39,7 @@ int zsync_rename_file(struct zsync_state* zs, const char* f);
  *      of checksumming and file handle states)
  */
 
-int zsync_status(struct zsync_state* zs);
+int zsync_status(const struct zsync_state* zs);
 
 /* zsync_progress - returns bytes of the file known so far in *got,
  * and the total (roughly, the file length) in *total */
@@ -89,5 +89,5 @@ void zsync_end_receive(struct zsync_receiver* zr);
 
 /* Supply data buf of length len received corresponding to offset offset from the URL.
  * Returns 0 for success; if not, you should not submit more data. */
-int zsync_receive_data(struct zsync_receiver* zr, unsigned char* buf, off_t offset, size_t len);
+int zsync_receive_data(struct zsync_receiver* zr, const unsigned char* buf, off_t offset, size_t len);
 

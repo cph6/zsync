@@ -317,9 +317,13 @@ int zmap_search(const struct zmap* zm, long zoffset) {
 }
 
 /* configure_zstream_for_zdata(self, zstream, offset, &poutoffset)
- * Given an zoffset and a zmap, configure the supplied zstream to be ready to
- * read from the compressed file at this offset. And return the offset in the
- * uncompressed stream that this corresponds to in the supplied long long* .
+ * Given an zoffset and a zmap, configure the supplied zstream to be in the
+ * correct state to interpret the compressed data stream read from the
+ * compressed file at this offset. And return the offset in the uncompressed
+ * stream that this corresponds to in the supplied long long* .
+ * NOTE: the caller must call zlib:updatewindow() on the zstream to supply it
+ * with 32k of leading context in the uncompressed stream, before the zstream
+ * can be used to actually decompress.
  *
  * Requires some cooperation from the caller - it should not be called with an
  * offset that is not a block start unless it has been previously called with

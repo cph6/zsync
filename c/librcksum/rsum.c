@@ -160,7 +160,7 @@ int rcksum_read_known_data(struct rcksum_state *z, unsigned char *buf,
  * blocks in the output file (i.e. you've downloaded them from a real copy of
  * the target).
  */
-int rcksum_submit_blocks(struct rcksum_state *const z, unsigned char *data,
+int rcksum_submit_blocks(struct rcksum_state *const z, const unsigned char *data,
                          zs_blockid bfrom, zs_blockid bto) {
     zs_blockid x;
     unsigned char md4sum[CHECKSUM_SIZE];
