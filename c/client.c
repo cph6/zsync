@@ -26,6 +26,9 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <utime.h>
 
 #ifdef WITH_DMALLOC
 # include <dmalloc.h>
@@ -420,6 +423,26 @@ int fetch_remaining_blocks(struct zsync_state *zs) {
     return 0;
 }
 
+static int set_mtime(char* filename, time_t mtime) {
+    struct stat s;
+    struct utimbuf u;
+
+    /* Get the access time, which I don't want to modify. */
+    if (stat(filename, &s) != 0) {
+        perror("stat");
+        return -1;
+    }
+    
+    /* Set the modification time. */
+    u.actime = s.st_atime;
+    u.modtime = mtime;
+    if (utime(filename, &u) != 0) {
+        perror("utime");
+        return -1;
+    }
+    return 0;
+}
+
 /****************************************************************************
  *
  * Main program */
@@ -431,6 +454,7 @@ int main(int argc, char **argv) {
     char *filename = NULL;
     long long local_used;
     char *zfname = NULL;
+    time_t mtime;
 
     srand(getpid());
     {   /* Option parsing */
@@ -592,6 +616,11 @@ int main(int argc, char **argv) {
     }
 
     free(temp_file);
+
+    /* Get any mtime that we is suggested to set for the file, and then shut
+     * down the zsync_state as we are done on the file transfer. Getting the
+     * current name of the file at the same time. */
+    mtime = zsync_mtime(zs);
     temp_file = zsync_end(zs);
 
     /* STEP 5: Move completed .part file into place as the final target */
@@ -613,13 +642,19 @@ int main(int argc, char **argv) {
                 ok = 0;         /* Prevent overwrite of old file below */
             }
         }
-        if (ok)
-            if (rename(temp_file, filename) != 0) {
+        if (ok) {
+            /* Rename the file to the desired name */
+            if (rename(temp_file, filename) == 0) {
+                /* final, final thing - set the mtime on the file if we have one */
+                if (mtime != -1) set_mtime(filename, mtime);
+            }
+            else {
                 perror("rename");
                 fprintf(stderr,
                         "Unable to back up old file %s - completed download left in %s\n",
                         filename, temp_file);
             }
+        }
         free(oldfile_backup);
         free(filename);
     }

@@ -40,6 +40,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 
 #include <arpa/inet.h>
 
@@ -88,11 +89,15 @@ struct zsync_state {
     int nzurl;
 
     char *cur_filename;         /* If we have taken the filename from rcksum, it is here */
-    char *filename;             /* This is just the Filename: header from the .zsync */
+
+    /* Hints for the output file, from the .zsync */
+    char *filename;             /* The Filename: header */
     char *zfilename;            /* ditto Z-Filename: */
 
     char *gzopts;               /* If we're recompressing the download afterwards, these are the options to gzip(1) */
     char *gzhead;               /* And this is the header of the gzip file (for the mtime) */
+
+    time_t mtime;               /* MTime: from the .zsync, or -1 */
 };
 
 static int zsync_read_blocksums(struct zsync_state *zs, FILE * f,
@@ -100,6 +105,7 @@ static int zsync_read_blocksums(struct zsync_state *zs, FILE * f,
                                 int seq_matches);
 static int zsync_sha1(struct zsync_state *zs, int fh);
 static int zsync_recompress(struct zsync_state *zs);
+static time_t parse_822(const char* ts);
 
 /* char*[] = append_ptrlist(&num, &char[], "to add")
  * Crude data structure to store an ordered list of strings. This appends one
@@ -135,6 +141,9 @@ struct zsync_state *zsync_begin(FILE * f) {
 
     if (!zs)
         return NULL;
+
+    /* Any non-zero defaults here. */
+    zs->mtime = -1;
 
     for (;;) {
         char buf[1024];
@@ -258,6 +267,9 @@ struct zsync_state *zsync_begin(FILE * f) {
                     }
                 }
             }
+            else if (!strcmp(buf, "MTime")) {
+                zs->mtime = parse_822(p);
+            }
             else if (!safelines || !strstr(safelines, buf)) {
                 fprintf(stderr,
                         "unrecognised tag %s - you need a newer version of zsync.\n",
@@ -328,6 +340,20 @@ static int zsync_read_blocksums(struct zsync_state *zs, FILE * f,
     return 0;
 }
 
+/* parse_822(buf[])
+ * Parse an RFC822 date string. Returns a time_t, or -1 on failure. 
+ * E.g. Tue, 25 Jul 2006 20:02:17 +0000
+ */
+static time_t parse_822(const char* ts) {
+    struct tm t;
+
+    if (strptime(ts, "%a, %d %b %Y %H:%M:%S %z", &t) == NULL
+        && strptime(ts, "%d %b %Y %H:%M:%S %z", &t) == NULL) {
+        return -1;
+    }
+    return mktime(&t);
+}
+
 /* zsync_hint_decompress(self)
  * Returns true if we think we'll be able to download compressed data to get
  * the needed data to complete the target file */
@@ -341,11 +367,19 @@ int zsync_blocksize(const struct zsync_state *zs) {
     return zs->blocksize;
 }
 
-/* zsync_filename(self)
- * Returns a malloced string containing the filename where the final result of
- * the download is/will be. Up to the caller to free the string. */
+/* char* = zsync_filename(self)
+ * Returns the suggested filename to be used for the final result of this
+ * zsync.  Malloced string to be freed by the caller. */
 char *zsync_filename(const struct zsync_state *zs) {
     return strdup(zs->gzhead && zs->zfilename ? zs->zfilename : zs->filename);
+}
+
+/* time_t = zsync_mtime(self)
+ * Returns the mtime on the original copy of the target; for the client program
+ * to set the mtime of the local file to match, if it so chooses.
+ * Or -1 if no mtime specified in the .zsync */
+time_t zsync_mtime(const struct zsync_state *zs) {
+    return zs->mtime;
 }
 
 /* zsync_status(self)

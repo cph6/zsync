@@ -25,6 +25,8 @@ int zsync_hint_decompress(const struct zsync_state*);
 
 /* zsync_filename - return the suggested filename from the .zsync file */
 char* zsync_filename(const struct zsync_state*);
+/* zsync_mtime - return the suggested mtime from the .zsync file */
+time_t zsync_mtime(const struct zsync_state*);
 
 /* zsync_rename_file - renames the temporary file used by zsync to the given name.
  * You don't "own" the filename until you zsync_end, but you can use this to give zsync a more 

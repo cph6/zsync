@@ -26,7 +26,7 @@
 #include <errno.h>
 #include <libgen.h>
 #include <math.h>
-
+#include <time.h>
 
 #include <arpa/inet.h>
 #ifdef HAVE_INTTYPES_H
@@ -531,6 +531,7 @@ int main(int argc, char **argv) {
     int do_recompress = -1;     // -1 means we decide for ourselves
     int do_exact = 0;
     const char *gzopts = NULL;
+    time_t mtime = -1;
 
     /* Open temporary file */
     FILE *tf = tmpfile();
@@ -600,6 +601,15 @@ int main(int argc, char **argv) {
                 perror("open");
                 exit(2);
             }
+
+            {   /* Get mtime if available */
+                struct stat st;
+                if (fstat(fileno(instream), &st) == 0) {
+                    mtime = st.st_mtime;
+                }
+            }
+
+            /* Use supplied filename as the target filename */
             if (!fname)
                 fname = basename(argv[optind]);
         }
@@ -766,14 +776,27 @@ int main(int argc, char **argv) {
     /* Lines we might include but which older clients can ignore */
     if (do_recompress) {
         if (zfname)
-            fprintf(fout, "Safe: Z-Filename Recompress\nZ-Filename: %s\n",
+            fprintf(fout, "Safe: Z-Filename Recompress MTime\nZ-Filename: %s\n",
                     zfname);
         else
-            fprintf(fout, "Safe: Recompress\n");
+            fprintf(fout, "Safe: Recompress MTime:\n");
     }
 
-    if (fname)
+    if (fname) {
         fprintf(fout, "Filename: %s\n", fname);
+        if (mtime != -1) {
+            char buf[32];
+            struct tm mtime_tm;
+
+            if (gmtime_r(&mtime, &mtime_tm) != NULL) {
+                if (strftime(buf, sizeof buf, "%a, %d %b %Y %H:%M:%S %z", &mtime_tm) > 0)
+                    fprintf(fout, "MTime: %s\n", buf);
+            }
+            else {
+                fprintf(stderr, "error converting %d to struct tm\n", mtime);
+            }
+        }
+    }
     fprintf(fout, "Blocksize: " SIZE_T_PF "\n", blocksize);
     fprintf(fout, "Length: " OFF_T_PF "\n", len);
     fprintf(fout, "Hash-Lengths: %d,%d,%d\n", seq_matches, rsum_len,

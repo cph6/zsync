@@ -15,7 +15,7 @@ Either a filename or a URL can be given on the command line \- this is the path 
 .LP 
 zsync downloads to your current directory. It looks for any file in the directory of the same name as the file to download. If it finds one, it assumes that this is an earlier or incomplete version of the new file to download, and scans this file for any blocks that it can use to build the target file. (It also looks for a file of the same name with .part appended, so it will automatically find previously interrupted zsync downloads and reuse the data already downloaded. If you know that the local file to use as input has a different name, you must use \fB\-i\fR)
 .LP 
-zsync retrieves the rest of the target file over HTTP. Once the download is finished, the old version (if the new file wants the same name) is moved aside (a .zs\-old extension is appended).
+zsync retrieves the rest of the target file over HTTP. Once the download is finished, the old version (if the new file wants the same name) is moved aside (a .zs\-old extension is appended). The modification time of the file is set to be the same as the remote source file (if specified in the .zsync).
 .SH "OPTIONS"
 .LP 
 .TP 
