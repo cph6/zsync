@@ -6,9 +6,9 @@
 
 <p>I am offering .zsync's for the main Debian Packages files (downloading these rather bulky files is a daily nuisance for Debian users) &#8212; these are updated every 30 minutes. Feel free to use them:</p>
 <p style="font-family: monospace;">
-$ zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages http://zsync.moria.org.uk/s/sarge/Packages.zsync <br />
+$ zsync -i /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_lenny_main_binary-i386_Packages http://zsync.moria.org.uk/s/lenny/Packages.zsync <br />
 $ su root <br />
-$ mv Packages /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_sarge_main_binary-i386_Packages
+$ mv Packages /var/lib/apt/lists/<i>server</i>.debian.org_debian_dists_lenny_main_binary-i386_Packages
 </p>
 
 <p>Or for etch:</p> 
