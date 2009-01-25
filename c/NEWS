@@ -1,3 +1,6 @@
+Changes in 0.6.1
+- recompression support for gzip files made with zlib:gzio.c or gzip -n
+
 Changes in 0.6
 - fix out-of-bounds memory access when processing last block of non-compressed
   download (patch from Timothy Lee). Also fix an error handling fault for the

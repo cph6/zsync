@@ -59,6 +59,20 @@
  * implemented SHA1 so this is it for now. */
 const char ckmeth_sha1[] = { "SHA-1" };
 
+/* List of options strings for gzip(1) allowed in the .zsync. This is 
+ * security against someone specifying arbitrary commands. */
+static const char* const gzip_safe_option[] = {
+    "--best",
+    "",
+    "--rsync",
+    "--rsync --best",
+    "--best --no-name",
+    "--no-name",
+    "--rsync --no-name",
+    "--rsync --best --no-name"
+};
+const int gzip_safe_options = sizeof(gzip_safe_option)/sizeof *gzip_safe_option;
+
 /****************************************************************************
  *
  * zsync_state object and methods
@@ -251,6 +265,7 @@ struct zsync_state *zsync_begin(FILE * f) {
             else if (!strcmp(buf, "Recompress")) {
                 zs->gzhead = strdup(p);
                 if (zs->gzhead) {
+                    int i;
                     char *q = strchr(zs->gzhead, ' ');
                     if (!q)
                         q = zs->gzhead + strlen(zs->gzhead);
@@ -258,10 +273,12 @@ struct zsync_state *zsync_begin(FILE * f) {
                     if (*q)
                         *q++ = 0;
                     /* Whitelist for safe options for gzip command line */
-                    if (!strcmp(q, "--best") || !strcmp(q, "--rsync --best")
-                            || !strcmp(q, "--rsync") || !strcmp(q, ""))
-                        zs->gzopts = strdup(q);
-                    else {
+                    for (i = 0; i < gzip_safe_options; i++)
+                        if (!strcmp(q, gzip_safe_option[i])) {
+                            zs->gzopts = strdup(q);
+                            break;
+                        }
+                    if( !zs->gzopts ) {
                         fprintf(stderr, "bad recompress options, rejected\n");
                         free(zs->gzhead);
                     }

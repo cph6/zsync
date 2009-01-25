@@ -446,12 +446,13 @@ static char *encode_filename(const char *fname) {
 
 /* opt_str = guess_gzip_options(filename_str)
  * For the given (gzip) file, try to guess the options that were used with gzip
- * to create it. Returns the option string for gzip, or NULL */
+ * to create it.
+ * Returns a malloced string containing the options for gzip, or NULL */
 static const char *const try_opts[] =
     { "--best", "", "--rsync", "--rsync --best", NULL };
 #define SAMPLE 1024
 
-const char *guess_gzip_options(const char *f) {
+char *guess_gzip_options(const char *f) {
     char orig[SAMPLE];
     {   /* Read sample of the header of the compressed file */
         FILE *s = fopen(f, "r");
@@ -466,28 +467,51 @@ const char *guess_gzip_options(const char *f) {
         int i;
         const char *o;
         char *enc_f = encode_filename(f);
+        int has_mtime_fname;
+
+        {
+            int has_mtime = zhead_has_mtime(orig);
+            int has_fname = zhead_has_fname(orig);
+
+            if (has_mtime && !has_fname) {
+                fprintf(stderr, "can't recompress, stream has mtime but no fname\n");
+                return NULL;
+            }
+            else if (has_fname && !has_mtime) {
+                fprintf(stderr, "can't recompress, stream has fname but no mtime\n");
+                return NULL;
+            }
+            else {
+                has_mtime_fname = has_fname; /* which = has_mtime */
+            }
+        }
 
         /* For each likely set of options, try recompressing the content with
          * those options */
         for (i = 0; (o = try_opts[i]) != NULL; i++) {
-            char cmd[1024];
-            snprintf(cmd, sizeof(cmd), "zcat %s | gzip -n %s 2> /dev/null",
-                     enc_f, o);
+            FILE *p;
+            {   /* Compose command line */
+                char cmd[1024];
+                snprintf(cmd, sizeof(cmd), "zcat %s | gzip -n %s 2> /dev/null",
+                        enc_f, o);
 
-            {   /* Read the recompressed content */
-                FILE *p = popen(cmd, "r");
-                char samp[SAMPLE];
+                /* And run it */
                 if (verbose)
                     fprintf(stderr, "running %s to determine gzip options\n",
                             cmd);
+                p = popen(cmd, "r");
                 if (!p) {
                     perror(cmd);
                 }
-                else if (!read_sample_and_close(p, SAMPLE, samp)) {
-                    ;
+            }
+
+            if (p) {   /* Read the recompressed content */
+                char samp[SAMPLE];
+                if (!read_sample_and_close(p, SAMPLE, samp)) {
+                    ;       /* Read error - just fail this one and let the loop
+                             * try another */
                 }
                 else {
-
                     /* We have the compressed version with these options.
                      * Compare with the original */
                     const char *a = skip_zhead(orig);
@@ -498,7 +522,24 @@ const char *guess_gzip_options(const char *f) {
             }
         }
         free(enc_f);
-        return o;
+
+        if (!o) {
+            return NULL;
+        }
+        else if (has_mtime_fname) {
+            return strdup(o);
+        }
+        else {  /* Add --no-name to options to return */
+            static const char noname[] = { "--no-name" };
+            char* opts = malloc(strlen(o)+strlen(noname)+2);
+            if (o[0]) {
+                strcpy(opts, o);
+                strcat(opts, " ");
+            }
+            else { opts[0] = 0; }
+            strcat(opts, noname);
+            return opts;
+        }
     }
 }
 
@@ -530,7 +571,7 @@ int main(int argc, char **argv) {
     int do_compress = 0;
     int do_recompress = -1;     // -1 means we decide for ourselves
     int do_exact = 0;
-    const char *gzopts = NULL;
+    char *gzopts = NULL;
     time_t mtime = -1;
 
     /* Open temporary file */
@@ -672,20 +713,16 @@ int main(int argc, char **argv) {
 
     {   /* Decide how long a rsum hash and checksum hash per block we need for this file */
         seq_matches = 2;
-        rsum_len =
-            (7.9 +
-             ((log(len) + log(blocksize)) / log(2) - 8.6) / seq_matches) / 8;
+        rsum_len = ceil(((log(len) + log(blocksize)) / log(2) - 8.6) / seq_matches / 8);
 
         /* min and max lengths of rsums to store */
         if (rsum_len > 4) rsum_len = 4;
         if (rsum_len < 2) rsum_len = 2;
 
         /* Now the checksum length; min of two calculations */
-        checksum_len =
-            (7.9 +
-             (20 +
-              (log(len) +
-               log(1 + len / blocksize)) / log(2)) / seq_matches) / 8;
+        checksum_len = ceil(
+                (20 + (log(len) + log(1 + len / blocksize)) / log(2))
+                / seq_matches / 8);
         {
             int checksum_len2 =
                 (7.9 + (20 + log(1 + len / blocksize) / log(2))) / 8;
@@ -835,6 +872,8 @@ int main(int argc, char **argv) {
 
     if (do_recompress)      /* Write Recompress header if wanted */
         fprintf(fout, "Recompress: %s %s\n", zhead, gzopts);
+    if (gzopts)
+        free(gzopts);
 
     /* If we have a zmap, write it, header first and then the map itself */
     if (zmapentries) {

@@ -39,14 +39,22 @@ void configure_zstream_for_zdata(const struct zmap* zm, struct z_stream_s* zs, l
 #define GZ_COMMENT      0x10 /* bit 4 set: file comment present */
 #define GZ_RESERVED     0xE0 /* bits 5..7: reserved */
 
+/* mtime is in bytes 4..7 of the gzip header */
+static inline int zhead_has_mtime(const char* p) {
+    return !!(p[4] || p[5] || p[6] || p[7]);
+}
+
+static inline int zhead_has_fname(const char* p) {
+    return !!(p[3] & GZ_ORIG_NAME);
+}
+
 static inline const char* skip_zhead(const char* p)
 {
-  int flags = p[3];
-  
-  p += 10;
-  if (flags & GZ_ORIG_NAME)
-    while (*p++ != 0) ;
+    const char* q = p + 10;
+    if (zhead_has_fname(p)) {
+        q += strlen(q)+1;
+    }
 
-  return p;
+    return q;
 }
 
