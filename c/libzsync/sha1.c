@@ -21,6 +21,7 @@ static const char rcsid[] = "$OpenBSD: sha1.c,v 1.19 2004/05/28 15:10:27 millert
 #endif /* LIBC_SCCS and not lint */
 
 #include <sys/param.h>
+#include <stdint.h>
 #include <string.h>
 #include "sha1.h"
 
@@ -159,7 +160,7 @@ void
 SHA1Pad(SHA1_CTX *context)
 {
 	uint8_t finalcount[8];
-	uint i;
+	uint8_t i;
 
 	for (i = 0; i < 8; i++) {
 		finalcount[i] = (uint8_t)((context->count >>
@@ -174,7 +175,7 @@ SHA1Pad(SHA1_CTX *context)
 void
 SHA1Final(uint8_t digest[SHA1_DIGEST_LENGTH], SHA1_CTX *context)
 {
-	uint i;
+	uint8_t i;
 
 	SHA1Pad(context);
 	if (digest) {
