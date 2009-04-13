@@ -1,6 +1,8 @@
 Changes in 0.6.1
 - recompression support for gzip files made with zlib:gzio.c or gzip -n
 - fix compilation on MacOS X
+- fix unecessary transfer of whole file where file is smaller than the context
+  size (1x or 2x blocksize)
 
 Changes in 0.6
 - fix out-of-bounds memory access when processing last block of non-compressed

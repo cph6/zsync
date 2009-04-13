@@ -436,10 +436,6 @@ int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
         /* If this is the start, fill the buffer for the first time */
         if (!in) {
             len = fread(buf, 1, bufsize, f);
-            if (len < z->context) {
-                free(buf);
-                return 0;
-            }
             in += len;
         }
 
