@@ -1,5 +1,5 @@
-zsync 0.6
-=========
+zsync 0.6.1
+===========
 
 zsync is a file transfer program. It allows you to download a file from a
 remote web server, where you have a copy of an older version of the file on
