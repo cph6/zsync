@@ -94,7 +94,8 @@ static inline unsigned calc_rhash(const struct rcksum_state *const z,
                                   const struct hash_entry *const e) {
     unsigned h = e[0].r.b;
 
-    h ^= ((z->seq_matches > 1) ? e[1].r.b : e[0].r.a) << BITHASHBITS;
+    h ^= ((z->seq_matches > 1) ? e[1].r.b
+        : e[0].r.a & z->rsum_a_mask) << BITHASHBITS;
 
     return h;
 }

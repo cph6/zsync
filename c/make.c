@@ -712,7 +712,7 @@ int main(int argc, char **argv) {
     read_stream_write_blocksums(instream, tf);
 
     {   /* Decide how long a rsum hash and checksum hash per block we need for this file */
-        seq_matches = 2;
+        seq_matches = len > blocksize ? 2 : 1;
         rsum_len = ceil(((log(len) + log(blocksize)) / log(2) - 8.6) / seq_matches / 8);
 
         /* min and max lengths of rsums to store */

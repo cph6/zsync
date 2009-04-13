@@ -3,6 +3,12 @@ Changes in 0.6.1
 - fix compilation on MacOS X
 - fix unecessary transfer of whole file where file is smaller than the context
   size (1x or 2x blocksize)
+- use sequential_matches=1 when there is only one block; otherwise we're forced
+  to transfer the whole file for files below 2kiB
+- fix librcksum handling of zsync streams with sequential_matches == 1; it was 
+  giving false negatives when applying the rsync algorithm, resulting in poor
+  use of local source data when sequential_matches == 1 (which didn't actually
+  occur in any recent version of zsync)
 
 Changes in 0.6
 - fix out-of-bounds memory access when processing last block of non-compressed
