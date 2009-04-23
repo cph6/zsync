@@ -535,6 +535,52 @@ struct range_fetch {
 
 /* range_fetch methods */
 
+/* range_fetch_set_url(rf, url)
+ * Set up a range_fetch to fetch from a given URL. Private method. 
+ * C is a nightmare for memory allocation here. At least the errors should be
+ * caught, but minor memory leaks may occur on some error paths. */
+static int range_fetch_set_url(struct range_fetch* rf, const char* orig_url) {
+    /* Get the host, port and path from the URL. */
+    char hostn[sizeof(rf->hosth)];
+    char* cport;
+    char* p = get_http_host_port(orig_url, hostn, sizeof(hostn), &cport);
+    if (!p) {
+        return 0;
+    }
+
+    free(rf->url);
+    if (rf->authh) free(rf->authh);
+
+    /* Get host:port for Host: header */
+    if (strcmp(cport, "http") != 0)
+        snprintf(rf->hosth, sizeof(rf->hosth), "%s:%s", hostn, cport);
+    else
+        snprintf(rf->hosth, sizeof(rf->hosth), "%s", hostn);
+
+    if (proxy) {
+        /* URL must be absolute; don't need cport anymore, just need full URL
+         * to give to proxy. */
+        free(cport);
+        rf->url = strdup(orig_url);
+    }
+    else {
+        free(rf->cport);
+        free(rf->chost);
+        // Set url to relative part and chost, cport to the target
+        if ((rf->chost = strdup(hostn)) == NULL) {
+            free(cport);
+            return 0;
+        }
+        rf->cport = cport;
+        rf->url = strdup(p);
+    }
+
+    /* Get any auth header that we should use */
+    rf->authh = get_auth_hdr(hostn);
+
+    return !!rf->url;
+}
+
 /* get_more_data - this is the method which owns all reads from the remote.
  * Nothing else reads from the remote. This buffers data, so that the
  * higher-level methods below can easily read whole lines from the remote. 
@@ -613,38 +659,30 @@ static char *rfgets(char *buf, size_t len, struct range_fetch *rf) {
  * Returns a new range fetch object, for the given URL.
  */
 struct range_fetch *range_fetch_start(const char *orig_url) {
-    char *p;
     struct range_fetch *rf = malloc(sizeof(struct range_fetch));
-    char hostn[sizeof(rf->hosth)];
     if (!rf)
         return NULL;
 
-    p = get_http_host_port(orig_url, hostn, sizeof(hostn), &(rf->cport));
-    if (!p) {
-        free(rf);
-        return NULL;
-    }
-
-    if (strcmp(rf->cport, "http") != 0)
-        snprintf(rf->hosth, sizeof(rf->hosth), "%s:%s", hostn, rf->cport);
-    else
-        snprintf(rf->hosth, sizeof(rf->hosth), "%s", hostn);
-
+    /* If going through a proxy, we can immediately set up the host and port to
+     * connect to */
     if (proxy) {
-        // URL must be absolute; throw away cport and get port for proxy
-        rf->url = strdup(orig_url);
-        free(rf->cport);
         rf->cport = strdup(pport);
         rf->chost = strdup(proxy);
     }
     else {
-        // cport already set; set url to relative part and chost to the target
-        rf->url = strdup(p);
-        rf->chost = strdup(hostn);
+        rf->cport = NULL;
+        rf->chost = NULL;
     }
+    /* Blank initialisation for other fields before set_url call */
+    rf->url = NULL;
+    rf->authh = NULL;
 
-    /* Get any auth header that we should use */
-    rf->authh = get_auth_hdr(hostn);
+    if (!range_fetch_set_url(rf, orig_url)) {
+        free(rf->cport);
+        free(rf->chost);
+        free(rf);
+        return NULL;
+    }
 
     /* Initialise other state fields */
     rf->block_left = 0;
@@ -780,13 +818,15 @@ static void buflwr(char *s) {
 
 /* range_fetch_read_http_headers - read a set of HTTP headers, updating state
  * appropriately.
- * Returns: EOF returns 0, good returns >0, error returns <0 */
+ * Returns: EOF returns 0, good returns 206 (reading a range block) or 30x
+ *  (redirect), error returns <0 */
 int range_fetch_read_http_headers(struct range_fetch *rf) {
     char buf[512];
+    int status;
+    int seen_location = 0;
 
     {                           /* read status line */
         char *p;
-        int c;
 
         if (rfgets(buf, sizeof(buf), rf) == NULL)
             return -1;
@@ -795,21 +835,21 @@ int range_fetch_read_http_headers(struct range_fetch *rf) {
         if (memcmp(buf, "HTTP/1", 6) != 0 || (p = strchr(buf, ' ')) == NULL) {
             return -1;
         }
-        c = atoi(p + 1);
-        if (c != 206) {
-            if (c >= 300 && c < 400) {
+        status = atoi(p + 1);
+        if (status != 206 && status != 301 && status != 302) {
+            if (status >= 300 && status < 400) {
                 fprintf(stderr,
                         "\nzsync received a redirect/further action required status code: %d\nzsync specifically refuses to proceed when a server requests further action. This is because zsync makes a very large number of requests per file retrieved, and so if zsync has to perform additional actions per request, it further increases the load on the target server. The person/entity who created this zsync file should change it to point directly to a URL where the target file can be retrieved without additional actions/redirects needing to be followed.\nSee http://zsync.moria.orc.uk/server-issues\n",
-                        c);
+                        status);
             }
-            else if (c == 200) {
+            else if (status == 200) {
                 fprintf(stderr,
                         "\nzsync received a data response (code %d) but this is not a partial content response\nzsync can only work with servers that support returning partial content from files. The person/entity creating this .zsync has tried to use a server that is not returning partial content. zsync cannot be used with this server.\nSee http://zsync.moria.orc.uk/server-issues\n",
-                        c);
+                        status);
             }
             else {
                 /* generic error message otherwise */
-                fprintf(stderr, "bad status code %d\n", c);
+                fprintf(stderr, "bad status code %d\n", status);
             }
             return -1;
         }
@@ -829,9 +869,10 @@ int range_fetch_read_http_headers(struct range_fetch *rf) {
         /* If it's the end of the headers */
         if (buf[0] == '\r' || buf[0] == '\0') {
             /* We are happy provided we got the block boundary, or an actual block is starting. */
-            if ((rf->boundary || rf->block_left)
-                && !(rf->boundary && rf->block_left))
-                return 1;
+            if (((rf->boundary || rf->block_left)
+                 && !(rf->boundary && rf->block_left))
+                || (status >= 300 && status < 400 && seen_location))
+                return status;
             break;
         }
 
@@ -842,10 +883,19 @@ int range_fetch_read_http_headers(struct range_fetch *rf) {
         *p = 0;
         p += 2;
         buflwr(buf);
+        {   /* Remove the trailing \r\n from the value */
+            int len = strcspn(p, "\r\n");
+            p[len] = 0;
+        }
         /* buf is the header name (lower-cased), p the value */
-
         /* Switch based on header */
-        if (!strcmp(buf, "content-range")) {
+
+        /* If remote closes the connection on us, record that */
+        if (!strcmp(buf, "connection") && !strcmp(p, "close")) {
+            rf->server_close = 2;
+        }
+
+        if (status == 206 && !strcmp(buf, "content-range")) {
             /* Okay, we're getting a non-MIME block from the remote. Get the
              * range and set our state appropriately */
             off_t from, to;
@@ -860,13 +910,8 @@ int range_fetch_read_http_headers(struct range_fetch *rf) {
             rf->rangessent = rf->rangesdone;
         }
 
-        /* If remote closes the connection on us, record that */
-        if (!strcmp(buf, "connection") && !strcmp(p, "close")) {
-            rf->server_close = 2;
-        }
-
         /* If we're about to get a MIME multipart block set */
-        if (!strcasecmp(buf, "content-type")
+        if (status == 206 && !strcasecmp(buf, "content-type")
             && !strncasecmp(p, "multipart/byteranges", 20)) {
 
             /* Get the multipart boundary string */
@@ -889,6 +934,26 @@ int range_fetch_read_http_headers(struct range_fetch *rf) {
                 while (*q == '\r' || *q == ' ' || *q == '\n')
                     *q-- = '\0';
             }
+        }
+
+        /* If remote is telling us to change URL */
+        if ((status == 302 || status == 301)
+            && !strcmp(buf, "location")) {
+            if (seen_location++) {
+                fprintf(stderr, "Error: multiple Location headers on redirect\n");
+                break;
+            }
+
+            /* Set new target URL 
+             * NOTE: we are violating the "the client SHOULD continue to use
+             * the Request-URI for future requests" of RFC2616 10.3.3 for 302s.
+             * It's not practical given the number of requests we are making to
+             * follow the RFC here, and at least we're only remembering it for
+             * the duration of this transfer. */
+            range_fetch_set_url(rf, p);
+
+            /* Flag caller to reconnect; the new URL might be a new target. */
+            rf->server_close = 2;
         }
         /* No other headers that we care about. In particular:
          *
@@ -965,6 +1030,12 @@ int get_range_block(struct range_fetch *rf, off_t * offset, unsigned char *data,
             /* Return EOF or error to caller */
             if (header_result <= 0)
                 return header_result ? -1 : 0;
+
+            /* Reconnect for a redirect */
+            if (header_result >= 300 && header_result < 400) {
+                rf->server_close = 2;
+                goto check_boundary;
+            }
 
             /* HTTP Pipelining - send next request before reading current response */
             if (!rf->server_close)

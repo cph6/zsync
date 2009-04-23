@@ -1,6 +1,8 @@
 Changes in 0.6.1
 - recompression support for gzip files made with zlib:gzio.c or gzip -n
 - fix compilation on MacOS X
+- allow HTTP redirects on the target file; not sure whether this is a good idea
+  or not...
 - fix unecessary transfer of whole file where file is smaller than the context
   size (1x or 2x blocksize)
 - use sequential_matches=1 when there is only one block; otherwise we're forced
