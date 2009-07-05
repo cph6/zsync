@@ -6,7 +6,7 @@
 
 <h3>Current Version</h3>
 
-<p>Download <a href="download/zsync-0.6.tar.bz2">zsync-0.6.tar.bz2</a>.</p> 
+<p>Download <a href="download/zsync-0.6.1.tar.bz2">zsync-0.6.1.tar.bz2</a>.</p> 
 
 <p>To install, it is the usual <code>configure</code>, <code>make</code>, <code>make install</code> sequence — see the INSTALL file for step-by-step instructions. You do not have to install zsync if you are just trying it out, as both zsync and zsyncmake require no data files installed; installation just puts the programs and manual pages into the normal paths on your system.</p>
 
@@ -17,6 +17,7 @@
 <h3>Download Details &amp; Old Versions</h3>
 
 <ul>
+<li><a href="download/zsync-0.6.1.tar.bz2">zsync-0.6.1.tar.bz2</a> — 240kB, sha1sum abd4fa39a5dcb3cf177ad808c6d08a133d2abbe1</li>
 <li><a href="download/zsync-0.6.tar.bz2">zsync-0.6.tar.bz2</a> — 238kB, sha1sum 98a5218077e4fec4b5e20da9621ed2173a0c1041</li>
 <li><a href="download/zsync-0.5.tar.bz2">zsync-0.5.tar.bz2</a> — 188kB, md5sum 08beaf3fa95f16d8a2db2f7f3ea21196</li>
 <li><a href="download/zsync-0.4.3.tar.gz">zsync-0.4.3.tar.gz</a> — 245kB, md5sum 28668c1526997ec059f23ddebfaaefe4</li>
