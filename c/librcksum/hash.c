@@ -97,3 +97,28 @@ int build_hash(struct rcksum_state *z) {
     }
     return 1;
 }
+
+/* unlink_block(self, block_id)
+ * Remove the given data block from the rsum hash table, so it won't be
+ * returned in a hash lookup again (e.g. because we now have the data)
+ */
+void remove_block_from_hash(struct rcksum_state *z, zs_blockid id) {
+    struct hash_entry *t = &(z->blockhashes[id]);
+
+    struct hash_entry **p = &(z->rsum_hash[calc_rhash(z, t) & z->hashmask]);
+
+    while (*p != NULL) {
+        if (*p == t) {
+            if (t == z->rover) {
+                z->rover = t->next;
+            }
+            *p = (*p)->next;
+            return;
+        }
+        else {
+            p = &((*p)->next);
+        }
+    }
+    fprintf(stderr, "failed to remove block %u from hash\n", id);
+}
+

@@ -123,6 +123,24 @@ int already_got_block(struct rcksum_state *rs, zs_blockid x) {
     return (range_before_block(rs, x) == -1);
 }
 
+/* next_blockid = next_known_block(rs, blockid)
+ * Returns the blockid of the next block which we already have data for.
+ * If we know the requested block, it returns the blockid given; otherwise it
+ * will return a later blockid.
+ * If no later blocks are known, it returns rs->numblocks (i.e. the block after
+ * the end of the file).
+ */
+zs_blockid next_known_block(struct rcksum_state *rs, zs_blockid x) {
+    int r = range_before_block(rs, x);
+    if (r == -1)
+        return x;
+    if (r == rs->numranges) {
+        return rs->blocks;
+    }
+    /* Else return first block of next known range. */
+    return rs->ranges[2*r];
+}
+
 /* rcksum_needed_block_ranges
  * Return the block ranges needed to complete the target file */
 zs_blockid *rcksum_needed_block_ranges(const struct rcksum_state * rs, int *num,

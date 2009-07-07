@@ -194,7 +194,7 @@ struct zsync_state *zsync_begin(FILE * f) {
                 }
             }
             else if (!strcmp(buf, "Length")) {
-                zs->filelen = atol(p);
+                zs->filelen = atoll(p);
             }
             else if (!strcmp(buf, "Filename")) {
                 zs->filename = strdup(p);

@@ -1,3 +1,6 @@
+Changes in 0.6.2
+- fix for using zsync client on files >2GB on 32bit systems.
+
 Changes in 0.6.1
 - recompression support for gzip files made with zlib:gzio.c or gzip -n
 - fix compilation on MacOS X

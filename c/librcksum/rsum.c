@@ -64,29 +64,6 @@ void rcksum_calc_checksum(unsigned char *c, const unsigned char *data,
     MD4Final(c, &ctx);
 }
 
-/* unlink_block(self, block_id)
- * Remove the given data block from the rsum hash table, so it won't be
- * returned in a hash lookup again (e.g. because we now have the data)
- */
-static void unlink_block(struct rcksum_state *z, zs_blockid id) {
-    struct hash_entry *t = &(z->blockhashes[id]);
-
-    struct hash_entry **p = &(z->rsum_hash[calc_rhash(z, t) & z->hashmask]);
-
-    while (*p != NULL) {
-        if (*p == t) {
-            if (t == z->rover) {
-                z->rover = t->next;
-            }
-            *p = (*p)->next;
-            return;
-        }
-        else {
-            p = &((*p)->next);
-        }
-    }
-}
-
 #ifndef HAVE_PWRITE
 /* Fallback pwrite(2) implementation if needed (but not strictly complete, as
  * it moves the file pointer - we don't care). */
@@ -136,7 +113,7 @@ static void write_blocks(struct rcksum_state *z, const unsigned char *data,
          * have received and stored the data for */
         int id;
         for (id = bfrom; id <= bto; id++) {
-            unlink_block(z, id);
+            remove_block_from_hash(z, id);
             add_to_ranges(z, id);
         }
     }

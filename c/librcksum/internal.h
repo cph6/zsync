@@ -48,8 +48,13 @@ struct rcksum_state {
 
     /* These are used by the library. Note, not thread safe. */
     const struct hash_entry *rover;
-    const struct hash_entry *next_match;
     int skip;                   /* skip forward on next submit_source_data */
+
+    /* Internal; hint to rcksum_submit_source_data that it should try matching
+     * the following block of input data against the block ->next_match.
+     * next_known is a cached lookup of the id of the next block after that
+     * that we already have data for. */
+    const struct hash_entry *next_match;
 
     /* Hash table for rsync algorithm */
     unsigned int hashmask;
@@ -86,6 +91,7 @@ static inline zs_blockid get_HE_blockid(const struct rcksum_state *z,
 
 void add_to_ranges(struct rcksum_state *z, zs_blockid n);
 int already_got_block(struct rcksum_state *z, zs_blockid n);
+zs_blockid next_known_block(struct rcksum_state *rs, zs_blockid x);
 
 struct hash_entry *calc_hash_entry(void *data, size_t len);
 
@@ -101,3 +107,4 @@ static inline unsigned calc_rhash(const struct rcksum_state *const z,
 }
 
 int build_hash(struct rcksum_state *z);
+void remove_block_from_hash(struct rcksum_state *z, zs_blockid id);
