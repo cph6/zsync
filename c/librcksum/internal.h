@@ -55,6 +55,7 @@ struct rcksum_state {
      * next_known is a cached lookup of the id of the next block after that
      * that we already have data for. */
     const struct hash_entry *next_match;
+    zs_blockid next_known;
 
     /* Hash table for rsync algorithm */
     unsigned int hashmask;
