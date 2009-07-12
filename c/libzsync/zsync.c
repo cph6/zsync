@@ -472,10 +472,13 @@ off_t *zsync_needed_byte_ranges(struct zsync_state * zs, int *num, int type) {
         return NULL;
     }
 
-    /* Now convert blocks to bytes */
+    /* Now convert blocks to bytes.
+     * Note: Must cast one operand to off_t as both blocksize and blrange[x]
+     * are int's whereas the product must be a file offfset. Needed so we don't
+     * truncate file offsets to 32bits on 32bit platforms. */
     for (i = 0; i < nrange; i++) {
-        byterange[2 * i] = blrange[2 * i] * zs->blocksize;
-        byterange[2 * i + 1] = blrange[2 * i + 1] * zs->blocksize - 1;
+        byterange[2 * i] = blrange[2 * i] * (off_t)zs->blocksize;
+        byterange[2 * i + 1] = blrange[2 * i + 1] * (off_t)zs->blocksize - 1;
     }
     free(blrange);      /* And release the blocks, we're done with them */
 
