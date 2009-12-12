@@ -83,9 +83,15 @@ int build_hash(struct rcksum_state *z) {
         return 0;
     }
 
-    /* Now fill in the hash tables */
-    for (id = 0; id < z->blocks; id++) {
-        struct hash_entry *e = z->blockhashes + id;
+    /* Now fill in the hash tables.
+     * Minor point: We do this in reverse order, because we're adding entries
+     * to the hash chains by prepending, so if we iterate over the data in
+     * reverse then the resulting hash chains have the blocks in normal order.
+     * That's improves our pattern of I/O when writing out identical blocks
+     * once we are processing data; we will write them in order. */
+    for (id = z->blocks; id > 0;) {
+        /* Decrement the loop variable here, and get the hash entry. */
+        struct hash_entry *e = z->blockhashes + (--id);
 
         /* Prepend to linked list for this hash entry */
         unsigned h = calc_rhash(z, e);
@@ -98,7 +104,7 @@ int build_hash(struct rcksum_state *z) {
     return 1;
 }
 
-/* unlink_block(self, block_id)
+/* remove_block_from_hash(self, block_id)
  * Remove the given data block from the rsum hash table, so it won't be
  * returned in a hash lookup again (e.g. because we now have the data)
  */
@@ -119,6 +125,5 @@ void remove_block_from_hash(struct rcksum_state *z, zs_blockid id) {
             p = &((*p)->next);
         }
     }
-    fprintf(stderr, "failed to remove block %u from hash\n", id);
 }
 
