@@ -1,0 +1,89 @@
+Local changes to zlib used by zsync
+-----------------------------------
+
+There are two different modes of operation that zsync supports that
+these patches are designed to support:
+
+Changes to the deflate code: Compressing a file in a way that is optimised for
+zsync's block-based rsync algorithm - starting a new zlib block for each 1024
+byte (for example) block in the source file. cf
+http://zsync.moria.org.uk/paper/ch03s04.html . This is used by makegz.c in the
+zsync source.
+
+Changes to the inflate code: Working with files compressed with the standard
+gzip(1). To enable people to get started with zsync, I want it to work with
+existing compressed content. To achieve optimal results with standard gzip
+files, I made zsync capable of starting decompression in the middle of a block.
+In these cases it has to download the block header, then skips forward to the
+part of the block that gives it the data that it wants.  cf
+http://zsync.moria.org.uk/paper/ch03s02.html
+
+Contrary to some internet discussion, the changes are not related to rsync's
+changes nor to rsync compatibility (zsync isn't compatible with rsync -
+whatever that would mean - nor do these changes relate in any way to the
+rsyncable gzip patch).
+
+Changes to the deflate code
+---------------------------
+
+Essentially, I hijacked Z_PARTIAL_FLUSH to mean something new - I want to start
+a new zlib block, but unlike Z_PARTIAL_FLUSH I don't need to emit a whole byte
+between blocks, so I took that out. Correctly this ought to be implemented by
+adding a Z_NEWBLOCKONLY_FLUSH or something like that instead of repurposing an
+existing state.
+
+(If this were the only issue preventing the use of a standard zlib, distros
+could change it to use Z_PARTIAL_FLUSH with only a slight loss of compression
+efficiency.)
+
+Changes to the inflate code
+---------------------------
+
+zsync uses the rsync algorithm to construct a desired file from an
+(e.g.) older local version of the file and then downloading any
+new/needed blocks from a server; the aim being to minimise the amount of
+data downloaded to construct the target file. It supports downloading
+those blocks from a gzipped version of the file on the server. If I want
+e.g. bytes 4096-8192 of the file from inside the gzipped file, I could
+download the whole zlib block (using a map of the compressed file that I
+construct beforehand and is downloaded first) containing the range
+4096-8192 (zsync 0.1.0 used this method); but it can do better (fewer
+bytes downloaded) than that, by downloading just the block header and
+then downloading the bytes within that compressed block that correspond
+to bytes 4096-8192 of the contained data.
+
+To do that, I need:
+a) to be able to start inflating at the start of "*any* length/literal/eob code
+in any dynamic or fixed block, or at *any* stored byte in a stored block.".
+That is what additional function inflate_advance() and the export of
+updatewindow() allow me to do.
+
+b) make a map of the gzip file that lets me know what points I should start
+downloading at in order to inflate particular byte ranges of the contained
+content. To do this, I can decompress each byte range into a buffer of that
+size and then quiz zlib for the position in the stream; but I need to know that
+the position in the stream does correspond to the start of a code or the middle
+of a stored block (not, e.g., that we have just read a backref and the backref
+expands to span the boundary - in that case, I would need to know that position
+where the backref started and the lib doesn't give me a way to find that out).
+
+This is given by inflateSafePoint(), and the implicit guarantee provided by
+using my own copy of the library that I know how the library behaves around
+internal states and stream position (I need a guarantee that the library won't
+read ahead more than it needs to, and I need to access certain member variables
+directly to get the bit position in the stream).
+
+I also removed inflate_fast as I did not want to spend the time working out if
+it was compatible with these changes.
+
+I have started a discussion with one of the zlib maintainers about getting
+changes such as I would need put into zlib, but it is too early to know whether
+suitable changes will developed or accepted.
+
+Copyright
+---------
+
+I place all my modifications to these files in the public domain.
+
+- Colin Phipps, 2009/12/13
+

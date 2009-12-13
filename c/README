@@ -104,7 +104,8 @@ for Remote File Synchronization", Sept 2004).
 
 zsync uses a large part of zlib - this code, in the zlib subdirectory, is
 copyright 1995-2003 Jean-loup Gailly and Mark Adler, see zlib/README for
-details.
+details. This code contains local changes by me that are not compatible with
+and not available in standard zlib; see zlib/README.zsync for an explanation.
 
 zsync includes an implementation of getaddrinfo by Motoyuki Kasahara. See
 getaddrinfo.c for the license, it's a BSD-style license; but normally zsync
@@ -135,7 +136,8 @@ providing the hosting facilities for the downloads and mailing list, and the
 compile farm for testing portability.
 
 Also, thanks to Érsek László, James Montgomerie, James Antill,
-saul@alien-science.org, Kent Mein, Marc Lehmann, Robert Lemmen, Ricardo
-Correia, Karl Kalleberg, Michael Stone, Richard Lucassen, Duncan Mac-Vicar and
-Jari Aalto for useful feedback and bug reports for previous versions.
+saul@alien-science.org, Kent Mein, Marc Lehmann, Robert Lemmen, Mark Adler,
+Ricardo Correia, Karl Kalleberg, Michael Stone, Richard Lucassen, Duncan
+Mac-Vicar and Jari Aalto for useful feedback and bug reports for previous
+versions.
 
