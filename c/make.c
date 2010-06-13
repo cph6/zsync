@@ -1,4 +1,3 @@
-
 /*
  *   zsync - client side rsync over http
  *   Copyright (C) 2004,2005,2009 Colin Phipps <cph@moria.org.uk>
@@ -243,11 +242,18 @@ void do_zstream(FILE * fin, FILE * fout, const char *bufsofar, size_t got) {
         /* refill input buffer if empty */
         if (zs.avail_in == 0) {
             int rc = fread(inbuf, 1, inbufsz, fin);
-            zs.next_in = inbuf;
             if (rc < 0) {
                 perror("read");
                 exit(2);
             }
+
+            /* Still expecting data (!eoz and avail_in == 0) but none there. */
+            if (rc == 0) {
+                fprintf(stderr, "Premature end of compressed data.\n");
+                exit(1);
+            }
+
+            zs.next_in = inbuf;
             zs.avail_in = rc;
         }
         {

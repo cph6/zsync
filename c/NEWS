@@ -1,6 +1,7 @@
 Changes in 0.6.2
 - fix for using zsync client on files >2GB on 32bit systems.
 - improve some edge cases dealing with unusual seed data patterns.
+- fix infinite loop in zsyncmake when given a truncated (invalid) .gz
 
 Changes in 0.6.1
 - recompression support for gzip files made with zlib:gzio.c or gzip -n
