@@ -17,8 +17,10 @@ AC_PROG_LN_S
 AC_PROG_RANLIB
 
 AC_ARG_ENABLE([profile],
-   AS_HELP_STRING([--enable-profile],[Turns on profiling]),
-   [ ZS_CFLAGS="${ZS_CFLAGS} -pg" ])
+   AS_HELP_STRING([--enable-profile],[Turns on profiling]))
+
+AS_IF([test "x$enable_profile" = "xyes"], [
+   ZS_CFLAGS="${ZS_CFLAGS} -pg" ])
 
 dnl --- Header files, typedefs, structures, libraries
 AC_C_CONST
