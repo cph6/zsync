@@ -645,10 +645,19 @@ int main(int argc, char **argv) {
         strcat(oldfile_backup, ".zs-old");
 
         if (!access(filename, F_OK)) {
-            /* backup of old file */
-            unlink(oldfile_backup);     /* Don't care if this fails - the link below will catch any failure */
-            if (link(filename, oldfile_backup) != 0) {
-                perror("link");
+            /* Backup the old file. */
+            /* First, remove any previous backup. We don't care if this fails -
+             * the link below will catch any failure */
+            unlink(oldfile_backup);
+
+            /* Try linking the filename to the backup file name, so we will 
+               atomically replace the target file in the next step.
+               If that fails due to EPERM, it is probably a filesystem that
+               doesn't support hard-links - so try just renaming it to the
+               backup filename. */
+            if (link(filename, oldfile_backup) != 0
+                && (errno != EPERM || rename(filename, oldfile_backup) != 0)) {
+                perror("linkname");
                 fprintf(stderr,
                         "Unable to back up old file %s - completed download left in %s\n",
                         filename, temp_file);
