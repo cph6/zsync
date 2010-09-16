@@ -1,5 +1,6 @@
 
 AUTOMAKE_OPTIONS = check-news
+ACLOCAL_AMFLAGS = -I autotools
 
 SUBDIRS = librcksum zlib libzsync doc
 
@@ -27,7 +28,7 @@ AUX_DIST_GEN =                          \
 
 docdir=$(prefix)/share/doc/@PACKAGE@
 doc_DATA = COPYING README
-EXTRA_DIST = bootstrap INSTALL README COPYING $(AUX_DIST_GEN) check-zsyncmake
+EXTRA_DIST = INSTALL README COPYING $(AUX_DIST_GEN) check-zsyncmake
 
 TESTS_ENVIRONMENT = top_builddir=$(top_builddir)
 TESTS = check-zsyncmake
