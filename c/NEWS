@@ -1,5 +1,6 @@
 Changes in 0.6.2
 - fix for using zsync client on files >2GB on 32bit systems.
+- fix redirect handling.
 - improve some edge cases dealing with unusual seed data patterns.
 - fix infinite loop in zsyncmake when given a truncated (invalid) .gz
 - fix --disable-profile to configure.

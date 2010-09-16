@@ -688,7 +688,6 @@ struct range_fetch *range_fetch_start(const char *orig_url) {
     rf->block_left = 0;
     rf->bytes_down = 0;
     rf->boundary = NULL;
-    rf->buf_start = rf->buf_end = 0;    /* Buffer initially empty */
     rf->sd = -1;                        /* Socket not open */
     rf->ranges_todo = NULL;             /* And no ranges given yet */
     rf->nranges = rf->rangesdone = 0;
@@ -729,6 +728,7 @@ static void range_fetch_connect(struct range_fetch *rf) {
     rf->sd = connect_to(rf->chost, rf->cport);
     rf->server_close = 0;
     rf->rangessent = rf->rangesdone;
+    rf->buf_start = rf->buf_end = 0;    /* Buffer initially empty */
 }
 
 /* range_fetch_getmore
@@ -833,6 +833,7 @@ int range_fetch_read_http_headers(struct range_fetch *rf) {
         if (buf[0] == 0)
             return 0;           /* EOF, caller decides if that's an error */
         if (memcmp(buf, "HTTP/1", 6) != 0 || (p = strchr(buf, ' ')) == NULL) {
+            fprintf(stderr, "got non-HTTP response '%s'\n", buf);
             return -1;
         }
         status = atoi(p + 1);
@@ -950,6 +951,8 @@ int range_fetch_read_http_headers(struct range_fetch *rf) {
              * It's not practical given the number of requests we are making to
              * follow the RFC here, and at least we're only remembering it for
              * the duration of this transfer. */
+            if (!no_progress)
+                fprintf(stderr, "followed redirect to %s\n", p);
             range_fetch_set_url(rf, p);
 
             /* Flag caller to reconnect; the new URL might be a new target. */
