@@ -543,14 +543,10 @@ int main(int argc, char **argv) {
          *target file */
         int i;
 
-        /* Try any seed files supplied by the command line */
-        for (i = 0; i < nseedfiles; i++) {
-            read_seed_file(zs, seedfiles[i]);
-        }
         /* If the target file already exists, we're probably updating that file
          * - so it's a seed file */
         if (!access(filename, R_OK)) {
-            read_seed_file(zs, filename);
+            seedfiles = append_ptrlist(&nseedfiles, seedfiles, filename);
         }
         /* If the .part file exists, it's probably an interrupted earlier
          * effort; a normal HTTP client would 'resume' from where it got to,
@@ -558,9 +554,26 @@ int main(int argc, char **argv) {
          * current version on the remote) and doesn't need to, because we can
          * treat it like any other local source of data. Use it now. */
         if (!access(temp_file, R_OK)) {
-            read_seed_file(zs, temp_file);
+            seedfiles = append_ptrlist(&nseedfiles, seedfiles, temp_file);
         }
 
+        /* Try any seed files supplied by the command line */
+        for (i = 0; i < nseedfiles; i++) {
+            int dup = 0, j;
+
+            /* And stop reading seed files once the target is complete. */
+            if (zsync_status(zs) >= 2) break;
+
+            /* Skip dups automatically, to save the person running the program
+             * having to worry about this stuff. */
+            for (j = 0; j < i; j++) {
+                if (!strcmp(seedfiles[i],seedfiles[j])) dup = 1;
+            }
+
+            /* And now, if not a duplicate, read it */
+            if (!dup)
+                read_seed_file(zs, seedfiles[i]);
+        }
         /* Show how far that got us */
         zsync_progress(zs, &local_used, NULL);
 
