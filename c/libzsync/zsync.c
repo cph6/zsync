@@ -87,7 +87,7 @@ struct zsync_state {
                                  * holding the in-progress local version of the target */
     off_t filelen;              /* Length of the target file */
     int blocks;                 /* Number of blocks in the target */
-    long blocksize;             /* Blocksize */
+    size_t blocksize;           /* Blocksize */
 
     /* Checksum of the entire file, and checksum alg */
     char *checksum;
@@ -601,7 +601,7 @@ static int zsync_sha1(struct zsync_state *zs, int fh) {
     SHA1_CTX shactx;
 
     {                           /* Do SHA1 of file contents */
-        char buf[4096];
+        unsigned char buf[4096];
         int rc;
 
         SHA1Init(&shactx);
@@ -655,7 +655,7 @@ static int zsync_recompress(struct zsync_state *zs) {
 
     {   /* Add input filename, shell-escaped, to the command line */
         int i = 0;
-        int j = strlen(cmd);
+        size_t j = strlen(cmd);
         char c;
 
         while ((c = zs->cur_filename[i++]) != 0 && j < sizeof(cmd) - 2) {
@@ -690,7 +690,7 @@ static int zsync_recompress(struct zsync_state *zs) {
             while (!feof(g)) {
                 char buf[1024];
                 int r;
-                char *p = buf;
+                const char *p = buf;
 
                 if ((r = fread(buf, 1, sizeof(buf), g)) < 0) {
                     perror("fread");
@@ -776,7 +776,7 @@ void zsync_configure_zstream_for_zdata(const struct zsync_state *zs,
 
         /* Read in 32k of leading uncompressed context - needed because the deflate
          * compression method includes back-references to previously-seen strings. */
-        char wbuf[32768];
+        unsigned char wbuf[32768];
         rcksum_read_known_data(zs->rs, wbuf, pos - lookback, lookback);
 
         /* Fake an output buffer of 32k filled with data to zlib */
@@ -815,7 +815,7 @@ struct zsync_receiver {
     struct zsync_state *zs;     /* The zsync_state that we are downloading for */
     struct z_stream_s strm;     /* Decompression object */
     int url_type;               /* Compressed or not */
-    char *outbuf;               /* Working buffer to keep incomplete blocks of data */
+    unsigned char *outbuf;      /* Working buffer to keep incomplete blocks of data */
     off_t outoffset;            /* and the position in that buffer */
 };
 
@@ -854,7 +854,7 @@ static int zsync_receive_data_uncompressed(struct zsync_receiver *zr,
                                            const unsigned char *buf,
                                            off_t offset, size_t len) {
     int ret = 0;
-    int blocksize = zr->zs->blocksize;
+    size_t blocksize = zr->zs->blocksize;
 
     if (0 != (offset % blocksize)) {
         size_t x = len;
@@ -916,7 +916,7 @@ static int zsync_receive_data_compressed(struct zsync_receiver *zr,
                               size_t len) {
     int ret = 0;
     int eoz = 0;
-    int blocksize = zr->zs->blocksize;
+    size_t blocksize = zr->zs->blocksize;
 
     if (!len)
         return 0;
@@ -968,9 +968,8 @@ static int zsync_receive_data_compressed(struct zsync_receiver *zr,
                     zr->outoffset += blocksize;
                 }
                 else {
-                    /* We were reading a block fragment; update outoffset, and we are nwo block-aligned. */
-                    zr->outoffset +=
-                        (((char *)(zr->strm.next_out)) - (zr->outbuf));
+                    /* We were reading a block fragment; update outoffset, and we are now block-aligned. */
+                    zr->outoffset += (zr->strm.next_out - zr->outbuf);
                 }
                 zr->strm.avail_out = blocksize;
                 zr->strm.next_out = zr->outbuf;
