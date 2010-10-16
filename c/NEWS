@@ -1,3 +1,7 @@
+Changes in ...
+- fix case where client would think download succeeded and try verifying it when it had really failed.
+- improvements to some of the error and progress messages.
+
 Changes in 0.6.2
 - fix for using zsync client on files >2GB on 32bit systems.
 - fix redirect handling.

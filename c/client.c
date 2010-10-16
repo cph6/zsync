@@ -130,7 +130,7 @@ void read_seed_file(struct zsync_state *z, const char *fname) {
 
         zsync_progress(z, &done, &total);
         if (!no_progress)
-            fprintf(stderr, "\rRead %s. Target %02.1f%% complete.      \n",
+            fprintf(stderr, "\rDone reading %s. %02.1f%% of target obtained.      \n",
                     fname, (100.0f * done) / total);
     }
 }
@@ -276,52 +276,41 @@ static float calc_zsync_progress(const struct zsync_state *zs) {
     return (100.0f * zgot / ztot);
 }
 
-/* fetch_remaining_blocks_http(zs, url, type)
- * For the given zsync_state, using the given URL (which is a copy of the
- * actual content of the target file is type == 0, or a compressed copy of it
- * if type == 1), retrieve the parts of the target that are currently missing. 
- * Returns true if this URL was useful, false if we crashed and burned.
+/* fetch_remaining_blocks_http(struct zsync*, const char* url, int type)
+ * For the given zsync_state, using the given absolute HTTP URL (which is a
+ * copy of the actual content of the target file is type == 0, or a compressed
+ * copy of it if type == 1), retrieve the parts of the target that are
+ * currently missing. 
+ * Returns 0 if this URL was useful, non-zero if we crashed and burned.
  */
 #define BUFFERSIZE 8192
 
-int fetch_remaining_blocks_http(struct zsync_state *z, const char *url,
+int fetch_remaining_blocks_http(struct zsync_state *z, const char *u,
                                 int type) {
     int ret = 0;
     struct range_fetch *rf;
     unsigned char *buf;
     struct zsync_receiver *zr;
 
-    /* URL might be relative - we need an absolute URL to do a fetch */
-    char *u = make_url_absolute(referer, url);
-    if (!u) {
-        fprintf(stderr,
-                "URL '%s' from the .zsync file is relative, but I don't know the referer URL (you probably downloaded the .zsync separately and gave it to me as a file). I need to know the referring URL (the URL of the .zsync) in order to locate the download. You can specify this with -u (or edit the URL line(s) in the .zsync file you have).\n",
-                url);
-        return -1;
-    }
-
     /* Start a range fetch and a zsync receiver */
     rf = range_fetch_start(u);
     if (!rf) {
-        free(u);
         return -1;
     }
     zr = zsync_begin_receive(z, type);
     if (!zr) {
         range_fetch_end(rf);
-        free(u);
         return -1;
     }
 
     if (!no_progress)
-        fprintf(stderr, "downloading from %s:", u);
+        fprintf(stderr, "downloading new blocks from %s:", u);
 
     /* Create a read buffer */
     buf = malloc(BUFFERSIZE);
     if (!buf) {
         zsync_end_receive(zr);
         range_fetch_end(rf);
-        free(u);
         return -1;
     }
 
@@ -382,13 +371,39 @@ int fetch_remaining_blocks_http(struct zsync_state *z, const char *url,
     http_down += range_fetch_bytes_down(rf);
     zsync_end_receive(zr);
     range_fetch_end(rf);
-    free(u);
     return ret;
 }
 
-/* fetch_remaining_blocks(zs)
+/* fetch_remaining_blocks_from_url(struct zsync_state*, url, type)
+ * For the given zsync_state, using the given URL (which is a copy of the
+ * actual content of the target file is type == 0, or a compressed copy of it
+ * if type == 1), retrieve the parts of the target that are currently missing. 
+ * Returns true if this URL was useful, false if we crashed and burned.
+ */
+int fetch_remaining_blocks_from_url(struct zsync_state *zs, const char *url,
+                                int type) {
+    /* URL might be relative - we need an absolute URL to do a fetch */
+    char *abs_url = make_url_absolute(referer, url);
+    if (!abs_url) {
+        fprintf(stderr,
+                "URL '%s' from the .zsync file is relative, but I don't know the referer URL (you probably downloaded the .zsync separately and gave it to me as a file). I need to know the referring URL (the URL of the .zsync) in order to locate the download. You can specify this with -u (or edit the URL line(s) in the .zsync file you have).\n",
+                url);
+        return -1;
+    }
+    /* Try fetching data from this URL */
+    int rc = fetch_remaining_blocks_http(zs, abs_url, type);
+    if (rc != 0) {
+        fprintf(stderr, "failed to retrieve from %s\n", abs_url);
+    }
+    free(abs_url);
+    return rc;
+}
+
+/* int fetch_remaining_blocks(struct zsync_state*)
  * Using the URLs in the supplied zsync state, downloads data to complete the
  * target file. 
+ * Returns 0 if there were no URLs to download from, 1 if there were (in which
+ * case consult zsync_status to see how far it got).
  */
 int fetch_remaining_blocks(struct zsync_state *zs) {
     int n, utype;
@@ -397,8 +412,8 @@ int fetch_remaining_blocks(struct zsync_state *zs) {
     int ok_urls = n;
 
     if (!url) {
-        fprintf(stderr, "no URLs available from zsync?");
-        return 1;
+        fprintf(stderr, "No download URLs known");
+        return 0;
     }
     status = calloc(n, sizeof *status);
 
@@ -408,19 +423,16 @@ int fetch_remaining_blocks(struct zsync_state *zs) {
         int try = rand() % n;
 
         if (!status[try]) {
-            const char *tryurl = url[try];
-
             /* Try fetching data from this URL */
-            int rc = fetch_remaining_blocks_http(zs, tryurl, utype);
+            int rc = fetch_remaining_blocks_from_url(zs, url[try], utype);
             if (rc != 0) {
-                fprintf(stderr, "failed to retrieve from %s\n", tryurl);
                 status[try] = 1;
                 ok_urls--;
             }
         }
     }
     free(status);
-    return 0;
+    return 1;
 }
 
 static int set_mtime(char* filename, time_t mtime) {
@@ -600,11 +612,20 @@ int main(int argc, char **argv) {
     }
 
     /* STEP 3: fetch remaining blocks via the URLs from the .zsync */
-    if (fetch_remaining_blocks(zs) != 0) {
-        fprintf(stderr,
-                "failed to retrieve all remaining blocks - no valid download URLs remain. Incomplete transfer left in %s.\n(If this is the download filename with .part appended, zsync will automatically pick this up and reuse the data it has already done if you retry in this dir.)\n",
+    {
+        int fetch_status  = fetch_remaining_blocks(zs);
+        int target_status = zsync_status(zs);
+        if (target_status < 2) {
+            fprintf(stderr,
+                "%s. Incomplete transfer left in %s.\n(If this is the download filename with .part appended, zsync will automatically pick this up and reuse the data it has already done if you retry in this dir.)\n",
+                fetch_status == 0
+                ? "No download URLs are known, so no data could be downloaded. The .zsync file is probably incomplete."
+                : target_status == 0
+                    ? "No data downloaded - none of the download URLs worked"
+                    : "Not all of the required data could be downloaded, and the remaining data could not be retrieved from any of the download URLs.",
                 temp_file);
-        exit(3);
+            exit(3);
+        }
     }
 
     {   /* STEP 4: verify download */
