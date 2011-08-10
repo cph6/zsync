@@ -1,3 +1,5 @@
+#include "/home/www/analytics.gtml"
+
 </head>
 <body>
 <div id="linklist">
@@ -12,5 +14,18 @@
  <li><a href="https://lists.sourceforge.net/lists/listinfo/zsync-users">Mailing List</a></li>
  <li><a href="author">Credits &amp; Contact</a></li>
 </ul>
+
+<!-- Adsense -->
+<script type="text/javascript"><!--
+google_ad_client = "ca-pub-9413222173072066";
+/* Moria Ads Skyscraper */
+google_ad_slot = "3722165525";
+google_ad_width = 160;
+google_ad_height = 600;
+//-->
+</script>
+<script type="text/javascript"
+src="http://pagead2.googlesyndication.com/pagead/show_ads.js">
+</script>
 </div>
 <div id="content">
