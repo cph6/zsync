@@ -19,6 +19,9 @@ AC_PROG_RANLIB
 AC_ARG_ENABLE([profile],
    AS_HELP_STRING([--enable-profile],[Turns on profiling]))
 
+AC_ARG_ENABLE([debug],AS_HELP_STRING([--enable-debug], [turns on some debugging features]),
+AC_DEFINE([DEBUG], [], [Turn on some debugging features]))
+
 AS_IF([test "x$enable_profile" = "xyes"], [
    ZS_CFLAGS="${ZS_CFLAGS} -pg" ])
 
