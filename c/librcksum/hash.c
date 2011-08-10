@@ -55,6 +55,40 @@ void rcksum_add_target_block(struct rcksum_state *z, zs_blockid b,
     }
 }
 
+static void print_hashstats(const struct rcksum_state* z) {
+#ifdef DEBUG
+    int i;
+    {
+        int num_bits_set = 0;
+        for (i = 0; i < z->bithashmask + 1; i++) {
+            unsigned char c;
+            for (c = z->bithash[i]; c; c &= c - 1)
+                num_bits_set++;
+        }
+            
+        fprintf(stderr, "bithash density %.1f%%\n",
+                100.0 * num_bits_set / (z->bithashmask + 1));
+    }
+    {
+        int hash_entries_used = 0;
+        int max_depth = 0;
+        for (i = 0; i < z->hashmask + 1; i++) {
+            struct hash_entry* p = z->rsum_hash[i];
+            if (!p) continue;
+            hash_entries_used++;
+            int depth;
+            for (depth = 0; p; p = p->next)
+                depth++;
+            if (depth > max_depth) max_depth = depth;
+        }
+        fprintf(stderr,
+                "rsum hash density: %.1f%% (depth avg: %.1f, max: %d)\n",
+                100.0 * hash_entries_used / (z->hashmask + 1),
+                z->blocks / (float)hash_entries_used, max_depth);
+    }
+#endif
+}
+
 /* build_hash(self)
  * Build hash tables to quickly lookup a block based on its rsum value.
  * Returns non-zero if successful.
@@ -101,6 +135,8 @@ int build_hash(struct rcksum_state *z) {
         /* And set relevant bit in the bithash to 1 */
         z->bithash[(h & z->bithashmask) >> 3] |= 1 << (h & 7);
     }
+
+    print_hashstats(z);
     return 1;
 }
 
@@ -108,6 +144,7 @@ int build_hash(struct rcksum_state *z) {
  * Remove the given data block from the rsum hash table, so it won't be
  * returned in a hash lookup again (e.g. because we now have the data)
  */
+
 void remove_block_from_hash(struct rcksum_state *z, zs_blockid id) {
     struct hash_entry *t = &(z->blockhashes[id]);
 
