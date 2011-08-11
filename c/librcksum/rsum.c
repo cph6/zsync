@@ -25,6 +25,8 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #ifdef WITH_DMALLOC
 # include <dmalloc.h>
@@ -33,6 +35,9 @@
 #include "md4.h"
 #include "rcksum.h"
 #include "internal.h"
+/* TODO: decide how to handle progress; this is now being used by the client
+ * and by the library, which is ugly. */
+#include "../progress.h"
 
 #define UPDATE_RSUM(a, b, oldc, newc, bshift) do { (a) += ((unsigned char)(newc)) - ((unsigned char)(oldc)); (b) += (a) - ((oldc) << (bshift)); } while (0)
 
@@ -415,6 +420,20 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
     }
 }
 
+/* off_t get_file_size(FILE*)
+ * Returns the size of the given file, if available. 0 otherwise.
+ */
+off_t get_file_size(FILE* f) {
+    struct stat st;
+    int fd = fileno(f);
+    if (fd == -1) return 0;
+    if (fstat(fd, &st) == -1) {
+        perror("fstat");
+        return 0;
+    }
+    return st.st_size;
+}
+
 /* rcksum_submit_source_file(self, stream, progress)
  * Read the given stream, applying the rsync rolling checksum algorithm to
  * identify any blocks of data in common with the target file. Blocks found are
@@ -425,6 +444,8 @@ int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
     int got_blocks = 0;
     off_t in = 0;
     int in_mb = 0;
+    off_t size = get_file_size(f);
+    struct progress *p;
 
     /* Allocate buffer of 16 blocks */
     register int bufsize = z->blocksize * 16;
@@ -438,6 +459,11 @@ int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
             free(buf);
             return 0;
         }
+
+    if (progress) {
+        p = start_progress();
+        do_progress(p, 0, in);
+    }
 
     while (!feof(f)) {
         size_t len;
@@ -461,6 +487,8 @@ int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
         if (ferror(f)) {
             perror("fread");
             free(buf);
+            if (progress)
+                end_progress(p, 0);
             return got_blocks;
         }
         if (feof(f)) {          /* 0 pad to complete a block */
@@ -471,10 +499,13 @@ int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
         /* Process the data in the buffer, and report progress */
         got_blocks += rcksum_submit_source_data(z, buf, len, start_in);
         if (progress && in_mb != in / 1000000) {
+            do_progress(p, (float)in / size, in);
             in_mb = in / 1000000;
-            fputc('*', stderr);
         }
     }
     free(buf);
+    if (progress) {
+        end_progress(p, 2);
+    }
     return got_blocks;
 }

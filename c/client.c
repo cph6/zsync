@@ -330,12 +330,13 @@ int fetch_remaining_blocks_http(struct zsync_state *z, const char *u,
     {
         int len;
         off_t zoffset;
-        struct progress p = { 0, 0, 0, 0 };
+        struct progress *p;
 
         /* Set up progress display to run during the fetch */
         if (!no_progress) {
             fputc('\n', stderr);
-            do_progress(&p, calc_zsync_progress(z), range_fetch_bytes_down(rf));
+            p = start_progress();
+            do_progress(p, calc_zsync_progress(z), range_fetch_bytes_down(rf));
         }
 
         /* Loop while we're receiving data, until we're done or there is an error */
@@ -348,7 +349,7 @@ int fetch_remaining_blocks_http(struct zsync_state *z, const char *u,
 
             /* Maintain progress display */
             if (!no_progress)
-                do_progress(&p, calc_zsync_progress(z),
+                do_progress(p, calc_zsync_progress(z),
                             range_fetch_bytes_down(rf));
 
             // Needed in case next call returns len=0 and we need to signal where the EOF was.
@@ -363,7 +364,7 @@ int fetch_remaining_blocks_http(struct zsync_state *z, const char *u,
             zsync_receive_data(zr, NULL, zoffset, 0);
 
         if (!no_progress)
-            end_progress(&p, zsync_status(z) >= 2 ? 2 : len == 0 ? 1 : 0);
+            end_progress(p, zsync_status(z) >= 2 ? 2 : len == 0 ? 1 : 0);
     }
 
     /* Clean up */

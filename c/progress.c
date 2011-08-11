@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <time.h>
+#include <stdlib.h>
 
 #ifdef WITH_DMALLOC
 # include <dmalloc.h>
@@ -40,6 +41,14 @@ static void progbar(int j, float pcnt) {
         buf[i] = '-';
     buf[i] = 0;
     printf("\r%s %.1f%%", buf, pcnt);
+}
+
+/* struct progress* = start_progress()
+ * Returns a progress structure. Caller is responsible for calling
+ * end_progress() on it later (which will free the memory that it uses).
+ */
+struct progress* start_progress(void) {
+    return calloc(1, sizeof(struct progress));
 }
 
 /* do_progress(progress, percent, total_bytes_retrieved
@@ -94,4 +103,5 @@ void end_progress(struct progress *p, int done) {
     }
     puts(done == 2 ? "DONE    \n" : !done ? "aborted    \n" : "        \n");
     fflush(stdout);
+    free(p);
 }

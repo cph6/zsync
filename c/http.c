@@ -441,10 +441,13 @@ FILE *http_get(const char *orig_url, char **track_referer, const char *tfname) {
 
         {   /* Now the actual content. Show progress as we go. */
             size_t got = 0;
-            struct progress p = { 0, 0, 0, 0 };
+            struct progress *p;
             size_t r;
-            if (!no_progress)
-                do_progress(&p, 0, got);
+
+            if (!no_progress) {
+                p = start_progress();
+                do_progress(p, 0, got);
+            }
 
             while (!feof(f)) {
                 /* Read from the network */
@@ -465,11 +468,11 @@ FILE *http_get(const char *orig_url, char **track_referer, const char *tfname) {
                     /* And maintain progress indication */
                     got += r;
                     if (!no_progress)
-                        do_progress(&p, len ? (100.0 * got / len) : 0, got);
+                        do_progress(p, len ? (100.0 * got / len) : 0, got);
                 }
             }
             if (!no_progress)
-                end_progress(&p, feof(f) ? 2 : 0);
+                end_progress(p, feof(f) ? 2 : 0);
         }
         fclose(f);
     }

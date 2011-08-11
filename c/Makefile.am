@@ -6,7 +6,7 @@ SUBDIRS = librcksum zlib libzsync doc
 
 bin_PROGRAMS = zsyncmake zsync
 
-zsyncmake_SOURCES = make.c makegz.c makegz.h format_string.h
+zsyncmake_SOURCES = make.c makegz.c makegz.h format_string.h progress.c progress.h
 zsyncmake_LDADD = libzsync/libzsync.a librcksum/librcksum.a zlib/libinflate.a zlib/libdeflate.a -lm
 
 zsync_SOURCES = client.c http.c http.h url.c url.h progress.c progress.h base64.c format_string.h zsglobal.h
