@@ -95,6 +95,10 @@ static unsigned short min(unsigned short a, unsigned short b) {
     return a > b ? b : a;
 }
 
+static unsigned short max(unsigned short a, unsigned short b) {
+    return a > b ? a : b;
+}
+
 /* build_hash(self)
  * Build hash tables to quickly lookup a block based on its rsum value.
  * Returns non-zero if successful.
@@ -133,10 +137,10 @@ int build_hash(struct rcksum_state *z) {
      */
     if (z->seq_matches > 1 && avail_bits < 24) {
         /* second number has (avail_bits/2) bits available. */
-        z->hash_func_shift = min(0, hash_bits - (avail_bits / 2));
+        z->hash_func_shift = max(0, hash_bits - (avail_bits / 2));
     } else {
         /* second number has avail_bits - 16 bits available. */
-        z->hash_func_shift = min(0, hash_bits - (avail_bits - 16));
+        z->hash_func_shift = max(0, hash_bits - (avail_bits - 16));
     }
 
     /* Now fill in the hash tables.
