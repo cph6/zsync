@@ -17,6 +17,7 @@
 #include "zsglobal.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <stdlib.h>
 
@@ -25,6 +26,17 @@
 #endif
 
 #include "progress.h"
+
+#define HISTORY 10
+struct progress {
+  time_t starttime;
+  struct {
+    time_t hist_time;
+    long long dl;
+    float pcnt;
+  } history[HISTORY];
+  int num_history;
+};
 
 int no_progress;
 
@@ -56,35 +68,38 @@ struct progress* start_progress(void) {
  * recalculates the rolling download rate given the supplied
  * total_bytes_retrieved (and the current time) */
 void do_progress(struct progress *p, float pcnt, long long newdl) {
-    /* If new or if time has passed, update progress display & data */
     time_t newtime = time(NULL);
-    if (p->lasttime != newtime) {
-        int passed = p->lasttime ? newtime - p->lasttime : 0;
-        if (!p->lasttime)
-            p->starttime = newtime;
-        p->lasttime = newtime;
+    if (!p->num_history)
+        p->starttime = newtime;
+    else if (p->history[p->num_history-1].hist_time == newtime)
+        return;
 
-        /* Update progress bar displayed */
-        progbar(pcnt * (20.0 / 100.0), pcnt);
-
-        /* Each time 1s has passed, we update and redisplay our download rate */
-        if (passed) {
-            float rate = newdl - p->lastdl;
-            int sleft = (100.0f - pcnt) / (pcnt - p->lastpcnt);
-            if (passed != 1) {
-                rate /= passed;
-                sleft *= passed;
-            }
-            printf(" %.1f kBps ", rate / 1000.0);
-            if (sleft < 60 * 1000)
-                printf("%d:%02d ETA  ", sleft / 60, sleft % 60);
-            else
-                puts("        ");
-        }
-        p->lastdl = newdl;
-        p->lastpcnt = pcnt;
-        fflush(stdout);
+    /* Add to the history, rolling off some old history if needed. */
+    if (p->num_history >= HISTORY) {
+        p->num_history = HISTORY-1;
+        memmove(p->history, &(p->history[1]), (HISTORY-1)*sizeof(p->history[0]));
     }
+    p->history[p->num_history].hist_time = newtime;
+    p->history[p->num_history].dl        = newdl;
+    p->history[p->num_history].pcnt      = pcnt;
+    p->num_history++;
+    
+    /* Update progress bar displayed */
+    progbar(pcnt * (20.0 / 100.0), pcnt);
+
+    /* If we have more than one data point, we can calculate and show rates */
+    if (p->num_history > 1) {
+        int passed = p->history[p->num_history-1].hist_time - p->history[0].hist_time;
+        float rate = (p->history[p->num_history-1].dl - p->history[0].dl) / (float)passed;
+        float pcnt_change = (p->history[p->num_history-1].pcnt - p->history[0].pcnt);
+        int sleft = (100.0f - pcnt) * passed / pcnt_change;
+        printf(" %.1f kBps ", rate / 1000.0);
+        if (sleft < 60 * 1000)
+            printf("%d:%02d ETA  ", sleft / 60, sleft % 60);
+        else
+            fputs("           ", stdout);
+    }
+    fflush(stdout);
 }
 
 /* end_progress(progress, done)
@@ -94,11 +109,14 @@ void do_progress(struct progress *p, float pcnt, long long newdl) {
 void end_progress(struct progress *p, int done) {
     if (done == 2)
         progbar(20, 100.0);
-    else
-        progbar(p->lastpcnt * (20.0 / 100.0), p->lastpcnt);
+    else {
+        float lastpcnt = p->history[p->num_history-1].pcnt;
+        progbar(lastpcnt * (20.0 / 100.0), lastpcnt);
+    }
 
-    {
-        float rate = ((float)p->lastdl) / (p->lasttime - p->starttime + 0.5);
+    {   /* For the final display, show the rate for the whole download. */
+        float rate = (float)(p->history[p->num_history-1].dl) /
+            (p->history[p->num_history-1].hist_time - p->starttime + 0.5);
         printf(" %.1f kBps ", rate / 1000.0);
     }
     puts(done == 2 ? "DONE    \n" : !done ? "aborted    \n" : "        \n");

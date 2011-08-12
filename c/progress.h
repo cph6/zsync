@@ -13,13 +13,7 @@
  *   COPYING file for details.
  */
 
-struct progress {
-  time_t starttime;
-  time_t lasttime;
-  float lastpcnt;
-  long long lastdl;
-};
-
+struct progress;
 extern int no_progress;
 
 /* struct progress* = start_progress()

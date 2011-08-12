@@ -499,7 +499,7 @@ int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
         /* Process the data in the buffer, and report progress */
         got_blocks += rcksum_submit_source_data(z, buf, len, start_in);
         if (progress && in_mb != in / 1000000) {
-            do_progress(p, (float)in / size, in);
+            do_progress(p, 100.0 * in / size, in);
             in_mb = in / 1000000;
         }
     }
