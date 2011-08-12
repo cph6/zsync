@@ -1,4 +1,5 @@
 Changes in ...
+- performance improvements for large (>250MB) files - on multi-gigabyte files this can be a very large improvement.
 - fix case where client would think download succeeded and try verifying it when it had really failed.
 - improvements to some of the error and progress messages.
 - --enable-debug to turn on stats for debugging performance problems.

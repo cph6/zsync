@@ -66,7 +66,8 @@ static void print_hashstats(const struct rcksum_state* z) {
                 num_bits_set++;
         }
             
-        fprintf(stderr, "bithash density %.1f%%\n",
+        fprintf(stderr, "bithash %dKB, density %.1f%%\n",
+                (z->bithashmask+1)/(1000 * 8),
                 100.0 * num_bits_set / (z->bithashmask + 1));
     }
     {
@@ -82,11 +83,16 @@ static void print_hashstats(const struct rcksum_state* z) {
             if (depth > max_depth) max_depth = depth;
         }
         fprintf(stderr,
-                "rsum hash density: %.1f%% (depth avg: %.1f, max: %d)\n",
+                "rsum hash density: %d/%d %.1f%% (depth avg: %.1f, max: %d)\n",
+                hash_entries_used, z->hashmask+1,
                 100.0 * hash_entries_used / (z->hashmask + 1),
                 z->blocks / (float)hash_entries_used, max_depth);
     }
 #endif
+}
+
+static unsigned short min(unsigned short a, unsigned short b) {
+    return a > b ? b : a;
 }
 
 /* build_hash(self)
@@ -95,26 +101,42 @@ static void print_hashstats(const struct rcksum_state* z) {
  */
 int build_hash(struct rcksum_state *z) {
     zs_blockid id;
-    int i = 16;
+    int avail_bits = z->seq_matches > 1 ? min(z->rsum_bits, 16)*2 : z->rsum_bits;
+    int hash_bits = avail_bits;
 
-    /* Try hash size of 2^i; step down the value of i until we find a good size
-     */
-    while ((2 << (i - 1)) > z->blocks && i > 4)
-        i--;
+    /* Pick a hash size that is a power of two and gives a load factor of <1 */
+    while ((1U << (hash_bits-1)) > z->blocks && hash_bits > 5)
+        hash_bits--;
 
     /* Allocate hash based on rsum */
-    z->hashmask = (2 << i) - 1;
+    z->hashmask = (1U << hash_bits) - 1;
     z->rsum_hash = calloc(z->hashmask + 1, sizeof *(z->rsum_hash));
     if (!z->rsum_hash)
         return 0;
 
-    /* Allocate bit-table based on rsum */
-    z->bithashmask = (2 << (i + BITHASHBITS)) - 1;
+    /* Allocate bit-table based on rsum. Aim is for 1/(1<<BITHASHBITS) load
+     * factor, so hash_vits shouls be hash_bits + BITHASHBITS if we have that
+     * many bits available. */
+    hash_bits = min(hash_bits + BITHASHBITS, avail_bits);
+    z->bithashmask = (1U << hash_bits) - 1;
     z->bithash = calloc(z->bithashmask + 1, 1);
     if (!z->bithash) {
         free(z->rsum_hash);
         z->rsum_hash = NULL;
         return 0;
+    }
+
+    /* We want the hash function to return hash_bits bits. We will xor one
+     * number with a second number that may have fewer than 16 bits of
+     * available data; set up an appropriate bit shift for the second number.
+     * This is closely tied to calc_rhash().
+     */
+    if (z->seq_matches > 1 && avail_bits < 24) {
+        /* second number has (avail_bits/2) bits available. */
+        z->hash_func_shift = min(0, hash_bits - (avail_bits / 2));
+    } else {
+        /* second number has avail_bits - 16 bits available. */
+        z->hash_func_shift = min(0, hash_bits - (avail_bits - 16));
     }
 
     /* Now fill in the hash tables.

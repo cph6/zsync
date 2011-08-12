@@ -41,9 +41,10 @@ struct rcksum_state {
     size_t blocksize;           /* And how many bytes per block */
     int blockshift;             /* log2(blocksize) */
     unsigned short rsum_a_mask; /* The mask to apply to rsum values before looking up */
+    unsigned short rsum_bits;   /* # of bits of rsum data in the .zsync for each block */
+    unsigned short hash_func_shift; /* Config for the hash function */
     int checksum_bytes;         /* How many bytes of the MD4 checksum are available */
     int seq_matches;
-
     unsigned int context;       /* precalculated blocksize * seq_matches */
 
     /* These are used by the library. Note, not thread safe. */
@@ -102,10 +103,20 @@ static inline unsigned calc_rhash(const struct rcksum_state *const z,
     unsigned h = e[0].r.b;
 
     h ^= ((z->seq_matches > 1) ? e[1].r.b
-        : e[0].r.a & z->rsum_a_mask) << BITHASHBITS;
+        : e[0].r.a & z->rsum_a_mask) << z->hash_func_shift;
 
     return h;
 }
+
+static inline unsigned calc_rhash_for_current_block(const struct rcksum_state *const z) {
+    unsigned h = z->r[0].b;
+
+    h ^= ((z->seq_matches > 1) ? z->r[1].b
+        : z->r[0].a & z->rsum_a_mask) << z->hash_func_shift;
+
+    return h;
+}
+
 
 int build_hash(struct rcksum_state *z);
 void remove_block_from_hash(struct rcksum_state *z, zs_blockid id);

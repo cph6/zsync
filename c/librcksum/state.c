@@ -46,6 +46,7 @@ struct rcksum_state *rcksum_init(zs_blockid nblocks, size_t blocksize,
     z->blocksize = blocksize;
     z->blocks = nblocks;
     z->rsum_a_mask = rsum_bytes < 3 ? 0 : rsum_bytes == 3 ? 0xff : 0xffff;
+    z->rsum_bits = rsum_bytes * 8;
     z->checksum_bytes = checksum_bytes;
     z->seq_matches = require_consecutive_matches;
 

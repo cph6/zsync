@@ -364,9 +364,8 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
 
                 /* Do a hash table lookup - first in the bithash (fast negative
                  * check) and then in the rsum hash */
-                unsigned hash = z->r[0].b;
-                hash ^= ((z->seq_matches > 1) ? z->r[1].b
-                        : z->r[0].a & z->rsum_a_mask) << BITHASHBITS;
+                unsigned hash = calc_rhash_for_current_block(z);
+
                 if ((z->bithash[(hash & z->bithashmask) >> 3] & (1 << (hash & 7))) != 0
                     && (e = z->rsum_hash[hash & z->hashmask]) != NULL) {
 
