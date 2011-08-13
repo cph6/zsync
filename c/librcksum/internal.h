@@ -73,7 +73,8 @@ struct rcksum_state {
     zs_blockid *ranges;
     int gotblocks;
     struct {
-        int hashhit, weakhit, stronghit, checksummed;
+        long long hashhit;
+        int weakhit, stronghit, checksummed;
     } stats;
 
     /* Temp file for output */

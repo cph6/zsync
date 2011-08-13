@@ -136,7 +136,7 @@ void rcksum_end(struct rcksum_state *z) {
     free(z->bithash);
     free(z->ranges);            // Should be NULL already
 #ifdef DEBUG
-    fprintf(stderr, "hashhit %d, weakhit %d, checksummed %d, stronghit %d\n",
+    fprintf(stderr, "hashhit %lld, weakhit %d, checksummed %d, stronghit %d\n",
             z->stats.hashhit, z->stats.weakhit, z->stats.checksummed,
             z->stats.stronghit);
 #endif
