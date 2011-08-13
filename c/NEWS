@@ -5,6 +5,8 @@ Changes in 0.6.3
   distribution.
 - fix case where client would think download succeeded and try verifying it
   when it had really failed.
+- fix a problem where the client could get into a loop retrieving data if the
+  remote returned data inconsistent with the .zsync file.
 - improvements to some of the error and progress messages.
 - --enable-debug to turn on stats for debugging performance problems.
 

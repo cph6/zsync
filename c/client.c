@@ -361,7 +361,8 @@ int fetch_remaining_blocks_http(struct zsync_state *z, const char *u,
             ret = -1;
         else    /* Else, let the zsync receiver know that we're at EOF; there
                  *could be data in its buffer that it can use or needs to process */
-            zsync_receive_data(zr, NULL, zoffset, 0);
+            if (zsync_receive_data(zr, NULL, zoffset, 0) != 0)
+                ret = 1;
 
         if (!no_progress)
             end_progress(p, zsync_status(z) >= 2 ? 2 : len == 0 ? 1 : 0);
