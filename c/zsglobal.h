@@ -27,4 +27,12 @@
 #  define ZS_DECL_BOUNDED(x,y,z)
 #endif /* ZS_DECL_BOUNDED */
 
+static inline unsigned min(unsigned short a, unsigned short b) {
+    return a > b ? b : a;
+}
+
+static inline unsigned max(unsigned short a, unsigned short b) {
+    return a > b ? a : b;
+}
+
 #endif

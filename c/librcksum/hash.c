@@ -88,15 +88,45 @@ static void print_hashstats(const struct rcksum_state* z) {
                 100.0 * hash_entries_used / (z->hashmask + 1),
                 z->blocks / (float)hash_entries_used, max_depth);
     }
+#if 0
+    {   /* Print blocks on "0" hash-chain */
+        unsigned hash = 0;
+        const struct hash_entry *p = z->rsum_hash[hash & z->hashmask];
+        const struct hash_entry *first = p;
+        int depth = 0;
+        int in_range = 0;
+        while (p != NULL) {
+            zs_blockid id = get_HE_blockid(z, p);
+            if (memcmp(p->checksum, first->checksum, sizeof(p->checksum))) {
+                int next_is_too = 0;
+                if (p->next) {
+                    zs_blockid next_id = get_HE_blockid(z, p->next);
+                    if (next_id == id + 1)
+                        if (memcmp(p->next->checksum, first->checksum, sizeof(p->checksum)))
+                            next_is_too = 1;;
+                }
+                if (!in_range) {
+                    printf("%d", id);
+                    if (next_is_too) {
+                        fputs("-", stdout);
+                        in_range = 1;
+                    } else {
+                        fputs(",", stdout);
+                    }
+                } else {
+                    if (next_is_too) {
+                        printf("%d,", id);
+                        in_range = 0;
+                    }
+                }
+            }
+            p = p->next;
+            depth++;
+        }
+        printf(" (depth %d)\n", depth);
+    }
 #endif
-}
-
-static unsigned short min(unsigned short a, unsigned short b) {
-    return a > b ? b : a;
-}
-
-static unsigned short max(unsigned short a, unsigned short b) {
-    return a > b ? a : b;
+#endif
 }
 
 /* build_hash(self)
@@ -164,6 +194,18 @@ int build_hash(struct rcksum_state *z) {
 
     print_hashstats(z);
     return 1;
+}
+
+void sprint_checksum(char* buf, const struct hash_entry* t) {
+        sprintf(buf, "%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x", 
+                t->checksum[0], t->checksum[1],
+                t->checksum[2], t->checksum[3],
+                t->checksum[4], t->checksum[5],
+                t->checksum[6], t->checksum[7],
+                t->checksum[8], t->checksum[9],
+                t->checksum[10], t->checksum[11],
+                t->checksum[12], t->checksum[13],
+                t->checksum[14], t->checksum[15]);
 }
 
 /* remove_block_from_hash(self, block_id)
