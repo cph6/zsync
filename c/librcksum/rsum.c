@@ -214,9 +214,10 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
         id = get_HE_blockid(z, e);
 
         if (!onlyone && z->seq_matches > 1
-            && (z->blockhashes[id + 1].r.a != (z->r[1].a & z->rsum_a_mask)
-                || z->blockhashes[id + 1].r.b != z->r[1].b))
+            && (e[1].r.a != (z->r[1].a & z->rsum_a_mask)
+                || e[1].r.b != z->r[1].b)) {
             continue;
+        }
 
         z->stats.weakhit++;
 
@@ -241,7 +242,7 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
 
                 /* Now check the strong checksum for this block */
                 if (memcmp(&md4sum[check_md4],
-                     z->blockhashes[id + check_md4].checksum,
+                     e[check_md4].checksum,
                      z->checksum_bytes))
                     ok = 0;
 
