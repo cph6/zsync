@@ -718,23 +718,31 @@ int main(int argc, char **argv) {
     read_stream_write_blocksums(instream, tf);
 
     {   /* Decide how long a rsum hash and checksum hash per block we need for this file */
-        seq_matches = len > blocksize ? 2 : 1;
-        rsum_len = ceil(((log(len) + log(blocksize)) / log(2) - 8.6) / seq_matches / 8);
+        seq_matches = 1;
+        rsum_len = ceil(((log(len) + log(blocksize)) / log(2) - 8.6) / 8);
+        /* For large files, the optimum weak checksum size can be more than
+         * what we have available. Switch to seq_matches for this case. */
+        if (rsum_len > 4) {
+            /* seq_matches > 1 in theory would reduce the amount of rsum_len
+             * needed, since we get effectively rsum_len*seq_matches required
+             * to match before a strong checksum is calculated. In practice,
+             * consecutive blocks in the file can be highly correlated, so we
+             * want to keep the maximum available rsum_len as well. */
+            seq_matches = 2;
+            rsum_len = 4;
+        }
 
-        /* min and max lengths of rsums to store */
-        if (rsum_len > 4) rsum_len = 4;
-        if (rsum_len < 2) rsum_len = 2;
+        /* min lengths of rsums to store */
+        rsum_len = max(2, rsum_len);
 
         /* Now the checksum length; min of two calculations */
-        checksum_len = ceil(
+        checksum_len = max(ceil(
                 (20 + (log(len) + log(1 + len / blocksize)) / log(2))
-                / seq_matches / 8);
-        {
-            int checksum_len2 =
-                (7.9 + (20 + log(1 + len / blocksize) / log(2))) / 8;
-            if (checksum_len < checksum_len2)
-                checksum_len = checksum_len2;
-        }
+                / seq_matches / 8),
+                ceil((20 + log(1 + len / blocksize) / log(2)) / 8));
+
+        /* Keep checksum_len within 4-16 bytes */
+        checksum_len = min(16, max(4, checksum_len));
     }
 
     /* Recompression:
