@@ -68,12 +68,19 @@ base_stats = { 'zsync version': zsync_ver, 'extra version': ver_suffix,
 used_fetched_re = re.compile(r'^used ([0-9]+) local, fetched ([0-9]+)')
 # Allow negative hashhit, old versions of zsync would wrap around.
 hashhit_re = re.compile(r'^hashhit ([-0-9]+), weakhit ([0-9]+), checksummed ([0-9]+), stronghit ([0-9]+)')
+blocksize_re = re.compile(r'^Blocksize: ([0-9]+)')
 
 for test in tests:
     # Get zsyncmake version for this .zsync file.
     with open(os.path.join(str(test), "get.zsync")) as f:
         zsyncmake_ver_str = f.readline()
         zsyncmake_ver = zsyncmake_ver_str.split(" ")[1].strip()
+        zsync_size = os.fstat(f.fileno()).st_size
+        for l in f:
+            m = blocksize_re.match(l)
+            if m:
+                blocksize = int(m.group(1))
+                break
 
     # Clean up scratch tree.
     shutil.rmtree(tmpdir, ignore_errors=True)
@@ -108,7 +115,7 @@ for test in tests:
         p = subprocess.Popen(args=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=tmpdir)
 
         # Read output and write to transcript.
-        for l in p.stdout.readlines():
+        for l in p.stdout:
             print l,
             sys.stdout.flush()
             transcript.write(l)
@@ -160,9 +167,11 @@ for test in tests:
     if os.access(stats_filename, os.F_OK) and not overwrite:
         raise TestingError("File %s exists" % stats_filename)
     with open(stats_filename, "w") as stats:
-        sw = csv.DictWriter(stats, ['zsync version', 'extra version', 'zsyncmake version', 'other', 'pass', 'user time', 'system time', 'elapsed time', 'platform', 'cpu mhz', 'fetched localhost', 'used local', 'fetched', 'hashhit', 'weakhit', 'checksummed', 'stronghit', 'page faults (minor)', 'page faults (major)', 'swaps out', 'block io in', 'block io out', 'context switches (voluntary)', 'context switches (involuntary)'])
+        sw = csv.DictWriter(stats, ['zsync version', 'extra version', 'zsyncmake version', '.zsync size', 'blocksize', 'other', 'pass', 'user time', 'system time', 'elapsed time', 'platform', 'cpu mhz', 'fetched localhost', 'used local', 'fetched', 'hashhit', 'weakhit', 'checksummed', 'stronghit', 'page faults (minor)', 'page faults (major)', 'swaps out', 'block io in', 'block io out', 'context switches (voluntary)', 'context switches (involuntary)'])
         test_stats = {
             'zsyncmake version': zsyncmake_ver, 
+            '.zsync size': zsync_size,
+            'blocksize': blocksize,
             'pass': not failed, 'elapsed time': elapsed_time,
             'user time': rusage.ru_utime, 'system time': rusage.ru_stime, 
             'page faults (minor)': rusage.ru_minflt,
