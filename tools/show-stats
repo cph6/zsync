@@ -1,0 +1,10 @@
+#!/bin/sh -ex
+
+mkdir -p stats
+alltests=$(ls */stats*|cut -d / -f 1|sort -n -u)
+for test in ${1:-$alltests}
+do
+    ( cat $test/stats\ *| head -1 \
+      && tail -qn 1 $test/stats\ * ) > stats/$test.csv
+    oocalc stats/$test.csv
+done

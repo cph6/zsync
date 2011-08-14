@@ -1,0 +1,184 @@
+#!/usr/bin/python
+
+import csv
+import errno
+import getopt
+import re
+import os
+import os.path
+import platform
+import shutil
+import subprocess
+import sys
+import time
+
+tests = [1,2,3,4,5,6,7,8,9,11,12,13,14,20,21,24,27]
+zsyncdir = "/home/cph/src/zsync/main/c"
+zsync = os.path.join(zsyncdir, "zsync")
+desc = None
+ver_suffix = None
+overwrite = False
+fails = 0
+skip_present = False  # Skip if test results filename already present.
+
+opts, args = getopt.getopt(sys.argv[1:], '', ['zsync=', 'tests=', 'desc=', 'overwrite', 'ver-suffix=', 'skip-present'])
+
+class TestingError:
+    def __init__(self, errstr):
+        self._errstr = errstr
+    def __str__(self):
+        return self._errstr
+
+for option, value in opts:
+    if option == '--zsync':
+        zsync = value
+    elif option == '--tests':
+        tests = [int(t) for t in value.split(',')]
+    elif option == '--ver-suffix':
+        ver_suffix = value
+    elif option == '--desc':
+        desc = value
+    elif option == '--overwrite':
+        overwrite = True
+    elif option == '--skip-present':
+        skip_present = True
+    else:
+        raise TestingError("Unhandled argument %s=%s" % (option, value))
+
+if args:
+    raise TestingError("Surplus arguments: %s" % " ".join(args))
+
+zsync_V = subprocess.check_output([zsync, "-V"])
+zsync_ver = zsync_V.split(" ")[1]
+tmpdir = "tmp"
+tests_url = "http://localhost:2000/ztest/"
+
+def get_cpu_mhz():
+    with open("/proc/cpuinfo") as f:
+        for l in f.readlines():
+            if 'MHz' in l:
+                l = l.rstrip()
+                return l.split(': ')[1]
+
+# Stats common to all the tests.
+base_stats = { 'zsync version': zsync_ver, 'extra version': ver_suffix,
+    'other': desc, 'platform': platform.machine(), 'cpu mhz': get_cpu_mhz(),
+    'fetched localhost': ('localhost' in tests_url)}
+
+used_fetched_re = re.compile(r'^used ([0-9]+) local, fetched ([0-9]+)')
+# Allow negative hashhit, old versions of zsync would wrap around.
+hashhit_re = re.compile(r'^hashhit ([-0-9]+), weakhit ([0-9]+), checksummed ([0-9]+), stronghit ([0-9]+)')
+
+for test in tests:
+    # Get zsyncmake version for this .zsync file.
+    with open(os.path.join(str(test), "get.zsync")) as f:
+        zsyncmake_ver_str = f.readline()
+        zsyncmake_ver = zsyncmake_ver_str.split(" ")[1].strip()
+
+    # Clean up scratch tree.
+    shutil.rmtree(tmpdir, ignore_errors=True)
+    os.mkdir(tmpdir)
+
+    print "--- Test %d ---" % test
+    failed = False
+    should_fail = os.access(os.path.join(str(test), "SHOULD-FAIL"), os.F_OK)
+
+    # Build suffix for test results filenames.
+    test_run_suffix_parts = [zsync_ver]
+    if ver_suffix:
+        test_run_suffix_parts.append("ver_suffix=%s" % ver_suffix)
+    test_run_suffix_parts.append("zsyncmake=%s" % zsyncmake_ver)
+    if desc:
+        test_run_suffix_parts.append(" desc=%s" % desc)
+
+    cmd = [zsync, '-i', os.path.join("..", str(test), "old"), tests_url + "%d/get.zsync" % test]
+
+    # File for transcript of test run. 
+    transcript_filename = os.path.join(str(test), "script %s" % (" ".join(test_run_suffix_parts)))
+    if os.access(transcript_filename, os.F_OK):
+        if skip_present:
+            continue
+        if not overwrite:
+            raise TestingError("File %s exists" % transcript_filename)
+
+    with open(transcript_filename, "w") as transcript:
+        starttime = time.time()
+        parsed_stats = {}
+        transcript.writelines([" ".join(cmd)])
+        p = subprocess.Popen(args=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=tmpdir)
+
+        # Read output and write to transcript.
+        for l in p.stdout.readlines():
+            print l,
+            sys.stdout.flush()
+            transcript.write(l)
+            m = hashhit_re.match(l)
+            if m:
+                parsed_stats.update(zip(
+                            ['hashhit', 'weakhit', 'checksummed', 'stronghit'],
+                            [int(m.group(i)) for i in range(1, 5)]))
+            m = used_fetched_re.match(l)
+            if m:
+                parsed_stats.update(zip(
+                            ['used local', 'fetched'],
+                            [int(m.group(i)) for i in range(1, 3)]))
+
+        # Get exit status, rusage info, running time for the zsync run.
+        pid_unused, status, rusage = os.wait4(p.pid, 0)
+        elapsed_time = time.time() - starttime
+
+        # If should_fail, expect exit status 3 from the process (could not get
+        # all data). Otherwise expect success.
+        if (status != 0 and not should_fail) or ((not(os.WIFEXITED(status)) or os.WEXITSTATUS(status) != 3) and should_fail):
+            failed = True
+            print "*** Test %d FAILED (status=%d) ***" % (test, status)
+            transcript.write("FAIL\n")
+        else:
+            transcript.write("PASS\n")
+
+        # Append human-readable stats to the transcript
+        transcript.write("user=%fs\nsystem=%fs\nelapsed=%ds\n" %
+            (rusage.ru_utime, rusage.ru_stime, elapsed_time))
+        transcript.write("faults: minor=%d, major=%d\n" % (rusage.ru_minflt, rusage.ru_majflt))
+        transcript.write("swap_out=%d\n" % (rusage.ru_nswap))
+        transcript.write("block io: in=%d, out=%d\n" % (rusage.ru_inblock, rusage.ru_oublock))
+        transcript.write("context switches: voluntary=%d, involutary=%d\n" % (rusage.ru_nvcsw, rusage.ru_nivcsw))
+
+    if failed: fails += 1
+    # Remove downloaded file, possibly expecting failure.
+    try:
+        got_file = os.path.join(tmpdir, "get")
+        if os.access("%s.gz" % got_file, os.F_OK):
+            got_file = "%s.gz" % got_file
+        os.unlink(got_file)
+    except OSError, e:
+        if e.errno != errno.ENOENT or (not should_fail and not failed):
+            raise
+
+    # Write stats csv.
+    stats_filename =  os.path.join(str(test), "stats %s.csv" % (" ".join(test_run_suffix_parts)))
+    if os.access(stats_filename, os.F_OK) and not overwrite:
+        raise TestingError("File %s exists" % stats_filename)
+    with open(stats_filename, "w") as stats:
+        sw = csv.DictWriter(stats, ['zsync version', 'extra version', 'zsyncmake version', 'other', 'pass', 'user time', 'system time', 'elapsed time', 'platform', 'cpu mhz', 'fetched localhost', 'used local', 'fetched', 'hashhit', 'weakhit', 'checksummed', 'stronghit', 'page faults (minor)', 'page faults (major)', 'swaps out', 'block io in', 'block io out', 'context switches (voluntary)', 'context switches (involuntary)'])
+        test_stats = {
+            'zsyncmake version': zsyncmake_ver, 
+            'pass': not failed, 'elapsed time': elapsed_time,
+            'user time': rusage.ru_utime, 'system time': rusage.ru_stime, 
+            'page faults (minor)': rusage.ru_minflt,
+            'page faults (major)': rusage.ru_majflt,
+            'swaps out': rusage.ru_nswap,
+            'block io in': rusage.ru_inblock, 'block io out': rusage.ru_oublock,
+            'context switches (voluntary)': rusage.ru_nvcsw,
+            'context switches (involuntary)': rusage.ru_nivcsw
+        }
+        test_stats.update(base_stats)
+        test_stats.update(parsed_stats)
+        sw.writeheader()
+        sw.writerow(test_stats)
+
+# Clean up, and exit reflecting test status.
+shutil.rmtree(tmpdir, ignore_errors=True)
+if fails:
+    print "%d tests FAILed" % fails
+    sys.exit(1)
