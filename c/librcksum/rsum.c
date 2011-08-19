@@ -311,8 +311,12 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
      * [x, x+bs)
      */
     int x = 0;
-    register int bs = z->blocksize;
     int got_blocks = 0;
+    /* The compiler doesn't know that some of these are invariants during a
+     * particular invocation; help it out by putting them into local variables
+     * here. */
+    const register int bs = z->blocksize;
+    const register int x_limit = len - z->context;
 
     if (offset) {
         x = z->skip;
@@ -328,10 +332,10 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
     }
     z->skip = 0;
 
-    /* Work through the block until the current blocksize bytes being
+    /* Work through the block until the current z->context bytes being
      * considered, starting at x, is at the end of the buffer */
     for (;;) {
-        if (x + z->context == len) {
+        if (x == x_limit) {
             return got_blocks;
         }
 
@@ -387,11 +391,11 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
             if (blocks_matched) {
                 x += bs + (blocks_matched > 1 ? bs : 0);
 
-                if (x + z->context > len) {
+                if (x > x_limit) {
                     /* can't calculate rsum for block after this one, because
                      * it's not in the buffer. So leave a hint for next time so
                      * we know we need to recalculate */
-                    z->skip = x + z->context - len;
+                    z->skip = x - x_limit;
                     return got_blocks;
                 }
 

@@ -1,6 +1,7 @@
 Changes in 0.6.3
 - performance improvements for large (>250MB) files - on multi-gigabyte files
   this can be a very large improvement.
+- other optimisations.
 - tuning to reduce likelyhood of hitting bad performance due to bad checksum
   distribution.
 - fix case where client would think download succeeded and try verifying it
