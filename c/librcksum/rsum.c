@@ -43,15 +43,17 @@
 
 /* rcksum_calc_rsum_block(data, data_len)
  * Calculate the rsum for a single block of data. */
-struct rsum __attribute__ ((pure)) rcksum_calc_rsum_block(const unsigned char *data, size_t len) {
+/* Note int len here, not size_t, because the compiler is stupid and expands
+ * the 32bit size_t to 64bit inside the inner loop. */
+struct rsum __attribute__ ((pure)) rcksum_calc_rsum_block(const unsigned char *data, int len) {
     register unsigned short a = 0;
     register unsigned short b = 0;
+    int i;
 
-    while (len) {
-        unsigned char c = *data++;
+    for (i = 0; i < len; i++) {
+        unsigned char c = data[i];
         a += c;
-        b += len * c;
-        len--;
+        b += a;
     }
     {
         struct rsum r = { a, b };
