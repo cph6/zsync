@@ -109,15 +109,5 @@ static inline unsigned calc_rhash(const struct rcksum_state *const z,
     return h;
 }
 
-static inline unsigned calc_rhash_for_current_block(const struct rcksum_state *const z) {
-    unsigned h = z->r[0].b;
-
-    h ^= ((z->seq_matches > 1) ? z->r[1].b
-        : z->r[0].a & z->rsum_a_mask) << z->hash_func_shift;
-
-    return h;
-}
-
-
 int build_hash(struct rcksum_state *z);
 void remove_block_from_hash(struct rcksum_state *z, zs_blockid id);
