@@ -45,7 +45,8 @@
  * Calculate the rsum for a single block of data. */
 /* Note int len here, not size_t, because the compiler is stupid and expands
  * the 32bit size_t to 64bit inside the inner loop. */
-struct rsum __attribute__ ((pure)) rcksum_calc_rsum_block(const unsigned char *data, int len) {
+struct rsum __attribute__((pure))
+rcksum_calc_rsum_block(const unsigned char *data, size_t len) {
     register unsigned short a = 0;
     register unsigned short b = 0;
     int i;
@@ -343,7 +344,7 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
         /* Pull some invariants into locals, because the compiler doesn't
          * know they are invariants. */
         register const int seq_matches = z->seq_matches;
-        register const int bs = z->blocksize;
+        register const size_t bs = z->blocksize;
 
         /* If the previous block was a match, but we're looking for
          * sequential matches, then test this block against the block in
@@ -446,7 +447,7 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
 /* off_t get_file_size(FILE*)
  * Returns the size of the given file, if available. 0 otherwise.
  */
-off_t get_file_size(FILE* f) {
+static off_t get_file_size(FILE* f) {
     struct stat st;
     int fd = fileno(f);
     if (fd == -1) return 0;
@@ -471,7 +472,7 @@ int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
     struct progress *p;
 
     /* Allocate buffer of 16 blocks */
-    register int bufsize = z->blocksize * 16;
+    register size_t bufsize = z->blocksize * 16;
     unsigned char *buf = malloc(bufsize + z->context);
     if (!buf)
         return 0;

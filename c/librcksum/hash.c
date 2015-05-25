@@ -196,7 +196,7 @@ int build_hash(struct rcksum_state *z) {
     return 1;
 }
 
-void sprint_checksum(char* buf, const struct hash_entry* t) {
+static void sprint_checksum(char* buf, const struct hash_entry* t) {
         sprintf(buf, "%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x", 
                 t->checksum[0], t->checksum[1],
                 t->checksum[2], t->checksum[3],
