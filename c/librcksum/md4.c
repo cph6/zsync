@@ -33,6 +33,8 @@ static const char rcsid[] = "$OpenBSD: md4.c,v 1.6 2004/05/28 15:10:27 millert E
 #define BYTE_ORDER 1
 #endif
 
+#pragma clang diagnostic ignored "-Wconversion"
+
 #define PUT_64BIT_LE(cp, value) do {					\
 	(cp)[7] = (value) >> 56;					\
 	(cp)[6] = (value) >> 48;					\
