@@ -36,7 +36,7 @@
  * Creates and returns an rcksum_state with the given properties
  */
 struct rcksum_state *rcksum_init(zs_blockid nblocks, size_t blocksize,
-                                 int rsum_bytes, int checksum_bytes,
+                                 int rsum_bytes, unsigned int checksum_bytes,
                                  int require_consecutive_matches) {
     /* Allocate memory for the object */
     struct rcksum_state *z = malloc(sizeof(struct rcksum_state));

@@ -49,7 +49,7 @@ struct rsum __attribute__((pure))
 rcksum_calc_rsum_block(const unsigned char *data, size_t len) {
     register unsigned short a = 0;
     register unsigned short b = 0;
-    int i;
+    size_t i;
 
     for (i = 0; i < len; i++) {
         unsigned char c = data[i];
