@@ -46,7 +46,8 @@ int rcksum_submit_source_data(struct rcksum_state* z, unsigned char* data, size_
 int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress);
 
 /* This reads back in data which is already known. */
-int rcksum_read_known_data(struct rcksum_state* z, unsigned char* buf, off_t offset, size_t len);
+ssize_t rcksum_read_known_data(struct rcksum_state *z, unsigned char *buf,
+                               off_t offset, size_t len);
 
 /* rcksum_needed_block_ranges tells you what blocks, within the given range,
  * are still unknown. It returns a list of block ranges in r[]

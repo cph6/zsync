@@ -90,8 +90,8 @@ static void write_blocks(struct rcksum_state *z, const unsigned char *data,
     off_t offset = ((off_t) bfrom) << z->blockshift;
 
     while (len) {
-        size_t l = len;
-        int rc;
+        size_t l = (size_t)len;
+        ssize_t rc;
 
         /* On some platforms, the bytes-to-write could be more than pwrite(2)
          * will accept. Write in blocks of 2^31 bytes in that case. */
@@ -129,9 +129,9 @@ static void write_blocks(struct rcksum_state *z, const unsigned char *data,
 /* rcksum_read_known_data(self, buf, offset, len)
  * Read back data from the working output - read len bytes from offset into
  * buf[] (which must be at least len bytes long) */
-int rcksum_read_known_data(struct rcksum_state *z, unsigned char *buf,
-                           off_t offset, size_t len) {
-    int rc = pread(z->fd, buf, len, offset);
+ssize_t rcksum_read_known_data(struct rcksum_state *z, unsigned char *buf,
+                               off_t offset, size_t len) {
+    ssize_t rc = pread(z->fd, buf, len, offset);
     return rc;
 }
 
@@ -226,7 +226,6 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
         {
             int ok = 1;
             signed int check_md4 = 0;
-            zs_blockid next_known = -1;
 
             /* This block at least must match; we must match at least
              * z->seq_matches-1 others, which could either be trailing stuff,
@@ -247,8 +246,6 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
                      e[check_md4].checksum,
                      z->checksum_bytes))
                     ok = 0;
-
-                else if (next_known == -1)
 
                 check_md4++;
             } while (ok && !onlyone && check_md4 < z->seq_matches);
