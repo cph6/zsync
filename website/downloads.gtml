@@ -12,7 +12,7 @@
 
 <h3>In-development &amp; Source Code History</h3>
 <p>zsync history is kept in a git repository. You can get a copy of the history with:</p>
-<pre>git clone http://zsync.moria.org.uk/zsync.git</pre>
+<pre>git clone https://github.com/cph6/zsync.git</pre>
 
 <h3>Download Details &amp; Old Versions</h3>
 
