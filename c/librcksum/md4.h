@@ -17,6 +17,7 @@
 #define _MD4_H_
 
 #include "zsglobal.h"
+#include <stdint.h>
 
 #ifdef HAVE_INTTYPES_H
 #include <inttypes.h>
