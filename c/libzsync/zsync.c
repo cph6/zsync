@@ -523,6 +523,10 @@ static char *zsync_cur_filename(struct zsync_state *zs) {
     return zs->cur_filename;
 }
 
+off_t zsync_file_length(struct zsync_state *zs) {
+    return zs->filelen;
+}
+
 /* zsync_rename_file(self, filename)
  * Tell libzsync to move the local copy of the target (or under construction
  * target) to the given filename. */
