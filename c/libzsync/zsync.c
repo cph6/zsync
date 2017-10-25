@@ -178,7 +178,7 @@ struct zsync_state *zsync_begin(FILE * f) {
         if (p && *(p + 1) == ' ') {
             *p++ = 0;
             p++;
-            if (!strcmp(buf, "zsync")) {
+            if (!strcmp(buf, "zsync-md5")) {
                 if (!strcmp(p, "0.0.4")) {
                     fprintf(stderr, "This version of zsync is not compatible with zsync 0.0.4 streams.\n");
                     free(zs);

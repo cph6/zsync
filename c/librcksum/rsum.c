@@ -32,7 +32,7 @@
 # include <dmalloc.h>
 #endif
 
-#include "md4.h"
+#include "md5.h"
 #include "rcksum.h"
 #include "internal.h"
 /* TODO: decide how to handle progress; this is now being used by the client
@@ -66,10 +66,10 @@ rcksum_calc_rsum_block(const unsigned char *data, size_t len) {
  * Returns the MD4 checksum (in checksum_buf) of the given data block */
 void rcksum_calc_checksum(unsigned char *c, const unsigned char *data,
                           size_t len) {
-    MD4_CTX ctx;
-    MD4Init(&ctx);
-    MD4Update(&ctx, data, len);
-    MD4Final(c, &ctx);
+    MD5_CTX ctx;
+    MD5_Init(&ctx);
+    MD5_Update(&ctx, data, len);
+    MD5_Final(c, &ctx);
 }
 
 #ifndef HAVE_PWRITE
