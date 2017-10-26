@@ -12,6 +12,7 @@
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   COPYING file for details.
  */
+#include <stdbool.h>
 
 struct zsync_state;
 
@@ -51,7 +52,7 @@ void zsync_progress(const struct zsync_state* zs, long long* got, long long* tot
 
 /* zsync_submit_source_file - submit local file data to zsync
  */
-int zsync_submit_source_file(struct zsync_state* zs, FILE* f, int progress);
+int zsync_submit_source_file(struct zsync_state* zs, FILE* f, int progress, bool remote);
 
 /* zsync_get_url - returns a URL from which to get needed data.
  * Returns NULL on failure, or a array of pointers to URLs.

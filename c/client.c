@@ -95,7 +95,7 @@ void read_seed_file(struct zsync_state *z, const char *fname) {
 
             /* Give the contents to libzsync to read and find any useful
              * content */
-            zsync_submit_source_file(z, f, !no_progress);
+            zsync_submit_source_file(z, f, !no_progress, false);
 
             /* Close and check for errors */
             if (pclose(f) != 0) {
@@ -116,7 +116,7 @@ void read_seed_file(struct zsync_state *z, const char *fname) {
              * is part of the target file. */
             if (!no_progress)
                 fprintf(stderr, "reading seed file %s: ", fname);
-            zsync_submit_source_file(z, f, !no_progress);
+            zsync_submit_source_file(z, f, !no_progress, false);
 
             /* And close */
             if (fclose(f) != 0) {

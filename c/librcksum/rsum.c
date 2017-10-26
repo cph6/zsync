@@ -185,7 +185,7 @@ int rcksum_submit_blocks(struct rcksum_state *const z, const unsigned char *data
 static int check_checksums_on_hash_chain(struct rcksum_state *const z,
                                          const struct hash_entry *e,
                                          const unsigned char *data,
-                                         int onlyone) {
+                                         int onlyone, bool write) {
     unsigned char md4sum[2][CHECKSUM_SIZE];
     signed int done_md4 = -1;
     int got_blocks = 0;
@@ -276,7 +276,7 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
                 }
 
                 /* Write out the matched blocks that we don't yet know */
-                write_blocks(z, data, id, id + num_write_blocks - 1);
+                if (write) write_blocks(z, data, id, id + num_write_blocks - 1);
                 got_blocks += num_write_blocks;
             }
         }
@@ -304,7 +304,7 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
  * r[1] - rolling checksum of the next blocksize bytes of the buffer (if seq_matches > 1)
  */
 int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
-                              size_t len, off_t offset) {
+                              size_t len, off_t offset, bool remote) {
     /* The window in data[] currently being considered is [x, x+bs) */
     int x = 0;
     int got_blocks = 0;  /* Count the number of useful data blocks found. */
@@ -351,7 +351,10 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
          * the target immediately after our previous hit. */
         if (z->next_match && z->seq_matches > 1) {
             int thismatch;
-            if (0 != (thismatch = check_checksums_on_hash_chain(z, z->next_match, data + x, 1))) {
+            const struct hash_entry *e = z->next_match;
+            if (0 != (thismatch = check_checksums_on_hash_chain(z, z->next_match, data + x, 1, !remote))) {
+                if (remote && get_L_blockid(z, offset, x) == get_HE_blockid(z,e))
+                    add_to_ranges(z, get_L_blockid(z, offset, x) );
                 blocks_matched = 1;
                 got_blocks += thismatch;
             }
@@ -390,9 +393,14 @@ int rcksum_submit_source_data(struct rcksum_state *const z, unsigned char *data,
 
                     /* Okay, we have a hash hit. Follow the hash chain and
                      * check our block against all the entries. */
-                    thismatch = check_checksums_on_hash_chain(z, e, data + x, 0);
-                    if (thismatch)
+                    thismatch = check_checksums_on_hash_chain(z, e, data + x, 0, !remote);
+                    if (thismatch) {
+                        if (remote && get_L_blockid(z, offset, x) == get_HE_blockid(z,e)) {
+                            add_to_ranges(z, get_L_blockid(z, offset, x));
+                            if (seq_matches) add_to_ranges(z, get_L_blockid(z, offset, x + z->blocksize));
+                        }
                         blocks_matched = seq_matches;
+                    }
                 }
             }
             got_blocks += thismatch;
@@ -463,7 +471,7 @@ static off_t get_file_size(FILE* f) {
  * identify any blocks of data in common with the target file. Blocks found are
  * written to our working target output. Progress reports if progress != 0
  */
-int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
+int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress, bool remote) {
     /* Track progress */
     int got_blocks = 0;
     off_t in = 0;
@@ -521,7 +529,7 @@ int rcksum_submit_source_file(struct rcksum_state *z, FILE * f, int progress) {
         }
 
         /* Process the data in the buffer, and report progress */
-        got_blocks += rcksum_submit_source_data(z, buf, len, start_in);
+        got_blocks += rcksum_submit_source_data(z, buf, len, start_in, remote);
         if (progress && in_mb != in / 1000000) {
             do_progress(p, 100.0 * in / size, in);
             in_mb = in / 1000000;
