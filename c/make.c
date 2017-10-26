@@ -822,7 +822,7 @@ int main(int argc, char **argv) {
     }
 
     /* Okay, start writing the zsync file */
-    fprintf(fout, "zsync: " VERSION "\n");
+    fprintf(fout, "zsync-md5: " VERSION "\n");
 
     /* Lines we might include but which older clients can ignore */
     if (do_recompress) {

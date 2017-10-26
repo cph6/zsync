@@ -92,6 +92,12 @@ static inline zs_blockid get_HE_blockid(const struct rcksum_state *z,
     return e - z->blockhashes;
 }
 
+/* From a file offset return the corresponding local file blockid */
+static inline zs_blockid get_L_blockid(struct rcksum_state *const z, off_t offset, int x) {
+    int lid = (offset + x) / z->blocksize;
+    return offset ? lid - z->context/z->blocksize : lid;
+}
+
 void add_to_ranges(struct rcksum_state *z, zs_blockid n);
 int already_got_block(struct rcksum_state *z, zs_blockid n);
 zs_blockid next_known_block(struct rcksum_state *rs, zs_blockid x);

@@ -17,6 +17,7 @@
 /* This is the library interface. Very changeable at this stage. */
 
 #include <stdio.h>
+#include <stdbool.h>
 
 struct rcksum_state;
 
@@ -44,8 +45,8 @@ int rcksum_filehandle(struct rcksum_state* z);
 void rcksum_add_target_block(struct rcksum_state* z, zs_blockid b, struct rsum r, void* checksum);
 
 int rcksum_submit_blocks(struct rcksum_state* z, const unsigned char* data, zs_blockid bfrom, zs_blockid bto);
-int rcksum_submit_source_data(struct rcksum_state* z, unsigned char* data, size_t len, off_t offset);
-int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress);
+int rcksum_submit_source_data(struct rcksum_state* z, unsigned char* data, size_t len, off_t offset, bool remote);
+int rcksum_submit_source_file(struct rcksum_state* z, FILE* f, int progress, bool remote);
 
 /* This reads back in data which is already known. */
 ssize_t rcksum_read_known_data(struct rcksum_state *z, unsigned char *buf,

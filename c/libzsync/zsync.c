@@ -116,7 +116,7 @@ struct zsync_state {
 };
 
 static int zsync_read_blocksums(struct zsync_state *zs, FILE * f,
-                                int rsum_bytes, int checksum_bytes,
+                                int rsum_bytes, unsigned int checksum_bytes,
                                 int seq_matches);
 static int zsync_sha1(struct zsync_state *zs, int fh);
 static int zsync_recompress(struct zsync_state *zs);
@@ -178,7 +178,7 @@ struct zsync_state *zsync_begin(FILE * f) {
         if (p && *(p + 1) == ' ') {
             *p++ = 0;
             p++;
-            if (!strcmp(buf, "zsync")) {
+            if (!strcmp(buf, "zsync-md5")) {
                 if (!strcmp(p, "0.0.4")) {
                     fprintf(stderr, "This version of zsync is not compatible with zsync 0.0.4 streams.\n");
                     free(zs);
@@ -507,13 +507,13 @@ off_t *zsync_needed_byte_ranges(struct zsync_state * zs, int *num, int type) {
     }
 }
 
-/* zsync_submit_source_file(self, FILE*, progress)
+/* zsync_submit_source_file(self, FILE*, progress, remote)
  * Read the given stream, applying the rsync rolling checksum algorithm to
  * identify any blocks of data in common with the target file. Blocks found are
  * written to our local copy of the target in progress. Progress reports if
- * progress != 0  */
-int zsync_submit_source_file(struct zsync_state *zs, FILE * f, int progress) {
-    return rcksum_submit_source_file(zs->rs, f, progress);
+ * progress != 0. Remote reporting enabled if remote == true */
+int zsync_submit_source_file(struct zsync_state *zs, FILE * f, int progress, bool remote) {
+    return rcksum_submit_source_file(zs->rs, f, progress, remote);
 }
 
 static char *zsync_cur_filename(struct zsync_state *zs) {
@@ -521,6 +521,10 @@ static char *zsync_cur_filename(struct zsync_state *zs) {
         zs->cur_filename = rcksum_filename(zs->rs);
 
     return zs->cur_filename;
+}
+
+off_t zsync_file_length(struct zsync_state *zs) {
+    return zs->filelen;
 }
 
 /* zsync_rename_file(self, filename)

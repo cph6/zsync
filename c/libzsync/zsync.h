@@ -12,6 +12,7 @@
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   COPYING file for details.
  */
+#include <stdbool.h>
 
 struct zsync_state;
 
@@ -25,6 +26,8 @@ int zsync_hint_decompress(const struct zsync_state*);
 
 /* zsync_filename - return the suggested filename from the .zsync file */
 char* zsync_filename(const struct zsync_state*);
+/* zsync_file_length - return the file length from the .zsync file */
+off_t zsync_file_length(struct zsync_state*);
 /* zsync_mtime - return the suggested mtime from the .zsync file */
 time_t zsync_mtime(const struct zsync_state*);
 
@@ -49,7 +52,7 @@ void zsync_progress(const struct zsync_state* zs, long long* got, long long* tot
 
 /* zsync_submit_source_file - submit local file data to zsync
  */
-int zsync_submit_source_file(struct zsync_state* zs, FILE* f, int progress);
+int zsync_submit_source_file(struct zsync_state* zs, FILE* f, int progress, bool remote);
 
 /* zsync_get_url - returns a URL from which to get needed data.
  * Returns NULL on failure, or a array of pointers to URLs.
