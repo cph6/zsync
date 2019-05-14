@@ -8,7 +8,7 @@ AC_CONFIG_MACRO_DIR([autotools])
 
 AC_CANONICAL_HOST
 
-AM_INIT_AUTOMAKE([dist-bzip2 no-dist-gzip foreign check-news -Woverride -Wobsolete -Wportability -Wsyntax -Wunsupported])
+AM_INIT_AUTOMAKE([subdir-objects dist-bzip2 no-dist-gzip foreign check-news -Woverride -Wobsolete -Wportability -Wsyntax -Wunsupported])
 AM_MAINTAINER_MODE
 
 dnl --- Check for programs
