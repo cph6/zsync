@@ -1,0 +1,10 @@
+language: sh
+services:
+- docker
+jobs:
+  include:
+  - script: docker run -v $(pwd):/build ubuntu:16.04 /bin/sh -c "sed -i '/deb-src/s/^# //' /etc/apt/sources.list && apt-get update && apt-get build-dep --yes zsync && apt-get install --yes autoconf && cd /build/c && autoreconf -i -v -f && ./configure && make -j && make install"
+  - script: docker run -v $(pwd):/build ubuntu:18.04 /bin/sh -c "sed -i '/deb-src/s/^# //' /etc/apt/sources.list && apt-get update && apt-get build-dep --yes zsync && apt-get install --yes autoconf && cd /build/c && autoreconf -i -v -f && ./configure && make -j && make install"
+  - script: docker run -v $(pwd):/build ubuntu:18.10 /bin/sh -c "sed -i '/deb-src/s/^# //' /etc/apt/sources.list && apt-get update && apt-get build-dep --yes zsync && apt-get install --yes autoconf && cd /build/c && autoreconf -i -v -f && ./configure && make -j && make install"
+  - script: docker run -v $(pwd):/build ubuntu:19.04 /bin/sh -c "sed -i '/deb-src/s/^# //' /etc/apt/sources.list && apt-get update && apt-get build-dep --yes zsync && apt-get install --yes autoconf && cd /build/c && autoreconf -i -v -f && ./configure && make -j && make install"
+
