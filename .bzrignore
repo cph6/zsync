@@ -1,7 +1,0 @@
-website/*.html
-paper/*.html
-c/autotools
-c/autotools/*
-Makefile
-Makefile.in
-.deps
