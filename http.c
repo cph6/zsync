@@ -44,6 +44,8 @@
 #include "progress.h"
 #include "format_string.h"
 
+#include "util.h"
+
 /* socket = connect_to(host, service/port)
  * Establishes a TCP connection to the named host and port (which can be
  * supplied as a service name from /etc/services. Returns the socket handle, or
@@ -153,8 +155,6 @@ static char *pport;
 static char **auth_details; /* This is a realloced array with 3*num_auth_details entries */
 static int num_auth_details; /* The groups of 3 strings are host, user, pass */
 
-/* Remember referrer */
-char *referer;
 
 /* set_proxy_from_string(str)
  * Sets the proxy settings for HTTP connections to use; these can be either as
@@ -254,241 +254,7 @@ static char *http_date_string(time_t t, char *const buf, const int blen) {
     return NULL;
 }
 
-FILE *http_get(const char *orig_url, char **track_referer, const char *tfname) {
-    int allow_redirects = 5;
-    char *url;
-    FILE *f = NULL;
-    FILE *g = NULL;
-    char *fname = NULL;
-    char ifrange[200] = { "" };
-    char *authhdr = NULL;
-    int code;
 
-    /* If we have a (possibly older or incomplete) copy of this file already,
-     * add a suitable headers to only retrieve new/additional content */
-    if (tfname) {
-        struct stat st;
-
-        /* Construct the name of the incomplete transfer file that would have
-         * been used by a previous transfer */
-        fname = malloc(strlen(tfname) + 6);
-        strcpy(fname, tfname);
-        strcat(fname, ".part");
-
-        /* If we have an incomplete previous transfer, then our complete copy
-         * must be older but the incomplete copy may be current still and we
-         * could continue from that. */
-        if (stat(fname, &st) == 0) {
-            char buf[50];
-            if (http_date_string(st.st_mtime, buf, sizeof(buf)) != NULL)
-                snprintf(ifrange, sizeof(ifrange),
-                         "If-Unmodified-Since: %s\r\nRange: bytes=" OFF_T_PF
-                         "-\r\n", buf, st.st_size);
-        }
-        else if (errno == ENOENT && stat(tfname, &st) == 0) {
-            /* Else, if we have a complete possibly-old version, so only transfer
-             * if the remote has newer. */
-            char buf[50];
-            if (http_date_string(st.st_mtime, buf, sizeof(buf)) != NULL)
-                snprintf(ifrange, sizeof(ifrange), "If-Modified-Since: %s\r\n",
-                         buf);
-        }
-    }
-
-    /* Take a malloced copy of the URL, so we treat it the same as strduped
-     * URLs for any redirects followed. */
-    url = strdup(orig_url);
-    if (!url) {
-        free(fname);
-        return NULL;
-    }
-
-    /* Loop for redirect handling */
-    for (; allow_redirects-- && url && !f;) {
-        char hostn[256];
-        const char *connecthost;
-        char *connectport;
-        char *p;
-        char *port;
-
-        /* Extract host and port to connect to */
-        if ((p = get_http_host_port(url, hostn, sizeof(hostn), &port)) == NULL)
-            break;
-        if (!proxy) {
-            connecthost = hostn;
-            connectport = strdup(port);
-        }
-        else {
-            connecthost = proxy;
-            connectport = strdup(pport);
-        }
-
-        {   /* Connect */
-            int sfd = connect_to(connecthost, connectport);
-            free(connectport);
-            if (sfd == -1)
-                break;
-
-            {   /* Compose request */
-                char buf[1024];
-                snprintf(buf, sizeof(buf),
-                         "GET %s HTTP/1.0\r\nHost: %s%s%s\r\nUser-Agent: zsync/%s\r\n%s%s\r\n",
-                         proxy ? url : p, hostn, !strcmp(port,
-                                                         "http") ? "" : ":",
-                         !strcmp(port, "http") ? "" : port, VERSION,
-                         ifrange[0] ? ifrange : "", authhdr ? authhdr : "");
-
-                /* Send request to remote */
-                if (send(sfd, buf, strlen(buf), 0) == -1) {
-                    perror("sendmsg");
-                    close(sfd);
-                    break;
-                }
-            }
-
-            /* Wrap the socket in a stream for convenient line reading of the
-             * response. */
-            f = http_get_stream(sfd, &code);
-            if (!f)
-                break;
-
-            /* Redirect - go around again with new URL. */
-            if (code == 301 || code == 302 || code == 307) {
-                char *oldurl = url;
-                url = get_location_url(f, oldurl);
-                free(oldurl);
-                fclose(f);
-                f = NULL;
-            }
-            else if (code == 401) {   /* Authorization required */
-                authhdr = get_auth_hdr(hostn);
-                if (authhdr) { /* Go around again with auth header */
-                    fclose(f);
-                    f = NULL;
-                }
-                else { /* No auth details available for this host - error out */
-                    fclose(f);
-                    f = NULL;
-                    break;
-                }
-            }
-            else if (code == 412) {     // Precondition (i.e. if-unmodified-since) failed
-                ifrange[0] = 0;
-                fclose(f);
-                f = NULL;       // and go round again without the conditional Range:
-            }
-            else if (code == 200) {     // Downloading whole file
-                /* Write new file (plus allow reading once we finish) */
-                g = fname ? fopen(fname, "w+") : tmpfile();
-            }
-            else if (code == 206 && fname) {    // Had partial content and server confirms not modified
-                /* Append to existing on-disk content (plus allow reading once we finish) */
-                g = fopen(fname, "a+");
-            }
-            else if (code == 304) {     // Unchanged (if-modified-since was false)
-                /* No fetching, just reuse on-disk file */
-                g = fopen(tfname, "r");
-            }
-            else {                      /* Don't know - error */
-                fclose(f);
-                f = NULL;
-                break;
-            }
-        }
-    }
-
-    /* Store the referrer - we'll supply this when retrieving any content
-     * referrer to by this file retrieved. */
-    if (track_referer)
-        *track_referer = url;
-    else
-        free(url);
-
-    /* If we got a 304 Not Modified, return the existing content as-is */
-    if (code == 304) {
-        fclose(f);
-        free(fname);
-        return g;
-    }
-
-    /* Return errors from the above loop */
-    if (!f) {
-        fprintf(stderr, "failed on url %s\n", url ? url : "(missing redirect)");
-        return NULL;
-    }
-
-    /* If our open of the output file failed, flag that error */
-    if (!g) {
-        fclose(f);
-        perror("fopen");
-        return NULL;
-    }
-
-    {   /* Read data returned by the request above, writing to the output file */
-        size_t len = 0;
-        {   /* Skip headers. TODO support content-encodings, Content-Location etc */
-            char buf[512];
-            do {
-                if (fgets(buf, sizeof(buf), f) == NULL) {
-                    perror("read");
-                    exit(1);
-                }
-
-                sscanf(buf, "Content-Length: " SIZE_T_PF, &len);
-
-            } while (buf[0] != '\r' && !feof(f));
-        }
-
-        {   /* Now the actual content. Show progress as we go. */
-            size_t got = 0;
-            struct progress *p;
-            size_t r;
-
-            if (!no_progress) {
-                p = start_progress();
-                do_progress(p, 0, got);
-            }
-
-            while (!feof(f)) {
-                /* Read from the network */
-                char buf[1024];
-                r = fread(buf, 1, sizeof(buf), f);
-                if (r == 0 && ferror(f)) {
-                    perror("read");
-                    break;
-                }
-
-                /* And write anything received to the temp file */
-                if (r > 0) {
-                    if (r > fwrite(buf, 1, r, g)) {
-                        fprintf(stderr, "short write on %s\n", fname);
-                        break;
-                    }
-
-                    /* And maintain progress indication */
-                    got += r;
-                    if (!no_progress)
-                        do_progress(p, len ? (100.0 * got / len) : 0, got);
-                }
-            }
-            if (!no_progress)
-                end_progress(p, feof(f) ? 2 : 0);
-        }
-        fclose(f);
-    }
-
-    /* The caller wants the content we just downloaded; return the handle to
-     * the start of the file that we have just written. */
-    rewind(g);
-
-    /* If we are keeping the download too, move it to the desired name. */
-    if (fname) {
-        rename(fname, tfname);
-        free(fname);
-    }
-
-    return g;
-}
 
 /****************************************************************************
  *
@@ -736,7 +502,7 @@ static void range_fetch_connect(struct range_fetch *rf) {
 
 /* range_fetch_getmore
  * On a connected range fetch, send another request to the remote */
-static void range_fetch_getmore(struct range_fetch *rf) {
+static void range_fetch_getmore(struct range_fetch *rf, const char *referer) {
     char request[2048];
     int l;
     int max_range_per_request = 20;
@@ -989,7 +755,7 @@ int range_fetch_read_http_headers(struct range_fetch *rf) {
  * returns more then it'll pass more to the caller - which doesn't matter).
  */
 int get_range_block(struct range_fetch *rf, off_t * offset, unsigned char *data,
-                    size_t dlen) {
+                    size_t dlen, const char *referer) {
     size_t bytes_to_caller = 0;
 
     /* If we're not in the middle of reading a block of actual data */
@@ -1017,7 +783,7 @@ int get_range_block(struct range_fetch *rf, off_t * offset, unsigned char *data,
                 if (rf->sd == -1)
                     return -1;
                 newconn = 1;
-                range_fetch_getmore(rf);
+                range_fetch_getmore(rf, referer);
             }
 
             /* read the response headers */
@@ -1045,7 +811,7 @@ int get_range_block(struct range_fetch *rf, off_t * offset, unsigned char *data,
 
             /* HTTP Pipelining - send next request before reading current response */
             if (!rf->server_close)
-                range_fetch_getmore(rf);
+                range_fetch_getmore(rf, referer);
         }
 
         /* Okay, if we're (now) reading a MIME boundary */

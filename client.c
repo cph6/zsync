@@ -36,9 +36,15 @@
 
 #include "libzsync/zsync.h"
 
-#include "http.h"
+#include "ranges.h"
+#include "zig_http.h"
+#include "util.h"
 #include "url.h"
 #include "progress.h"
+
+/* Remember referrer */
+char *referer;
+
 
 /* FILE* f = open_zcat_pipe(file_str)
  * Returns a (popen) filehandle which when read returns the un-gzipped content
@@ -341,7 +347,7 @@ int fetch_remaining_blocks_http(struct zsync_state *z, const char *u,
 
         /* Loop while we're receiving data, until we're done or there is an error */
         while (!ret
-               && (len = get_range_block(rf, &zoffset, buf, BUFFERSIZE)) > 0) {
+               && (len = get_range_block(rf, &zoffset, buf, BUFFERSIZE, referer)) > 0) {
             /* Pass received data to the zsync receiver, which writes it to the
              * appropriate location in the target file */
             if (zsync_receive_data(zr, buf, zoffset, len) != 0)
