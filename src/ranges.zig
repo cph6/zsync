@@ -12,6 +12,67 @@ const Range = struct {
     }
 };
 
+fn ResponseReder(buffer_size: usize) type {
+    return struct {
+        const Self = @This();
+
+        reader: std.http.Client.Request.Reader,
+        buffer: [buffer_size]u8 = undefined,
+        bytes_in_buffer: usize = 0,
+
+        fn init(reader: std.http.Client.Request.Reader) Self {
+            return Self{
+                .reader = reader,
+            };
+        }
+
+        fn refill(self: *Self) !void {
+            self.bytes_in_buffer += try self.reader.read(self.buffer[self.bytes_in_buffer..]);
+        }
+
+        fn skip(self: *Self, bytes_to_skip: usize) void {
+            self.bytes_in_buffer -= bytes_to_skip;
+            std.mem.copyForwards(u8, &self.buffer, self.buffer[bytes_to_skip..]);
+        }
+
+        fn get(self: *const Self) []const u8 {
+            return self.buffer[0..self.bytes_in_buffer];
+        }
+
+        fn peek(self: *const Self, bytes: []const u8) bool {
+            return std.mem.startsWith(u8, &self.buffer, bytes);
+        }
+
+        fn peekAndSkip(self: *Self, bytes: []const u8) !void {
+            if (self.peek(bytes)) {
+                self.skip(bytes.len);
+            } else {
+                return error.MalformedMultipartPayload;
+            }
+        }
+    };
+}
+
+const RangeFetchResult = struct {
+    start: usize,
+    end: usize,
+    data: std.ArrayList(u8),
+
+    fn init(allocator: std.mem.Allocator, start: usize, end: usize) !RangeFetchResult {
+        var result = RangeFetchResult{
+            .start = start,
+            .end = end,
+            .data = std.ArrayList(u8).init(allocator),
+        };
+        try result.data.ensureTotalCapacity(start + end + 1);
+        return result;
+    }
+
+    fn deinit(self: *RangeFetchResult) void {
+        self.data.deinit();
+    }
+};
+
 // struct range_fetch;
 const RangeFetch = struct {
     const Self = @This();
@@ -22,28 +83,14 @@ const RangeFetch = struct {
 
     client: std.http.Client,
 
-    // char *boundary; /* If we're in the middle of reading a mime/multipart response, this is the boundary string.
-
-    // /* State for block currently being read */
-    // size_t block_left;  /* non-zero if we're in the middle of reading a block */
-    // off_t offset;       /* and this is the offset of the start of the block we are reading */
-
-    // /* Buffering of data from the remote server */
-    // char buf[4096];
-    // int buf_start, buf_end; /* Bytes buf_start .. buf_end-1 in buf[] are valid */
-
-    // /* Keep count of total bytes retrieved */
-    // off_t bytes_down;
-
-    // int server_close; /* 0: can send more, 1: cannot send more (but one set of headers still to read), 2: cannot send more and all existing headers read */
-
     // /* Byte ranges to fetch */
     ranges_todo: std.ArrayList(Range),
     current_range: usize = 0,
 
-    buffer: std.ArrayList(u8),
-    buffer_offset: usize = 0,
+    buffer: std.ArrayList(RangeFetchResult),
     offset_in_buffer: usize = 0,
+
+    downloaded_bytes: usize = 0,
 
     // int rangessent;     /* We've requested the first rangessent ranges from the remote */
     // int rangesdone;     /* and received this many */
@@ -60,7 +107,7 @@ const RangeFetch = struct {
                 .allocator = allocator,
             },
             .ranges_todo = std.ArrayList(Range).init(allocator),
-            .buffer = std.ArrayList(u8).init(allocator),
+            .buffer = std.ArrayList(RangeFetchResult).init(allocator),
         };
 
         // /* If going through a proxy, we can immediately set up the host and port to
@@ -75,45 +122,196 @@ const RangeFetch = struct {
         self.client.deinit();
         self.ranges_todo.deinit();
         self.buffer.deinit();
+        // TODO remove from buffer if exists
+        self.allocator.free(self.uri_backing_storage);
+    }
+
+    fn buildRangeHeader(ranges: []const Range, buffer: []u8) ![]const u8 {
+        var range_header_value = try std.fmt.bufPrint(buffer, "bytes={}-{}", .{ ranges[0].start, ranges[0].end });
+        var current_offset = range_header_value.len;
+
+        if (ranges.len > 1) {
+            for (ranges[1..ranges.len]) |range| {
+                range_header_value = try std.fmt.bufPrint(buffer[current_offset..buffer.len], ", {}-{}", .{ range.start, range.end });
+                current_offset += range_header_value.len;
+            }
+        }
+
+        return buffer[0..current_offset];
+    }
+
+    fn fetch(self: *Self, ranges: []const Range) !void {
+        var range_header_buffer: [1024]u8 = undefined;
+        const range_header_value = try RangeFetch.buildRangeHeader(ranges, &range_header_buffer);
+
+        var response_header_buffer: [16 * 1024]u8 = undefined;
+
+        var request = try self.client.open(
+            .GET,
+            self.uri,
+            .{
+                .server_header_buffer = &response_header_buffer,
+                .redirect_behavior = .not_allowed,
+                .headers = .{},
+                .extra_headers = &[_]std.http.Header{
+                    .{
+                        .name = "Range",
+                        .value = range_header_value,
+                    },
+                },
+                .keep_alive = true,
+            },
+        );
+
+        defer request.deinit();
+        try request.send();
+
+        try request.finish();
+        try request.wait();
+
+        const response = &request.response;
+        if (response.status != std.http.Status.partial_content) {
+            std.debug.panic("Unexpected result code: {}", .{response.status});
+        }
+
+        if (std.mem.startsWith(u8, response.content_type orelse "", "multipart/byteranges")) {
+            try self.handleMultipartResponse(response.content_type.?, request.reader());
+        } else {
+            try self.buffer.append(try RangeFetchResult.init(self.allocator, 0, 0));
+            try request.reader().readAllArrayList(&self.buffer.items[self.buffer.items.len - 1].data, 1024 * 1024 * 1024);
+        }
+    }
+
+    fn handleMultipartResponse(self: *Self, content_type: []const u8, reader: std.http.Client.Request.Reader) !void {
+
+        // {ptr:"multipart/byteranges; boundary=611ef25797aa28386899adeaa50fcc59e88f2b0da05972d476ec08b1e907\r\nLast-Modified: Sat, 27 Apr 2024 19:59:28 GMT\r\nDate: Sat, 04 May 2024 14:36:34 GMT\r\n\r\n\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa\xaa"..., ...}
+
+        const boundary_marker = "boundary=";
+        const boundary_pos = std.mem.indexOf(u8, content_type, boundary_marker) orelse return error.MalformedContentType;
+        const boundary = content_type[boundary_pos + boundary_marker.len ..];
+
+        std.log.debug("Detected boundary: {s}\r\n", .{boundary});
+
+        var response_reader = ResponseReder(256).init(reader);
+
+        while (true) {
+            try response_reader.refill();
+
+            try response_reader.peekAndSkip("--");
+            try response_reader.peekAndSkip(boundary);
+
+            if (response_reader.peek("--\r\n")) {
+                response_reader.skip(4);
+                break;
+            } else try response_reader.peekAndSkip("\r\n");
+
+            try response_reader.refill();
+
+            var part_header_buffer: [16 * 1024]u8 = undefined;
+            var parser = std.http.protocol.HeadersParser.init(&part_header_buffer);
+            _ = try parser.checkCompleteHead("\r\n");
+            while (true) {
+                const consumed_header_bytes = try parser.checkCompleteHead(response_reader.get());
+
+                response_reader.skip(consumed_header_bytes);
+                try response_reader.refill();
+
+                if (consumed_header_bytes < response_reader.buffer.len) {
+                    break;
+                }
+            }
+
+            var headers_it = std.http.HeaderIterator.init(part_header_buffer[0 .. parser.header_bytes_len + 2]);
+            const range_start, const range_end = try RangeFetch.parseHeaders(&headers_it);
+
+            // both ends inclusive => +1
+            var bytes_to_read = range_end - range_start + 1;
+
+            try self.buffer.append(try RangeFetchResult.init(self.allocator, range_start, range_end));
+            const result = &self.buffer.items[self.buffer.items.len - 1];
+
+            while (bytes_to_read > 0) {
+                const read_size = @min(response_reader.get().len, bytes_to_read);
+                bytes_to_read -= read_size;
+                try result.data.appendSlice(response_reader.get()[0..read_size]);
+                response_reader.skip(read_size);
+                try response_reader.refill();
+            }
+
+            try response_reader.peekAndSkip("\r\n");
+        }
+
+        if (response_reader.bytes_in_buffer != 0) return error.LeftoverBytesInBuffer;
+    }
+
+    fn parseHeaders(it: *std.http.HeaderIterator) !struct { usize, usize } {
+        var range_start: ?usize = null;
+        var range_end: ?usize = null;
+
+        while (it.next()) |header| {
+            std.debug.print("Header: {s} Value: {s}\r\n", .{ header.name, header.value });
+            if (std.mem.eql(u8, header.name, "Content-Range")) {
+                if (!std.mem.startsWith(u8, header.value, "bytes ")) @panic("Malformed Content-Range header");
+
+                const dash_pos = std.mem.indexOfScalar(u8, header.value[6..], '-') orelse @panic("Malformed Content-Range header");
+                const slash_pos = std.mem.indexOfScalar(u8, header.value[6..], '/') orelse @panic("Malformed Content-Range header");
+
+                range_start = try std.fmt.parseInt(usize, header.value[6 .. 6 + dash_pos], 10);
+                range_end = try std.fmt.parseInt(usize, header.value[6 + dash_pos + 1 .. 6 + slash_pos], 10);
+            }
+        }
+
+        std.debug.print("Range start: {d}\r\n", .{range_start.?});
+        std.debug.print("Range end: {d}\r\n", .{range_end.?});
+
+        return .{ range_start.?, range_end.? };
     }
 
     fn fetchNextRange(self: *Self) void {
         self.offset_in_buffer = 0;
 
         const current_range = &self.ranges_todo.items[self.current_range];
-        self.buffer_offset = current_range.start;
-        self.buffer.clearRetainingCapacity();
 
-        var range_buffer: [128]u8 = undefined;
-        const range_value = std.fmt.bufPrint(&range_buffer, "{}-{}", .{ current_range.start, current_range.end }) catch unreachable;
+        const ranges_left_to_fetch = self.ranges_todo.items.len - self.current_range;
 
-        _ = self.client.fetch(.{
-            .extra_headers = &[_]std.http.Header{
-                .{
-                    .name = "Range",
-                    .value = range_value,
-                },
-            },
-            .location = .{ .uri = self.uri },
-            .redirect_behavior = .not_allowed,
-            .method = .GET,
-            .response_storage = .{ .dynamic = &self.buffer },
-            .max_append_size = 1 * 1024 * 1024 * 1024,
-        }) catch unreachable;
+        if (ranges_left_to_fetch == 1) {
+            self.fetch(self.ranges_todo.items[self.current_range .. self.current_range + 1]) catch unreachable;
 
-        self.current_range += 1;
+            self.current_range += 1;
+        } else {
+            self.fetch(self.ranges_todo.items[self.current_range .. self.current_range + 2]) catch unreachable;
+            self.current_range += 2;
+        }
+
+        self.downloaded_bytes += current_range.size();
     }
 
     fn getDataFromBuffer(self: *Self, output_buffer: []u8) struct { usize, usize } {
-        const data_remaining_in_buffer = self.buffer.items.len - self.offset_in_buffer;
+        const current_buffer = &self.buffer.items[0];
+
+        const data_remaining_in_buffer = current_buffer.data.items.len - self.offset_in_buffer;
         const data_to_read = @min(data_remaining_in_buffer, output_buffer.len);
 
-        @memcpy(output_buffer[0..data_to_read], self.buffer.items[self.offset_in_buffer .. self.offset_in_buffer + data_to_read]);
+        @memcpy(output_buffer[0..data_to_read], current_buffer.data.items[self.offset_in_buffer .. self.offset_in_buffer + data_to_read]);
 
-        const offset = self.buffer_offset + self.offset_in_buffer;
+        const read_offset = current_buffer.start + self.offset_in_buffer;
         self.offset_in_buffer += data_to_read;
 
-        return .{ offset, data_to_read };
+        if (self.offset_in_buffer == current_buffer.data.items.len) {
+            current_buffer.deinit();
+            _ = self.buffer.orderedRemove(0);
+            self.offset_in_buffer = 0;
+        }
+        return .{ read_offset, data_to_read };
+    }
+
+    fn addRanges(self: *Self, ranges: []c_long) !void {
+        for (0..(ranges.len / 2)) |i| {
+            try self.ranges_todo.append(Range{
+                .start = @intCast(ranges[2 * i]),
+                .end = @intCast(ranges[2 * i + 1]),
+            });
+        }
     }
 };
 
@@ -141,22 +339,19 @@ pub export fn range_fetch_addranges(rf: ?*range_fetch, ranges: [*c]common.off_t,
     const ranges_count: usize = @intCast(nranges);
     const input_ranges = ranges[0 .. 2 * ranges_count];
 
-    for (0..ranges_count) |i| {
-        rf_impl.ranges_todo.append(Range{
-            .start = @intCast(input_ranges[2 * i]),
-            .end = @intCast(input_ranges[2 * i + 1]),
-        }) catch unreachable;
-    }
+    rf_impl.*.addRanges(input_ranges) catch unreachable;
 }
 
 // int get_range_block(struct range_fetch* rf, off_t* offset, unsigned char* data, size_t dlen, const char *referer);
 pub export fn get_range_block(rf: ?*range_fetch, offset: [*c]common.off_t, data: [*c]u8, dlen: usize, referer: common.ConstCString) c_int {
-    if (rf == null) @panic("range_fetch_addranges: rf == null");
+    if (rf == null) @panic("get_range_block: rf == null");
     const rf_impl: *RangeFetch = @alignCast(@ptrCast(rf));
+
+    _ = referer;
 
     const data_slice = data[0..dlen];
 
-    if (rf_impl.*.offset_in_buffer < rf_impl.*.buffer.items.len) {
+    if (rf_impl.*.buffer.items.len > 0 and rf_impl.*.offset_in_buffer < rf_impl.*.buffer.items[0].data.items.len) {
         // some data in buffer, return it
         const bytes_offset, const bytes_read = rf_impl.*.getDataFromBuffer(data_slice);
         offset.* = @intCast(bytes_offset);
@@ -170,24 +365,48 @@ pub export fn get_range_block(rf: ?*range_fetch, offset: [*c]common.off_t, data:
     } else {
         return 0;
     }
-    const current_range = &rf_impl.*.ranges_todo.items[rf_impl.*.current_range];
-    offset.* = @intCast(current_range.*.start);
-
-    _ = referer;
-    @panic("Not implemented!");
 }
 
 // off_t range_fetch_bytes_down(const struct range_fetch* rf);
-pub export fn range_fetch_bytes_down(rf: *const range_fetch) common.off_t {
-    _ = rf;
-    return 0;
+pub export fn range_fetch_bytes_down(rf: ?*const range_fetch) common.off_t {
+    if (rf == null) @panic("range_fetch_bytes_down: rf == null");
+    const rf_impl: *const RangeFetch = @alignCast(@ptrCast(rf));
+
+    return @intCast(rf_impl.*.downloaded_bytes);
 }
 
 // void range_fetch_end(struct range_fetch* rf);
 pub export fn range_fetch_end(rf: ?*range_fetch) void {
-    if (rf == null) @panic("range_fetch_addranges: rf == null");
+    if (rf == null) @panic("range_fetch_end: rf == null");
     const rf_impl: *RangeFetch = @alignCast(@ptrCast(rf));
 
     rf_impl.*.deinit();
     gpa.allocator().destroy(rf_impl);
+    _ = gpa.deinit();
+}
+
+test "Test RangeFetch.buildRangeHeader single range" {
+    var test_buffer: [1024]u8 = undefined;
+
+    const single_range = try RangeFetch.buildRangeHeader(
+        &[_]Range{.{ .start = 100, .end = 200 }},
+        &test_buffer,
+    );
+
+    try std.testing.expectEqualStrings("bytes=100-200", single_range);
+}
+
+test "Test RangeFetch.buildRangeHeader multiple ranges" {
+    var test_buffer: [1024]u8 = undefined;
+
+    const single_range = try RangeFetch.buildRangeHeader(
+        &[_]Range{
+            .{ .start = 100, .end = 200 },
+            .{ .start = 300, .end = 400 },
+            .{ .start = 500, .end = 600 },
+        },
+        &test_buffer,
+    );
+
+    try std.testing.expectEqualStrings("bytes=100-200, 300-400, 500-600", single_range);
 }
