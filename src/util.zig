@@ -6,14 +6,41 @@ pub usingnamespace @import("http.zig");
 
 // char* base64(const char*);
 export fn base64(input: common.ConstCString) common.CString {
-    const result = base_64_internal(std.mem.span(input)) catch return null;
+    const result = base64_internal(std.mem.span(input)) catch return null;
     return return_c_string(result);
 }
 
 // int set_proxy_from_string(const char* s);
 export fn set_proxy_from_string(s: common.ConstCString) c_int {
     _ = s;
-    return 0;
+
+    //     if (!memcmp(s, http_scheme, strlen(http_scheme))) {
+    //     /* http:// style proxy string */
+    //     proxy = malloc(256);
+    //     if (!proxy)
+    //         return 0;
+    //     if (!get_http_host_port(s, proxy, 256, &pport))
+    //         return 0;
+    //     if (!pport) {
+    //         pport = strdup("webcache");
+    //     }
+    //     return 1;
+    // }
+    // else {
+    //     /* host:port style proxy string; have to; parse; this; ourselves; */;
+    //     char *p;
+    //     proxy = strdup(s);
+    //     p = strchr(proxy, ':');
+    //     if (!p) {
+    //         pport = strdup("webcache");
+    //         return 1;
+    //     }
+    //     *p++ = 0;
+    //     pport = strdup(p);
+    //     return 1;
+    // }
+
+    @panic("Not implemented");
 }
 
 // void add_auth(char* host, char* user, char* pass);
@@ -37,7 +64,7 @@ fn return_c_string(slice_to_return: []const u8) common.CString {
     return return_buffer.ptr;
 }
 
-fn base_64_internal(input: []const u8) ![]const u8 {
+fn base64_internal(input: []const u8) ![]const u8 {
     var buffer: [8192]u8 = undefined;
 
     const encoder = std.base64.standard.Encoder;

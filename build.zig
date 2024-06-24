@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    librcksum.addIncludePath(.{ .path = "./" });
+    librcksum.addIncludePath(b.path("./"));
     librcksum.addConfigHeader(config);
 
     const zlib = b.addStaticLibrary(.{
@@ -112,7 +112,7 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    libzsync.addIncludePath(.{ .path = "./" });
+    libzsync.addIncludePath(b.path("./"));
     libzsync.addConfigHeader(config);
 
     libzsync.linkLibrary(zlib);
@@ -122,7 +122,7 @@ pub fn build(b: *std.Build) void {
         .name = "zzsync_util",
         .target = target,
         .optimize = optimize,
-        .root_source_file = .{ .path = "src/util.zig" },
+        .root_source_file = b.path("src/util.zig"),
         .link_libc = true,
     });
 
@@ -145,7 +145,7 @@ pub fn build(b: *std.Build) void {
             "-fno-sanitize=undefined",
         },
     });
-    zzsync.addIncludePath(.{ .path = "src/zig_headers/" });
+    zzsync.addIncludePath(b.path("src/zig_headers/"));
 
     zzsync.addConfigHeader(config);
     zzsync.linkLibrary(libzsync);
@@ -169,8 +169,8 @@ pub fn build(b: *std.Build) void {
             "-DHAVE_CONFIG_H",
         },
     });
-    zsyncmake.addIncludePath(.{ .path = "./" });
-    zsyncmake.addIncludePath(.{ .path = "src/zig_headers/" });
+    zsyncmake.addIncludePath(b.path("./"));
+    zsyncmake.addIncludePath(b.path("stc/zig_headers"));
 
     zsyncmake.addConfigHeader(config);
 
