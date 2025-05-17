@@ -1,0 +1,18 @@
+TARGETS:=$(addsuffix .html,$(PAGES)) $(OTHER)
+
+all	:	$(TARGETS)
+
+%.html	:	%.gtml
+	gtml $<
+
+%.html.gz	:	%.html
+	gzip --best < $< > $@
+
+upload	:	all
+	rsync -rRvlt $(TARGETS) $(UPHOST):$(UPPATH)
+
+clean-html  :
+	rm $(addsuffix .html,$(PAGES))
+
+.PHONY	:	all upload
+
