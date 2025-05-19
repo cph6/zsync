@@ -18,7 +18,7 @@ Note that zsyncmake itself does not (currently) verify the URLs or download any 
 .LP 
 .TP 
 \fB\-b\fR \fIblocksize\fR
-Specify the blocksize to the underlying rsync algorithm. A smaller blocksize may be more efficient for files where there are likely to be lots of small, scattered changes between downloads; a larger blocksize is more efficient for files with fewer or less scattered changes. This blocksize must be a power of two. If not specified, zsyncmake chooses one which it thinks is best for this file (currently either 2048 or 4096 depending on file size) - so normally tyou should not need to override the default.
+Specify the blocksize to the underlying rsync algorithm. A smaller blocksize may be more efficient for files where there are likely to be lots of small, scattered changes between downloads; a larger blocksize is more efficient for files with fewer or less scattered changes. This blocksize must be a power of two. If not specified, zsyncmake chooses one which it thinks is best for this file (currently either 2048 or 4096 depending on file size) - so normally you should not need to override the default.
 .TP 
 \fB\-C\fR
 Tells zsyncmake not to generate any instructions in the .zsync telling the client to compress the data it receives. This is implied by -z, but this option is here in case you compress a file yourself only for the transfer, but want the client to end up with the uncompressed file (e.g. you are transferring an ISO, which is held compressed on the server, but which the client cannot use unless it is uncompressed). Without -C, zsyncmake will produce directions for the client to compress the file it receives where appropriate; -C is here so you can stop it telling the client to do that.
