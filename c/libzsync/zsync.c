@@ -116,7 +116,7 @@ struct zsync_state {
 };
 
 static int zsync_read_blocksums(struct zsync_state *zs, FILE * f,
-                                int rsum_bytes, int checksum_bytes,
+                                int rsum_bytes, unsigned int checksum_bytes,
                                 int seq_matches);
 static int zsync_sha1(struct zsync_state *zs, int fh);
 static int zsync_recompress(struct zsync_state *zs);
@@ -211,8 +211,8 @@ struct zsync_state *zsync_begin(FILE * f) {
             }
             else if (!strcmp(buf, "Blocksize")) {
                 long blocksize = atol(p);
-                if (zs->blocksize < 0 || (zs->blocksize & (zs->blocksize - 1))) {
-                    fprintf(stderr, "nonsensical blocksize %ld\n", zs->blocksize);
+                if (blocksize < 0 || (blocksize & (blocksize - 1))) {
+                    fprintf(stderr, "nonsensical blocksize %ld\n", blocksize);
                     free(zs);
                     return NULL;
                 }
@@ -378,12 +378,6 @@ static time_t parse_822(const char* ts) {
  * the needed data to complete the target file */
 int zsync_hint_decompress(const struct zsync_state *zs) {
     return (zs->nzurl > 0 ? 1 : 0);
-}
-
-/* zsync_blocksize(self)
- * Returns the blocksize used by zsync on this target. */
-static size_t zsync_blocksize(const struct zsync_state *zs) {
-    return zs->blocksize;
 }
 
 /* char* = zsync_filename(self)
