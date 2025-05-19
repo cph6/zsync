@@ -844,7 +844,7 @@ int main(int argc, char **argv) {
                     fprintf(fout, "MTime: %s\n", buf);
             }
             else {
-                fprintf(stderr, "error converting %d to struct tm\n", mtime);
+                fprintf(stderr, "error converting %ld to struct tm\n", mtime);
             }
         }
     }

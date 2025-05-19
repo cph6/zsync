@@ -950,6 +950,7 @@ static int zsync_receive_data_compressed(struct zsync_receiver *zr,
         switch (rc) {
         case Z_STREAM_END:
             eoz = 1;
+            // fall through
         case Z_BUF_ERROR:
         case Z_OK:
             if (zr->strm.avail_out == 0 || eoz) {
