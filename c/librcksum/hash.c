@@ -196,18 +196,6 @@ int build_hash(struct rcksum_state *z) {
     return 1;
 }
 
-static void sprint_checksum(char* buf, const struct hash_entry* t) {
-        sprintf(buf, "%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x", 
-                t->checksum[0], t->checksum[1],
-                t->checksum[2], t->checksum[3],
-                t->checksum[4], t->checksum[5],
-                t->checksum[6], t->checksum[7],
-                t->checksum[8], t->checksum[9],
-                t->checksum[10], t->checksum[11],
-                t->checksum[12], t->checksum[13],
-                t->checksum[14], t->checksum[15]);
-}
-
 /* remove_block_from_hash(self, block_id)
  * Remove the given data block from the rsum hash table, so it won't be
  * returned in a hash lookup again (e.g. because we now have the data)
