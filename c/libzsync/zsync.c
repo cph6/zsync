@@ -711,7 +711,7 @@ static int zsync_recompress(struct zsync_state *zs) {
                 rc = -1;
             }
         }
-        if (fclose(g) != 0) {
+        if (pclose(g) != 0) {
             perror("close");
             rc = -1;
         }
