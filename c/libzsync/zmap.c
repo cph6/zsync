@@ -48,7 +48,7 @@
 
 struct zmapentry {
     long long inbits;
-    long long outbytes;
+    off_t outbytes;
     int blockcount;
 };
 
@@ -68,7 +68,7 @@ struct zmap *zmap_make(const struct gzblock *zb, int n) {
      * here are the absolute position on the 'in' (compressed) and 'out'
      * (uncompressed) streams as state for the loop below. */
     long long in = 0;
-    long long out = 0;
+    off_t out = 0;
     int bc = 0;     /* And this is the number of map points see in the current zlib block */
 
     /* Allocate zmap, space for all its entries, fill in fields */
@@ -98,6 +98,12 @@ struct zmap *zmap_make(const struct gzblock *zb, int n) {
 
         /* Calculate absolute position of this map entry */
         in += ntohs(zb[i].inbitoffset);
+        if (out + ob < out) {
+          fprintf(stderr, "overflow while building zmap - target file oversized on 32-bit system?");
+          free(m->e);
+          free(m);
+          return NULL;
+        }
         out += ob;
 
         /* And write the entry */
@@ -171,7 +177,7 @@ static off_t* consolidate_byteranges(off_t* zbyterange, int* num) {
  */
 static int find_compressed_ranges_for(const struct zmap* zm, off_t* zbyterange,
         int k, long long* lastwroteblockstart_inbitoffset,
-        long long start, long long end)
+        off_t start, off_t end)
 {
     int j;
 
@@ -191,7 +197,7 @@ static int find_compressed_ranges_for(const struct zmap* zm, off_t* zbyterange,
     /* Step through the blocks of compressed data */
     for (j = 0; j < zm->n && (zstart == -1 || zend == -1); j++) {
         register long long inbitoffset = zm->e[j].inbits;
-        register long long outbyteoffset = zm->e[j].outbytes;
+        register off_t outbyteoffset = zm->e[j].outbytes;
 
         /* Is this the first block that comes after the start point - if so, the
          * previous block is the place to start */
@@ -333,7 +339,7 @@ int zmap_search(const struct zmap* zm, long zoffset) {
  * and in the order that it returned them, this condition is satisfied.
  */
 void configure_zstream_for_zdata(const struct zmap *zm, z_stream * zs,
-                                 long zoffset, long long *poutoffset) {
+                                 long zoffset, off_t *poutoffset) {
     /* Find the zmap entry corresponding to this offset */
     int i = zmap_search(zm, zoffset);
 
