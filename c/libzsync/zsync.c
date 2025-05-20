@@ -370,7 +370,7 @@ static time_t parse_822(const char* ts) {
         && strptime(ts, "%d %b %Y %H:%M:%S %z", &t) == NULL) {
         return -1;
     }
-    return mktime(&t);
+    return timegm(&t);
 }
 
 /* zsync_hint_decompress(self)
