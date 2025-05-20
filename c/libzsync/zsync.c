@@ -152,7 +152,7 @@ struct zsync_state *zsync_begin(FILE * f) {
     char *safelines = NULL;
 
     /* Allocate memory for the object */
-    struct zsync_state *zs = calloc(sizeof *zs, 1);
+    struct zsync_state *zs = calloc(1, sizeof *zs);
 
     if (!zs)
         return NULL;
