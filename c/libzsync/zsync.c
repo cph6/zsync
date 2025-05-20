@@ -436,12 +436,12 @@ const char *const *zsync_get_urls(struct zsync_state *zs, int *n, int *t) {
     if (zs->zmap && zs->nzurl) {
         *n = zs->nzurl;
         *t = 1;
-        return zs->zurl;
+        return (const char**)zs->zurl;
     }
     else {
         *n = zs->nurl;
         *t = 0;
-        return zs->url;
+        return (const char**)zs->url;
     }
 }
 
