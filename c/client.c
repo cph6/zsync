@@ -139,14 +139,17 @@ long long http_down;
 
 /* A ptrlist is a very simple structure for storing lists of pointers. This is
  * the only function in its API. The structure (not actually a struct) consists
- * of a (pointer to a) void*[] and an int giving the number of entries.
+ * of a (pointer to a) char*[] and an int giving the number of entries.
  *
  * ptrlist = append_ptrlist(&entries, ptrlist, new_entry)
  * Like realloc(2), this returns the new location of the ptrlist array; the
  * number of entries is passed by reference and updated in place. The new entry
  * is appended to the list.
+ *
+ * Specialised to char*[] since that is all that we need here and that avoids
+ * compiler complaints.
  */
-static void **append_ptrlist(int *n, void **p, void *a) {
+static char **append_ptrlist(int *n, char **p, void *a) {
     if (!a)
         return p;
     p = realloc(p, (*n + 1) * sizeof *p);
