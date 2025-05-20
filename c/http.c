@@ -261,7 +261,6 @@ FILE *http_get(const char *orig_url, char **track_referer, const char *tfname) {
     FILE *g = NULL;
     char *fname = NULL;
     char ifrange[200] = { "" };
-    char *authhdr = NULL;
     int code;
 
     /* If we have a (possibly older or incomplete) copy of this file already,
@@ -331,12 +330,15 @@ FILE *http_get(const char *orig_url, char **track_referer, const char *tfname) {
 
             {   /* Compose request */
                 char buf[1024];
+                char *authhdr = get_auth_hdr(hostn);
                 snprintf(buf, sizeof(buf),
                          "GET %s HTTP/1.0\r\nHost: %s%s%s\r\nUser-Agent: zsync/%s\r\n%s%s\r\n",
                          proxy ? url : p, hostn, !strcmp(port,
                                                          "http") ? "" : ":",
                          !strcmp(port, "http") ? "" : port, VERSION,
                          ifrange[0] ? ifrange : "", authhdr ? authhdr : "");
+
+                if (authhdr) free(authhdr);
 
                 /* Send request to remote */
                 if (send(sfd, buf, strlen(buf), 0) == -1) {
@@ -359,18 +361,6 @@ FILE *http_get(const char *orig_url, char **track_referer, const char *tfname) {
                 free(oldurl);
                 fclose(f);
                 f = NULL;
-            }
-            else if (code == 401) {   /* Authorization required */
-                authhdr = get_auth_hdr(hostn);
-                if (authhdr) { /* Go around again with auth header */
-                    fclose(f);
-                    f = NULL;
-                }
-                else { /* No auth details available for this host - error out */
-                    fclose(f);
-                    f = NULL;
-                    break;
-                }
             }
             else if (code == 412) {     // Precondition (i.e. if-unmodified-since) failed
                 ifrange[0] = 0;
