@@ -34,6 +34,7 @@
  */
 #include "zsglobal.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -457,7 +458,7 @@ off_t *zsync_needed_byte_ranges(struct zsync_state * zs, int *num, int type) {
     int i;
 
     /* Request all needed block ranges */
-    zs_blockid *blrange = rcksum_needed_block_ranges(zs->rs, &nrange, 0, 0x7fffffff);
+    zs_blockid *blrange = rcksum_needed_block_ranges(zs->rs, &nrange, 0, INT_MAX);
     if (!blrange)
         return NULL;
 
@@ -474,7 +475,9 @@ off_t *zsync_needed_byte_ranges(struct zsync_state * zs, int *num, int type) {
      * truncate file offsets to 32bits on 32bit platforms. */
     for (i = 0; i < nrange; i++) {
         byterange[2 * i] = blrange[2 * i] * (off_t)zs->blocksize;
-        byterange[2 * i + 1] = blrange[2 * i + 1] * (off_t)zs->blocksize - 1;
+        off_t end = blrange[2 * i + 1] * (off_t)zs->blocksize - 1;
+        byterange[2 * i + 1] = end < zs->filelen ? end : zs->filelen-1;
+        if (byterange[2 * i] > byterange[2 * i + 1]) abort();
     }
     free(blrange);      /* And release the blocks, we're done with them */
 
