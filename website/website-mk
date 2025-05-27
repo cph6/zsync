@@ -12,7 +12,7 @@ upload	:	all
 	rsync -rRvlt $(TARGETS) $(UPHOST):$(UPPATH)
 
 clean-html  :
-	rm $(addsuffix .html,$(PAGES))
+	rm -f $(addsuffix .html,$(PAGES))
 
 .PHONY	:	all upload
 
