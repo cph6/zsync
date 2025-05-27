@@ -1,15 +1,21 @@
 Changes in 0.6.3
-- performance improvements for large (>250MB) files - on multi-gigabyte files
+- Performance improvements for large (>250MB) files - on multi-gigabyte files
   this can be a very large improvement.
-- other optimisations.
-- tuning to reduce likelyhood of hitting bad performance due to bad checksum
+- Tuning to reduce likelyhood of hitting bad performance due to bad checksum
   distribution.
-- fix case where client would think download succeeded and try verifying it
+- Fix case where client would think download succeeded and try verifying it
   when it had really failed.
-- fix a problem where the client could get into a loop retrieving data if the
+- Fix a problem where the client could get into a loop retrieving data if the
   remote returned data inconsistent with the .zsync file.
-- improvements to some of the error and progress messages.
-- --enable-debug to turn on stats for debugging performance problems.
+- Improvements to some of the error and progress messages.
+- Stop zsync requesting bytes past the end of the target file.
+- Fix bug where mtime would be set to something offset from the intended value
+  due to timezones.
+- Fix a case where auth headers could be send to the wrong server across a
+	redirect. Send auth headers unconditionally when username & password are
+  provided.
+- Fix compilation with gcc-14.
+- Other optimisations.
 
 Changes in 0.6.2
 - fix for using zsync client on files >2GB on 32bit systems.
