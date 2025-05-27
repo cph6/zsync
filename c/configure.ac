@@ -27,7 +27,7 @@ AS_IF([test "x$enable_profile" = "xyes"], [
 
 dnl --- Header files, typedefs, structures, libraries
 AC_C_CONST
-AC_HEADER_STDC
+
 # string.h, memory.h, stdlib.h both included in the default header checks
 # but we do need to give at least one .h to test, or Solaris sh errors
 AC_CHECK_HEADERS([string.h])

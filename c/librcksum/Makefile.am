@@ -1,4 +1,4 @@
-
+AUTOMAKE_OPTIONS = subdir-objects
 
 noinst_LIBRARIES = librcksum.a
 
