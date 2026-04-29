@@ -145,8 +145,8 @@ func (z *RcksumState) AddTargetBlock(b BlockID, r RSum, checksum [ChecksumSize]b
 }
 
 // BlocksTodo returns the number of blocks still needed
-func (z *RcksumState) BlocksTodo() int {
-	return int(z.blocks - BlockID(z.knownBlocks.gotBlocks))
+func (z *RcksumState) BlocksTodo() int64 {
+	return int64(z.blocks - BlockID(z.knownBlocks.gotBlocks))
 }
 
 // NeededBlockRanges returns the ranges of blocks that are still needed
