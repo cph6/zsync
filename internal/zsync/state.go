@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cph/zsync/internal/rcksum"
+	"github.com/cph6/zsync/internal/rcksum"
 )
 
 // State holds the state of a zsync download

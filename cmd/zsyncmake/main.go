@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cph/zsync/internal/rcksum"
+	"github.com/cph6/zsync/internal/rcksum"
 )
 
 const (

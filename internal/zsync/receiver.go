@@ -3,7 +3,7 @@ package zsync
 // AI: copilot / grok code fast conversion of the receiver parts of zsync's zsync.c.
 
 import (
-	"github.com/cph/zsync/internal/rcksum"
+	"github.com/cph6/zsync/internal/rcksum"
 )
 
 // ZsyncReceiver handles receiving data for a zsync download

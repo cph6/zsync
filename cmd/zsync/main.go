@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cph/zsync/internal/zsync"
+	"github.com/cph6/zsync/internal/zsync"
 )
 
 const version = "0.7.0"

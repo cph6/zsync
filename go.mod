@@ -1,5 +1,5 @@
-module github.com/cph/zsync
+module github.com/cph6/zsync
 
-go 1.26.2
+go 1.24
 
-require golang.org/x/crypto v0.50.0
+require golang.org/x/crypto v0.25.0
