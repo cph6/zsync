@@ -149,7 +149,7 @@ func main() {
 
 	zs, sourcePath, err := readZsyncControlFile(client, source, keepZsync, referer, auths)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "failed reading control file: %v\n", err)
 		os.Exit(3)
 	}
 
@@ -175,18 +175,14 @@ func main() {
 
 	localUsed := int64(0)
 	for _, file := range seedFiles {
-		if noProgress {
-			if err := readSeedFile(zs, file); err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
-				exitWithCode(1)
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "reading seed file %s: ", file)
-			if err := readSeedFile(zs, file); err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
-				exitWithCode(1)
-			}
+		if !noProgress {
+			fmt.Fprintf(os.Stderr, "reading seed file %s:", file)
 		}
+		if err := readSeedFile(zs, file); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			exitWithCode(1)
+		}
+
 		got, total := zsync.Progress(zs)
 		localUsed = got
 		if !noProgress {
@@ -289,7 +285,7 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 
 	req, err := http.NewRequest("GET", source, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to form HTTP request: %w", err)
 	}
 	if referer != "" {
 		req.Header.Set("Referer", referer)
@@ -300,7 +296,7 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -312,14 +308,14 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 	if pathToUse == "" {
 		tmpFile, err = os.CreateTemp("", "zsync-*.zsync")
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("temp file creation failed: %w", err)
 		}
 		defer tmpFile.Close()
 		defer os.Remove(pathToUse)
 	} else {
-		tmpFile, err := os.Create(pathToUse)
+		tmpFile, err = os.Create(pathToUse)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("zsync local file creation failed: %w", err)
 		}
 		defer tmpFile.Close()
 	}
@@ -327,10 +323,10 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 	// Copy zsync file from response to temporary file, then seek back to the
 	// start for reading.
 	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("write error: %w", err)
 	}
 	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("seek: %w", err)
 	}
 
 	zs, err := zsync.Begin(tmpFile)

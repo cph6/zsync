@@ -41,12 +41,17 @@ func Begin(f *os.File) (*State, error) {
 
 	safelines := []string{}
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	reader := bufio.NewReader(f)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		line = strings.TrimSuffix(line, "\n")
 		if line == "" {
 			break
 		}
+
 		parts := strings.SplitN(line, ": ", 2)
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("bad line: %s", line)
@@ -125,9 +130,6 @@ func Begin(f *os.File) (*State, error) {
 			return nil, fmt.Errorf("unknown header: %s", key)
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
 
 	if zs.filelen != 0 && zs.blocksize != 0 {
 		zs.blocks = (zs.filelen + zs.blocksize - 1) / zs.blocksize
@@ -145,22 +147,27 @@ func Begin(f *os.File) (*State, error) {
 
 	// Read block checksums
 	for i := int64(0); i < zs.blocks; i++ {
-		var r rcksum.RSum
+		var rsum rcksum.RSum
+		rsumByte := make([]byte, 4)
 		checksum := make([]byte, checksumBytes)
 
-		// Read rsum
-		if err := binary.Read(f, binary.BigEndian, r); err != nil {
+		// Read rsum.
+		if _, err := io.ReadFull(reader, rsumByte[4-rsumBytes:]); err != nil {
+			return nil, err
+		}
+		_, err = binary.Decode(rsumByte, binary.BigEndian, &rsum)
+		if err != nil {
 			return nil, err
 		}
 
 		// Read checksum
-		if _, err := io.ReadFull(f, checksum); err != nil {
+		if _, err := io.ReadFull(reader, checksum); err != nil {
 			return nil, err
 		}
 
 		var cksum [rcksum.ChecksumSize]byte
 		copy(cksum[:], checksum)
-		rs.AddTargetBlock(rcksum.BlockID(i), r, cksum)
+		rs.AddTargetBlock(rcksum.BlockID(i), rsum, cksum)
 	}
 
 	return zs, nil

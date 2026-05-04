@@ -117,24 +117,7 @@ func main() {
 	}
 	defer os.Remove(checksumFile.Name())
 
-	// Determine hash lengths
-	seqMatches := 1
-	rsumLen := int(math.Ceil(((math.Log2(float64(fileLen)) + math.Log2(float64(*blocksize))) - 8.6) / 8))
-
-	if rsumLen > 4 {
-		seqMatches = 2
-		rsumLen = 4
-	}
-	if rsumLen < 2 {
-		rsumLen = 2
-	}
-
-	// Calculate checksum length
-	checksumLen := int(math.Max(
-		math.Ceil((20+(math.Log2(float64(fileLen))+math.Log2(1+float64(fileLen)/float64(*blocksize)))/math.Log2(256))/float64(seqMatches)/8),
-		math.Ceil((20+math.Log2(1+float64(fileLen)/float64(*blocksize))/math.Log2(256))/8),
-	))
-	checksumLen = min(16, max(4, checksumLen))
+	seqMatches, rsumLen, checksumLen := determineHashLengths(fileLen, *blocksize)
 
 	// Prepare output filename
 	outName := *outputFile
@@ -193,6 +176,29 @@ func main() {
 	if *verbose {
 		fmt.Fprintf(os.Stderr, "Created .zsync file with %d blocks\n", fileLen / *blocksize)
 	}
+}
+
+func determineHashLengths(fileLengthInt, blocksizeInt int64) (int, int, int) {
+	length := float64(fileLengthInt)
+	blocksize := float64(blocksizeInt)
+	seqMatches := 1
+	rsumLen := int(math.Ceil(((math.Log2(length) + math.Log2(blocksize)) - 8.6) / 8))
+
+	if rsumLen > 4 {
+		seqMatches = 2
+		rsumLen = 4
+	}
+	if rsumLen < 2 {
+		rsumLen = 2
+	}
+
+	// Calculate checksum length
+	checksumLen := int(math.Max(
+		math.Ceil((20+math.Log2(length)+math.Log2(1+length/blocksize))/float64(seqMatches)/8),
+		math.Ceil((20+math.Log2(1+length/blocksize))/8),
+	))
+	checksumLen = min(16, max(4, checksumLen))
+	return seqMatches, rsumLen, checksumLen
 }
 
 // Temporary structure for holding checksums of a block during processing.
