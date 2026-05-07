@@ -4,7 +4,6 @@ package rcksum
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"golang.org/x/crypto/md4"
@@ -30,7 +29,6 @@ func CalcChecksum(data []byte) [ChecksumSize]byte {
 }
 
 // UpdateRsum updates the rolling checksum by removing one byte and adding another
-// This implements the UPDATE_RSUM macro from the C code
 func UpdateRsum(r *RSum, oldC, newC byte, blockShift uint) {
 	r.A += uint16(newC) - uint16(oldC)
 	r.B += r.A - (uint16(oldC) << blockShift)
@@ -72,15 +70,16 @@ func New(nblocks BlockID, blockSize int64, rsumBytes int, checksumBytes uint, re
 	}
 
 	// Create temporary file
-	tmpFile, err := ioutil.TempFile("", "rcksum-*")
+	// TODO: temp path needs to be in the dir with the output file.
+	tmpFile, err := os.CreateTemp(".", "rcksum-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary file: %w", err)
 	}
 	z.filename = tmpFile.Name()
 	z.fd = tmpFile
 
-	// Allocate hash entries (blocks + seqMatches for lookahead)
-	z.blockHashes = make([]HashEntry, nblocks+BlockID(requireConsecutiveMatches))
+	// Allocate hash entries.
+	z.blockHashes = make([]hashEntry, nblocks)
 
 	// Initialize ranges and other state
 	z.knownBlocks.ranges = make([]blockIDPair, 0)
@@ -134,9 +133,9 @@ func (z *RcksumState) AddTargetBlock(b BlockID, r RSum, checksum [ChecksumSize]b
 		e := &z.blockHashes[b]
 
 		// Store checksums
-		e.Checksum = checksum
-		e.RSum.A = r.A & z.rsumAMask
-		e.RSum.B = r.B
+		e.md4 = checksum
+		e.rsum.A = r.A & z.rsumAMask
+		e.rsum.B = r.B
 
 		// Invalidate existing hash tables since we added new data
 		z.rsumHash = nil

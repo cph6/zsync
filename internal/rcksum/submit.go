@@ -2,54 +2,49 @@ package rcksum
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"math"
+	"os"
 )
 
 // SubmitBlocks tests and accepts data blocks matching the target checksums
-func (z *RcksumState) SubmitBlocks(data []byte, bfrom, bto BlockID) int {
+func (z *RcksumState) SubmitBlocks(data []byte, bfrom, bto BlockID) error {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	if z.rsumHash == nil {
 		if err := z.buildHash(); err != nil {
-			return -1
+			return err
 		}
 	}
 
-	// Check each block
-	for x := bfrom; x <= bto; x++ {
+	var x BlockID
+	// Check each block to see what the highest matching index is.
+	for x = bfrom; x <= bto; x++ {
 		offset := int64((x - bfrom) << uint(z.blockShift))
 		blockData := data[offset : offset+z.blockSize]
 		md4sum := CalcChecksum(blockData)
 
-		if !bytes.Equal(md4sum[:z.checksumBytes], z.blockHashes[x].Checksum[:z.checksumBytes]) {
-			if x > bfrom {
-				// Write any good blocks we did get
-				z.writeBlocks(data, bfrom, x-1)
-			}
-			return -1
+		if !bytes.Equal(md4sum[:z.checksumBytes], z.blockHashes[x].md4[:z.checksumBytes]) {
+			break
 		}
 	}
 
-	// All blocks are valid
-	z.writeBlocks(data, bfrom, bto)
-	return 0
+	_, err := z.writeBlocks(data, bfrom, x-1, 0 /* no next */)
+	return err
 }
 
-// SubmitSourceData reads and identifies blocks of matching data
-func (z *RcksumState) SubmitSourceData(data []byte, offset int64) int {
-	z.mu.Lock()
-	defer z.mu.Unlock()
-	if z.rsumHash == nil {
-		if err := z.buildHash(); err != nil {
-			return 0
-		}
-	}
-
-	return z.submitSourceData(data, offset)
-}
-
-// submitSourceData is the internal implementation of SubmitSourceData without locking
-func (z *RcksumState) submitSourceData(data []byte, offset int64) int {
+// submitSourceData searches data for target blocks and, if found, writes them to the target file.
+// `data` is the data to be checked for matching blocks.
+// `offset` is the offset in the source data stream of this block.
+// This function expects certain state to be conserved in the RcksumState:
+//   - if `offset` is non-zero, it assumes that z.r holds the rolling checksum for
+//     the first `seqMatches` blocks in `data[z.skip:]`.
+//
+// and this is true when the function returns without error.
+// TODO: this inherently single-threaded design carried over from the C version
+// and should be replaced.
+func (z *RcksumState) submitSourceData(data []byte, offset int64) (int, error) {
 	x := 0
 	gotBlocks := 0
 	xLimit := len(data) - int(z.context)
@@ -57,23 +52,27 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) int {
 	if offset != 0 {
 		x = z.skip
 	} else {
-		z.nextMatch = nil
+		z.nextMatch = noBlock
 	}
+	z.skip = 0
 
-	if x == 0 || offset == 0 {
+	if x != 0 || offset == 0 {
 		z.r[0] = CalcRsumBlock(data[x : x+int(z.blockSize)])
 		if z.seqMatches > 1 {
 			z.r[1] = CalcRsumBlock(data[x+int(z.blockSize) : x+2*int(z.blockSize)])
 		}
 	}
-	z.skip = 0
 
 	for x < xLimit {
 		blocksMatched := 0
 
 		// Try matching against the previously matched block's successor
-		if z.nextMatch != nil && z.seqMatches > 1 {
-			thismatch := z.checkChecksumsOnHashChain(z.nextMatch, data[x:], true)
+		if z.nextMatch != noBlock && z.seqMatches > 1 {
+			thismatch, err := z.checkChecksumsOnHashChain(z.nextMatch, data[x:x+int(z.blockSize)], true)
+			if err != nil {
+				return gotBlocks, err
+			}
+
 			if thismatch > 0 {
 				blocksMatched = 1
 				gotBlocks += thismatch
@@ -82,7 +81,10 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) int {
 
 		// Advance one byte at a time through the input
 		for blocksMatched == 0 && x < xLimit {
-			thismatch := z.matchBlock(data[x:], int64(offset)+int64(x))
+			thismatch, err := z.matchBlock(data[x:], int64(offset)+int64(x))
+			if err != nil {
+				return gotBlocks, err
+			}
 			if thismatch > 0 {
 				blocksMatched = z.seqMatches
 				gotBlocks += thismatch
@@ -90,15 +92,10 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) int {
 
 			if blocksMatched == 0 {
 				// Advance window by 1 byte - update rolling checksum
-				if x+int(z.blockSize) < len(data) && x+2*int(z.blockSize) < len(data) {
-					nc := data[x+int(z.blockSize)]
-					Nc := data[x+2*int(z.blockSize)]
-					oc := data[x]
-
-					z.mu.Lock()
-					UpdateRsum(&z.r[0], oc, nc, uint(z.blockShift))
+				if x+int(z.blockSize)*z.seqMatches < len(data) {
+					UpdateRsum(&z.r[0], data[x], data[x+int(z.blockSize)], uint(z.blockShift))
 					if z.seqMatches > 1 {
-						UpdateRsum(&z.r[1], nc, Nc, uint(z.blockShift))
+						UpdateRsum(&z.r[1], data[x+int(z.blockSize)], data[x+2*int(z.blockSize)], uint(z.blockShift))
 					}
 				}
 				x++
@@ -107,10 +104,7 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) int {
 
 		// If we got a hit, skip forward by a block
 		if blocksMatched > 0 {
-			x += int(z.blockSize)
-			if blocksMatched > 1 {
-				x += int(z.blockSize)
-			}
+			x += int(z.blockSize) * blocksMatched
 
 			if x <= xLimit {
 				// Recalculate rolling checksums for the next blocks
@@ -128,15 +122,18 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) int {
 
 	z.skip = x - xLimit
 
-	return gotBlocks
+	return gotBlocks, nil
 }
 
 // SubmitSourceFile reads a file and identifies matching blocks
-func (z *RcksumState) SubmitSourceFile(f io.Reader) (int, error) {
+func (z *RcksumState) SubmitSourceFile(f io.Reader, showProgress bool) (int, error) {
 	gotBlocks := 0
-	in := int64(0)
-	bufSize := int64(z.blockSize * 16)
-	buf := make([]byte, bufSize+z.context)
+	gotBlocksAtLastProgress := 0
+	bufSize := int(z.blockSize) * 16
+	buf := make([]byte, bufSize)
+	var offset int64 // Offset in the source file that the start of buf[] corresponds to.
+	lastProgress := offset
+	firstBlock := true
 
 	// Build hash tables if needed
 	z.mu.Lock()
@@ -148,40 +145,55 @@ func (z *RcksumState) SubmitSourceFile(f io.Reader) (int, error) {
 	}
 
 	for {
-		var len int
-		var startIn int64 = in
+		if showProgress && offset >= lastProgress+(1<<20) {
+			useFraction := float64(gotBlocks-gotBlocksAtLastProgress) * float64(z.blockSize) / float64(offset-lastProgress)
+			progressDecile := min(9, int(math.Ceil(useFraction*10)))
+			fmt.Fprintf(os.Stderr, "%d", progressDecile)
+			lastProgress = offset
+			gotBlocksAtLastProgress = gotBlocks
+		}
 
-		if in == 0 {
+		var len int // The number of bytes of data in buf[]
+		if firstBlock {
 			// First read
 			n, err := f.Read(buf)
 			if err != nil && err != io.EOF {
 				return gotBlocks, err
 			}
+			firstBlock = false
 			len = n
-			in += int64(n)
+			offset = 0
 		} else {
-			// Move last context bytes to start, refill the rest
-			copy(buf, buf[bufSize-z.context:bufSize])
-			in += bufSize - z.context
+			// Move the last `context` bytes to the start of the
+			// buffer, then refill the rest.
+			copy(buf, buf[bufSize-int(z.context):bufSize])
+			len = int(z.context)
+			offset += int64(bufSize) - z.context
 
 			n, err := f.Read(buf[z.context:])
 			if err != nil && err != io.EOF {
 				return gotBlocks, err
 			}
-			len = int(z.context) + n
+			len += n
 		}
 
-		// Pad with zeros at EOF
-		if len == 0 || len < int(bufSize) {
-			copy(buf[len:], make([]byte, z.context))
+		// Pad with zeros at EOF.
+		if len < bufSize {
+			copy(buf[len:], make([]byte, bufSize-len))
 			len += int(z.context)
+			if len > bufSize {
+				len = bufSize
+			}
 		}
 
 		// Process the buffer
-		result := z.submitSourceData(buf[:len], startIn)
+		result, err := z.submitSourceData(buf[:len], offset)
+		if err != nil {
+			return gotBlocks, err
+		}
 		gotBlocks += result
 
-		if len < int(bufSize+z.context) {
+		if len < bufSize {
 			break
 		}
 	}
@@ -190,144 +202,145 @@ func (z *RcksumState) SubmitSourceFile(f io.Reader) (int, error) {
 }
 
 // matchBlock attempts to match a block of data at the current position
-func (z *RcksumState) matchBlock(data []byte, offset int64) int {
-	r0 := z.r[0]
-
+func (z *RcksumState) matchBlock(data []byte, offset int64) (int, error) {
 	// Prepare hash values for lookup
-	hash := uint32(r0.B)
-	if z.seqMatches > 1 {
-		hash ^= uint32(r0.A&z.rsumAMask) << z.hashFuncShift
-	}
+	h := z.calcRhashFromRSums(&z.r[0], &z.r[1])
 
 	// Check bithash for fast negative lookups
-	bitIdx := (hash & z.bitHashMask) >> 3
-	bitPos := hash & 7
+	bitIdx := (h & z.bitHashMask) >> 3
+	bitPos := h & 7
 
 	if z.bitHash != nil && int(bitIdx) < len(z.bitHash) {
 		if (z.bitHash[bitIdx] & (1 << bitPos)) != 0 {
-			e := z.rsumHash[hash&z.hashMask]
-			if e != nil {
+			e, ok := z.rsumHash[h]
+			if ok {
 				return z.checkChecksumsOnHashChain(e, data, false)
 			}
 		}
 	}
 
-	return 0
+	return 0, nil
 }
 
-// checkChecksumsOnHashChain checks data against all blocks in a hash chain
-func (z *RcksumState) checkChecksumsOnHashChain(e *HashEntry, data []byte, onlyone bool) int {
+// checkChecksumsOnHashChain checks data against all blocks for a specific
+// hashed rsum value.
+func (z *RcksumState) checkChecksumsOnHashChain(next BlockID, data []byte, onlyone bool) (int, error) {
 	r := z.r[0]
 	gotBlocks := 0
 
-	z.nextMatch = nil
+	md4sum := [][ChecksumSize]byte{}
 
-	z.rover = e
-	for z.rover != nil {
-		entry := z.rover
+	z.nextMatch = noBlock
+
+	// Invariants:
+	// - we are traversing the hash chain starting at block `next`.
+	// - the MD4sums of the next n blocks of data in `data` are calculated and
+	//   stored in `md4sum`.
+	for next != noBlock {
+		e := next // entry being considered in this run of the loop.
+
 		if onlyone {
-			z.rover = nil
+			next = noBlock
 		} else {
-			z.rover = entry.Next
+			// Advance the pointer now, as blockHashes[e].next will be wiped if the block
+			// is matched.
+			next = z.blockHashes[e].next
 		}
 
 		// Check weak checksum first
 		z.stats.HashHit++
-
-		if entry.RSum.A != (r.A&z.rsumAMask) || entry.RSum.B != r.B {
+		if z.blockHashes[e].rsum.A != (r.A&z.rsumAMask) || z.blockHashes[e].rsum.B != r.B {
 			continue
 		}
-
 		z.stats.WeakHit++
 
-		// Calculate strong checksums
-		md4sum := [2][ChecksumSize]byte{}
-		donemd4 := -1
-
-		ok := true
-		for checkmd4 := 0; ok && (onlyone || checkmd4 < z.seqMatches); checkmd4++ {
-			if checkmd4 > donemd4 {
+		// Calculate strong checksums and see if we have `seqMatches` consecutive
+		// matching blocks.
+		// MD4sums for blocks beginning data[offset] are stored in md4sum[].
+		matching := 0
+		for checkmd4 := 0; checkmd4 < z.seqMatches; checkmd4++ {
+			if checkmd4 >= len(md4sum) {
 				offset := checkmd4 * int(z.blockSize)
 				if offset+int(z.blockSize) > len(data) {
 					break
 				}
-				md4sum[checkmd4] = CalcChecksum(data[offset : offset+int(z.blockSize)])
-				donemd4 = checkmd4
+				md4sum = append(md4sum, CalcChecksum(data[offset:offset+int(z.blockSize)]))
 				z.stats.Checksummed++
 			}
 
-			if !bytes.Equal(md4sum[checkmd4][:z.checksumBytes], entry.Checksum[:z.checksumBytes]) {
-				ok = false
-			}
-		}
-
-		if ok {
-			// Find the next block we already have
-			blockid := z.findBlockID(entry)
-			z.stats.StrongHit += donemd4 + 1
-
-			numWriteBlocks := donemd4 + 1
-			nextKnown := z.knownBlocks.nextContainedAfter(blockid + BlockID(numWriteBlocks))
-
-			if nextKnown > blockid+BlockID(numWriteBlocks) {
-				z.nextMatch = &z.blockHashes[blockid+BlockID(numWriteBlocks)]
-				z.nextKnown = nextKnown
+			if bytes.Equal(md4sum[checkmd4][:z.checksumBytes], z.blockHashes[e+BlockID(checkmd4)].md4[:z.checksumBytes]) {
+				matching += 1
 			} else {
-				numWriteBlocks = int(nextKnown - blockid)
+				break
 			}
-
-			// Write the matched blocks
-			z.writeBlocks(data, blockid, blockid+BlockID(numWriteBlocks-1))
-			gotBlocks += numWriteBlocks
 		}
+
+		if matching < z.seqMatches {
+			continue
+		}
+
+		// Find the next block which we already have.
+		z.stats.StrongHit += matching
+		nextKnown := z.knownBlocks.nextContainedAfter(e)
+		if nextKnown == -1 {
+			nextKnown = z.blocks
+		}
+
+		numWriteBlocks := matching
+		if nextKnown < e+BlockID(matching) {
+			numWriteBlocks = int(nextKnown - e)
+		}
+
+		// Write the matched blocks
+		var err error
+		next, err = z.writeBlocks(data[:numWriteBlocks*int(z.blockSize)], e, e+BlockID(numWriteBlocks-1), next)
+		if err != nil {
+			return gotBlocks, err
+		}
+		gotBlocks += numWriteBlocks
 	}
 
-	return gotBlocks
-}
-
-// findBlockID finds the block ID for a hash entry
-func (z *RcksumState) findBlockID(e *HashEntry) BlockID {
-	for id := BlockID(0); id < BlockID(len(z.blockHashes)); id++ {
-		if &z.blockHashes[id] == e {
-			return id
-		}
-	}
-	return -1
+	return gotBlocks, nil
 }
 
 // writeBlocks writes a range of blocks to the output file
-func (z *RcksumState) writeBlocks(data []byte, bfrom, bto BlockID) {
+func (z *RcksumState) writeBlocks(data []byte, bfrom, bto, next BlockID) (BlockID, error) {
 	if z.fd == nil {
-		return
-	}
-	fd := z.fd
-	blockShift := z.blockShift
-
-	len := int64((bto - bfrom + 1)) << uint(blockShift)
-	offset := int64(bfrom) << uint(blockShift)
-
-	dataIdx := int64(0)
-	for len > 0 {
-		l := len
-		if l > 0x8000000 { // 128MB chunks
-			l = 0x8000000
-		}
-
-		n, err := fd.WriteAt(data[dataIdx:dataIdx+l], offset)
-		if err != nil {
-			return
-		}
-
-		len -= int64(n)
-		dataIdx += int64(n)
-		offset += int64(n)
+		return next, fmt.Errorf("no file descriptor in RcksumState")
 	}
 
-	// Mark blocks as obtained
+	if int(bto+1-bfrom)<<uint(z.blockShift) != len(data) {
+		panic(fmt.Sprintf("missized data block; len=%d written for %d-%d", len(data), bfrom, bto))
+	}
+	offset := int64(bfrom) << uint(z.blockShift)
+	_, err := z.fd.WriteAt(data, offset)
+	if err != nil {
+		return next, err
+	}
+
+	// Mark blocks as obtained.
 	for id := bfrom; id <= bto; id++ {
-		z.removeBlockFromHash(id)
+		// Removing a block from the hash wipes its `next` field, so we have to tell
+		// the caller what is the next block that it should consider.
+		if id == next {
+			next = z.blockHashes[id].next
+		}
+
 		z.knownBlocks.addToRanges(id)
+		if z.seqMatches == 2 && (id != bto || z.knownBlocks.contains(bto+1)) {
+			z.removeBlockFromHash(id)
+		}
 	}
+	// Removing blocks from the hash when we have seqMatches == 2 (the only
+	// supported setting other than 1) is tricky; we want to remove only when both
+	// a block and its trailing partner are known. So here we look at block
+	// `bfrom-1` and remove its hash entry if we delayed removing it earlier
+	// because `bfrom`` was not then known.
+	if z.seqMatches == 2 && bfrom > 0 && z.knownBlocks.contains(bfrom-1) {
+		z.removeBlockFromHash(bfrom - 1)
+	}
+
+	return next, nil
 }
 
 // ReadKnownData reads back data that has already been received

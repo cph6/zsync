@@ -6,14 +6,24 @@ import (
 	"math/bits"
 )
 
-// CalcRhash calculates the hash value for a hash entry
-func CalcRhash(z *RcksumState, e *HashEntry) uint32 {
-	hash := uint32(e.RSum.B)
+// calcRhash calculates the hash key for consecutive hashEntrys.
+func (z *RcksumState) calcRhash(b BlockID) uint32 {
+	rs1 := &z.blockHashes[b].rsum
+	var rs2 *RSum
+	if z.seqMatches > 1 {
+		rs2 = &z.blockHashes[b+1].rsum
+	}
+	return z.calcRhashFromRSums(rs1, rs2)
+}
+
+// rs2 is required iff z.seqMatches == 2.
+func (z *RcksumState) calcRhashFromRSums(rs1, rs2 *RSum) uint32 {
+	hash := uint32(rs1.B)
 
 	if z.seqMatches > 1 {
-		hash ^= uint32(e.RSum.A&z.rsumAMask) << z.hashFuncShift
+		hash ^= uint32(rs2.B) << 16
 	} else {
-		hash ^= uint32(e.RSum.A&z.rsumAMask) << z.hashFuncShift
+		hash ^= uint32(rs1.A&z.rsumAMask) << 16
 	}
 
 	return hash
@@ -21,55 +31,26 @@ func CalcRhash(z *RcksumState, e *HashEntry) uint32 {
 
 // BuildHash builds hash tables to quickly lookup blocks based on rsum value
 func (z *RcksumState) buildHash() error {
-	// Calculate available bits
-	availBits := z.rsumBits
-	if z.seqMatches > 1 {
-		bits1 := min(z.rsumBits, 16)
-		bits2 := availBits - 16
-		availBits = minUint16(bits1*2, availBits)
-		if bits2 > 0 {
-			availBits = minUint16(availBits, bits1+bits2)
-		}
-	}
-
-	hashBits := availBits
-
-	// Pick a hash size that is a power of two and gives load factor < 1
-	for (1<<(hashBits-1)) > uint16(z.blocks) && hashBits > 5 {
-		hashBits--
-	}
-
 	// Allocate hash table
-	z.hashMask = (1 << hashBits) - 1
-	z.rsumHash = make([](*HashEntry), z.hashMask+1)
+	z.rsumHash = make(map[uint32]BlockID)
 
 	// Allocate bithash with aim of 1/(1<<BITHASHBITS) load factor
-	bitHashBits := int(hashBits) + BithashBits
-	if bitHashBits > int(availBits) {
-		bitHashBits = int(availBits)
-	}
+	bitHashBits := log2(uint32(z.blocks)) + BithashBits
 	z.bitHashMask = (1 << uint(bitHashBits)) - 1
 	z.bitHash = make([]byte, (z.bitHashMask+1+7)>>3)
 
-	// Set up hash function shift
-	if z.seqMatches > 1 && availBits < 24 {
-		// Second number has (availBits/2) bits available
-		z.hashFuncShift = uint(maxInt(0, int(hashBits)-int(availBits/2)))
-	} else {
-		// Second number has availBits-16 bits available
-		z.hashFuncShift = uint(maxInt(0, int(hashBits)-int(availBits-16)))
-	}
+	// Fill hash tables in reverse order to keep blocks in order.
+	for id := z.blocks - BlockID(z.seqMatches); id >= 0; id-- {
+		// Calculate hash and prepend to the linked list for that hash value.
+		h := z.calcRhash(id)
+		next, ok := z.rsumHash[h]
+		if !ok {
+			next = noBlock
+		}
+		z.blockHashes[id].next = next
+		z.rsumHash[h] = id
 
-	// Fill hash tables in reverse order to keep blocks in order
-	for id := z.blocks - 1; id >= 0; id-- {
-		e := &z.blockHashes[id]
-
-		// Calculate hash and prepend to linked list
-		h := CalcRhash(z, e)
-		e.Next = z.rsumHash[h&z.hashMask]
-		z.rsumHash[h&z.hashMask] = e
-
-		// Set relevant bit in bithash
+		// Set relevant bit in bithash.
 		bitIdx := (h & z.bitHashMask) >> 3
 		bitPos := h & 7
 		if int(bitIdx) < len(z.bitHash) {
@@ -82,35 +63,34 @@ func (z *RcksumState) buildHash() error {
 
 // removeBlockFromHash removes a block from the hash table
 func (z *RcksumState) removeBlockFromHash(id BlockID) {
-	if z.rsumHash == nil || id >= BlockID(len(z.blockHashes)) {
+	// Ignore any request to remove blocks past the end of the file, or within
+	// seqMatches-1 of the end as these were never added to the hash (insufficient
+	// trailing blocks for consecutive matches).
+	if z.rsumHash == nil || id >= BlockID(len(z.blockHashes)-(z.seqMatches-1)) {
 		return
 	}
 
-	e := &z.blockHashes[id]
-	h := CalcRhash(z, e)
-	hashIdx := h & z.hashMask
+	h := z.calcRhash(id)
 
 	// Find and remove from hash chain
-	if z.rsumHash[hashIdx] == e {
-		z.rsumHash[hashIdx] = e.Next
-	} else if z.rsumHash[hashIdx] != nil {
-		for chain := z.rsumHash[hashIdx]; chain != nil; chain = chain.Next {
-			if chain.Next == e {
-				chain.Next = e.Next
+	p, ok := z.rsumHash[h]
+	if ok && p == id {
+		next := z.blockHashes[id].next
+		if next != noBlock {
+			z.rsumHash[h] = next
+		} else {
+			delete(z.rsumHash, h)
+		}
+	} else if ok {
+		for ; p != noBlock; p = z.blockHashes[p].next {
+			if z.blockHashes[p].next == id {
+				z.blockHashes[p].next = z.blockHashes[id].next
 				break
 			}
 		}
 	}
 
-	e.Next = nil
-}
-
-// min returns the minimum of two uint16 values
-func min(a, b uint16) uint16 {
-	if a < b {
-		return a
-	}
-	return b
+	z.blockHashes[id].next = noBlock
 }
 
 // minUint16 is a helper to find minimum of two uint16 values
@@ -140,15 +120,4 @@ func log2(x uint32) int {
 // PopCount returns the number of set bits (population count)
 func PopCount(b byte) int {
 	return bits.OnesCount8(b)
-}
-
-// GetHEBlockID returns the block ID for a hash entry
-func GetHEBlockID(z *RcksumState, e *HashEntry) BlockID {
-	// Find the index of e in blockHashes
-	for id := BlockID(0); id < BlockID(len(z.blockHashes)); id++ {
-		if &z.blockHashes[id] == e {
-			return id
-		}
-	}
-	return -1
 }

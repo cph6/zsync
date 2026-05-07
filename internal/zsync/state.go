@@ -1,6 +1,8 @@
 package zsync
 
 // AI: copilot / grok code fast conversion of the state parts of zsync's zsync.c.
+// Note: thread-unsafe, as it is still mostly a like for like conversion of the
+// thread-unsafe C version.
 
 import (
 	"bufio"
@@ -31,7 +33,7 @@ type State struct {
 	curFilename    string
 }
 
-// ZsyncBegin loads a zsync file and returns the state
+// ZsyncBegin loads a zsync file and returns the state tracking object.
 func Begin(f *os.File) (*State, error) {
 	checksumBytes := 16
 	rsumBytes := 4
@@ -174,13 +176,13 @@ func Begin(f *os.File) (*State, error) {
 }
 
 // Filename returns the suggested filename for the file being reconstructed.
-func Filename(zs *State) string {
+func (zs *State) Filename() string {
 	return zs.filename
 }
 
 // Mtime returns the mtime that the file should have when complete,
 // or the zero time if not specified.
-func Mtime(zs *State) time.Time {
+func (zs *State) Mtime() time.Time {
 	return zs.mtime
 }
 
@@ -189,7 +191,7 @@ func Mtime(zs *State) time.Time {
 //	0 if no blocks have been matched or retrieved,
 //	1 if some blocks have been matched or retrieved,
 //	2 if the file is complete.
-func Status(zs *State) int {
+func (zs *State) Status() int {
 	todo := zs.Rs.BlocksTodo()
 	if todo == zs.blocks {
 		return 0
@@ -201,7 +203,7 @@ func Status(zs *State) int {
 }
 
 // Progress returns the number of bytes obtained for the target file, and the total needed.
-func Progress(zs *State) (got, total int64) {
+func (zs *State) Progress() (got, total int64) {
 	todo := zs.Rs.BlocksTodo()
 	got = int64(zs.blocks-todo) * zs.blocksize
 	total = int64(zs.blocks) * zs.blocksize
@@ -209,7 +211,7 @@ func Progress(zs *State) (got, total int64) {
 }
 
 // GetUrls returns the URLs from which the file can be downloaded.
-func GetUrls(zs *State) []string {
+func (zs *State) GetUrls() []string {
 	return zs.urls
 }
 
@@ -219,7 +221,7 @@ type ByteRange struct {
 }
 
 // NeededByteRanges returns the byte ranges of the target file that still need to be obtained.
-func NeededByteRanges(zs *State) []ByteRange {
+func (zs *State) NeededByteRanges() []ByteRange {
 	blockRanges := zs.Rs.NeededBlockRanges(0, rcksum.BlockID(zs.blocks-1))
 	byteRanges := make([]ByteRange, len(blockRanges))
 	for i, br := range blockRanges {
@@ -233,15 +235,53 @@ func NeededByteRanges(zs *State) []ByteRange {
 	return byteRanges
 }
 
+func (zs *State) SubmitTargetData(offset int64, in io.Reader) (int64, error) {
+	bytesReceived := int64(0)
+
+	if offset%zs.blocksize != 0 {
+		panic(fmt.Sprintf("misaligned data block passed as target data (%d, blocksize %d)", offset, zs.blocksize))
+	}
+	id := rcksum.BlockID(offset / zs.blocksize)
+
+	buf := make([]byte, zs.blocksize)
+	var n int
+	var err error
+	for {
+		n, err = io.ReadFull(in, buf)
+		if err != nil {
+			break
+		}
+		bytesReceived += int64(n)
+		// err == nil implies a full buffer.
+		zs.Rs.SubmitBlocks(buf, id, id)
+		id++
+	}
+	if err == io.EOF {
+		return bytesReceived, nil
+	} else if err == io.ErrUnexpectedEOF {
+		if id == rcksum.BlockID(zs.blocks-1) {
+			// Short last block. rcksum expects a full block, padded with 0s, so pad and submit.
+			for i := range buf {
+				if i >= n {
+					buf[i] = 0
+				}
+			}
+			zs.Rs.SubmitBlocks(buf, id, id)
+			return bytesReceived, nil
+		} // else fall through; any other incomplete block is an error.
+	}
+	return bytesReceived, err
+}
+
 // SubmitSourceFile submits a file as a source for data for reconstructing the
 // target file.
-func SubmitSourceFile(zs *State, f *os.File, progress bool) error {
-	_, err := zs.Rs.SubmitSourceFile(f)
+func (zs *State) SubmitSourceFile(f *os.File, progress bool) error {
+	_, err := zs.Rs.SubmitSourceFile(f, progress)
 	return err
 }
 
 // RenameFile renames the file in which the target file is being reconstructed.
-func RenameFile(zs *State, filename string) error {
+func (zs *State) RenameFile(filename string) error {
 	cur := zs.currentFilename()
 	if err := os.Rename(cur, filename); err != nil {
 		return err
@@ -261,11 +301,11 @@ func (zs *State) currentFilename() string {
 // truncating the file to the correct length and verifying the checksum if it
 // was provided. It returns an error if any of these checks fail.
 // After this call, it is no longer valid to call other methods on the State except for End.
-func Complete(zs *State) error {
+func (zs *State) Complete() error {
 	filename := zs.currentFilename()
 	zs.Rs.Close()
 
-	if zs.Rs.BlocksTodo() < zs.blocks {
+	if zs.Rs.BlocksTodo() > 0 {
 		return fmt.Errorf("file is not complete")
 	}
 	if err := os.Truncate(filename, zs.filelen); err != nil {

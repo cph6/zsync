@@ -24,6 +24,8 @@ const (
 
 	// BithashBits is the number of bits per byte for the bithash table
 	BithashBits = 3
+
+	noBlock = BlockID(-1)
 )
 
 // BlockID represents an identifier for a block in the target file
@@ -35,11 +37,10 @@ type RSum struct {
 	B uint16 // Weighted sum
 }
 
-// HashEntry represents an entry in the hash table for block lookups
-type HashEntry struct {
-	Next     *HashEntry
-	RSum     RSum
-	Checksum [ChecksumSize]byte
+type hashEntry struct {
+	next BlockID // -1 means no next element in this hash chain.
+	rsum RSum
+	md4  [16]byte
 }
 
 // Stats tracks statistics about the matching process
@@ -68,19 +69,16 @@ type RcksumState struct {
 	context       int64   // blockSize * seqMatches
 
 	// Processing state
-	skip  int        // Skip forward on next submit_source_data
-	rover *HashEntry // Current position in hash chain traversal
+	skip int // Skip forward on next submit_source_data
 
 	// Hints for matching
-	nextMatch *HashEntry // Hint for next block to match
-	nextKnown BlockID    // Cached lookup of next known block
+	nextMatch BlockID // Hint for next block to match
 
 	// Hash tables for rsync algorithm
-	hashMask    uint32
-	blockHashes []HashEntry
-	rsumHash    [](*HashEntry)
+	blockHashes []hashEntry
+	rsumHash    map[uint32]BlockID
 
-	// Bithash for fast negative lookups
+	// Bithash for fast negative lookups.
 	bitHash     []byte
 	bitHashMask uint32
 
