@@ -157,3 +157,8 @@ func (z *RcksumState) NeededBlockRanges(from, to BlockID) []blockIDPair {
 func (z *RcksumState) Filehandle() *os.File {
 	return z.fd
 }
+
+// Returns stats on the rolling checksum process.
+func (z *RcksumState) Stats() Stats {
+	return z.stats
+}

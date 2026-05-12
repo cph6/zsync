@@ -127,6 +127,7 @@ func main() {
 	flag.BoolVar(&showVer, "V", false, "show version")
 	flag.BoolVar(&quiet, "q", false, "suppress progress output")
 	flag.StringVar(&referer, "u", "", "If a local zsync file is supplied, this supplies the URL from which the .zsync file is or could be downloaded - this is used for resolving relative URLs in the .zsync file, as if the .zsync was downloaded from this URL.")
+	flag.BoolVar(&verbose, "v", false, "verbose mode - reports some debugging stats")
 	flag.Parse()
 
 	if showVer {
@@ -255,6 +256,10 @@ func main() {
 
 	if !quiet {
 		fmt.Printf("used %d local, fetched %d\n", localUsed, httpBytesDownloaded)
+	}
+	if verbose {
+		s := zs.Stats()
+		fmt.Printf("hash stats: bithash hit %d, weak hit %d, checksums calculated %d, strong hit %d\n", s.HashHit, s.WeakHit, s.Checksummed, s.StrongHit)
 	}
 }
 
