@@ -75,7 +75,7 @@ void perf_test_fc000000(int n) {
     printf("%d iterations, took %d.%06ds\n", n, took_us / 1000000, took_us % 1000000);
 }
 
-void main(void) {
+int main(void) {
     test_00000000();
     test_abcde();
     test_fc000000();
@@ -83,4 +83,5 @@ void main(void) {
 #if 0
     perf_test_fc000000(10000000);
 #endif
+    return 0;
 }
