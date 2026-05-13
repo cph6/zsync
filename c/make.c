@@ -358,6 +358,13 @@ void read_stream_write_blocksums(FILE * fin, FILE * fout) {
 
         if (got > 0) {
             if (!no_look_inside && len == 0 && buf[0] == 0x1f && buf[1] == 0x8b) {
+                fprintf(
+                    stderr,
+                    "WARNING: creating .zsync file by looking at the "
+                    "compressed data inside the gzip file. This will be no "
+                    "longer be supported in future releases of zsync. "
+                    "Consider using -Z to create a future-proof .zsync file, "
+                    "if the gzip file was made with --rsyncable.");
                 do_zstream(fin, fout, (char *)buf, got);
                 break;
             }
