@@ -51,8 +51,6 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) (int, error) {
 
 	if offset != 0 {
 		x = z.skip
-	} else {
-		z.nextMatch = noBlock
 	}
 	z.skip = 0
 
@@ -65,19 +63,6 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) (int, error) {
 
 	for x < xLimit {
 		blocksMatched := 0
-
-		// Try matching against the previously matched block's successor
-		if z.nextMatch != noBlock && z.seqMatches > 1 {
-			thismatch, err := z.checkChecksumsOnHashChain(z.nextMatch, data[x:x+int(z.blockSize)], true)
-			if err != nil {
-				return gotBlocks, err
-			}
-
-			if thismatch > 0 {
-				blocksMatched = 1
-				gotBlocks += thismatch
-			}
-		}
 
 		// Advance one byte at a time through the input
 		for blocksMatched == 0 && x < xLimit {
@@ -102,7 +87,9 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) (int, error) {
 			}
 		}
 
-		// If we got a hit, skip forward by a block
+		// If we got a hit, skip past those blocks. It is highly unlikely that there
+		// is a hit at x+1 or any other offset before the next unmatched block,
+		// because all of the target blocks are multiples of the blocksize apart.
 		if blocksMatched > 0 {
 			x += int(z.blockSize) * blocksMatched
 
@@ -214,7 +201,7 @@ func (z *RcksumState) matchBlock(data []byte, offset int64) (int, error) {
 		if (z.bitHash[bitIdx] & (1 << bitPos)) != 0 {
 			e, ok := z.rsumHash[h]
 			if ok {
-				return z.checkChecksumsOnHashChain(e, data, false)
+				return z.checkChecksumsOnHashChain(e, data)
 			}
 		}
 	}
@@ -224,39 +211,42 @@ func (z *RcksumState) matchBlock(data []byte, offset int64) (int, error) {
 
 // checkChecksumsOnHashChain checks data against all blocks for a specific
 // hashed rsum value.
-func (z *RcksumState) checkChecksumsOnHashChain(next BlockID, data []byte, onlyone bool) (int, error) {
+// Arguments:
+// id: the first possible target block in the hash chain to consider;
+//
+//	this is usually the start of the hash chain for the hashed value of block(s) in data[].
+//
+// data: should be z.blocksize*z.seqMatches bytes of candidate data.
+func (z *RcksumState) checkChecksumsOnHashChain(id BlockID, data []byte) (int, error) {
 	r := z.r[0]
 	gotBlocks := 0
 
 	md4sum := [][ChecksumSize]byte{}
 
-	z.nextMatch = noBlock
-
 	// Invariants:
 	// - we are traversing the hash chain starting at block `next`.
 	// - the MD4sums of the next n blocks of data in `data` are calculated and
 	//   stored in `md4sum`.
+	next := id
 	for next != noBlock {
-		e := next // entry being considered in this run of the loop.
+		id = next // entry being considered in this run of the loop.
+		// Advance the pointer now, as blockHashes[e].next will be wiped if the block
+		// is matched.
+		next = z.blockHashes[id].next
 
-		if onlyone {
-			next = noBlock
-		} else {
-			// Advance the pointer now, as blockHashes[e].next will be wiped if the block
-			// is matched.
-			next = z.blockHashes[e].next
-		}
-
-		// Check weak checksum first
+		// Check weak checksum first.
 		z.stats.HashHit++
-		if z.blockHashes[e].rsum.A != (r.A&z.rsumAMask) || z.blockHashes[e].rsum.B != r.B {
+		if z.blockHashes[id].rsum.A != (r.A&z.rsumAMask) || z.blockHashes[id].rsum.B != r.B {
+			continue
+		}
+		if z.seqMatches > 1 && (z.blockHashes[id+BlockID(1)].rsum.A != (z.r[1].A&z.rsumAMask) || z.blockHashes[id+BlockID(1)].rsum.B != z.r[1].B) {
 			continue
 		}
 		z.stats.WeakHit++
 
 		// Calculate strong checksums and see if we have `seqMatches` consecutive
 		// matching blocks.
-		// MD4sums for blocks beginning data[offset] are stored in md4sum[].
+		// MD4sums for blocks in data[] are stored in md4sum[], lazily populated as needed.
 		matching := 0
 		for checkmd4 := 0; checkmd4 < z.seqMatches; checkmd4++ {
 			if checkmd4 >= len(md4sum) {
@@ -268,7 +258,7 @@ func (z *RcksumState) checkChecksumsOnHashChain(next BlockID, data []byte, onlyo
 				z.stats.Checksummed++
 			}
 
-			if bytes.Equal(md4sum[checkmd4][:z.checksumBytes], z.blockHashes[e+BlockID(checkmd4)].md4[:z.checksumBytes]) {
+			if bytes.Equal(md4sum[checkmd4][:z.checksumBytes], z.blockHashes[id+BlockID(checkmd4)].md4[:z.checksumBytes]) {
 				matching += 1
 			} else {
 				break
@@ -281,19 +271,19 @@ func (z *RcksumState) checkChecksumsOnHashChain(next BlockID, data []byte, onlyo
 
 		// Find the next block which we already have.
 		z.stats.StrongHit += matching
-		nextKnown := z.knownBlocks.nextContainedAfter(e)
+		nextKnown := z.knownBlocks.nextContainedAfter(id)
 		if nextKnown == -1 {
 			nextKnown = z.blocks
 		}
 
 		numWriteBlocks := matching
-		if nextKnown < e+BlockID(matching) {
-			numWriteBlocks = int(nextKnown - e)
+		if nextKnown < id+BlockID(matching) {
+			numWriteBlocks = int(nextKnown - id)
 		}
 
 		// Write the matched blocks
 		var err error
-		next, err = z.writeBlocks(data[:numWriteBlocks*int(z.blockSize)], e, e+BlockID(numWriteBlocks-1), next)
+		next, err = z.writeBlocks(data[:numWriteBlocks*int(z.blockSize)], id, id+BlockID(numWriteBlocks-1), next)
 		if err != nil {
 			return gotBlocks, err
 		}

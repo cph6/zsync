@@ -71,9 +71,6 @@ type RcksumState struct {
 	// Processing state
 	skip int // Skip forward on next submit_source_data
 
-	// Hints for matching
-	nextMatch BlockID // Hint for next block to match
-
 	// Hash tables for rsync algorithm
 	blockHashes []hashEntry
 	rsumHash    map[uint32]BlockID
