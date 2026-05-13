@@ -100,11 +100,14 @@ struct hash_entry *calc_hash_entry(void *data, size_t len);
 
 /* Hash the checksum values for the given hash entry and return the hash value */
 static inline unsigned calc_rhash(const struct rcksum_state *const z,
-                                  const struct hash_entry *const e) {
-    unsigned h = e[0].r.b;
+                                  const struct rsum r0,
+                                  const struct rsum r1) {
+    unsigned h = r0.b;
 
-    h ^= ((z->seq_matches > 1) ? e[1].r.b
-        : e[0].r.a & z->rsum_a_mask) << z->hash_func_shift;
+    h ^= (r0.a & z->rsum_a_mask) << z->hash_func_shift;
+    if (z->seq_matches > 1) {
+      h ^= r1.b << z->hash_func_shift;
+    }
 
     return h;
 }

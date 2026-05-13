@@ -184,7 +184,7 @@ int build_hash(struct rcksum_state *z) {
         struct hash_entry *e = z->blockhashes + (--id);
 
         /* Prepend to linked list for this hash entry */
-        unsigned h = calc_rhash(z, e);
+        unsigned h = calc_rhash(z, e[0].r, e[1].r);
         e->next = z->rsum_hash[h & z->hashmask];
         z->rsum_hash[h & z->hashmask] = e;
 
@@ -204,7 +204,7 @@ int build_hash(struct rcksum_state *z) {
 void remove_block_from_hash(struct rcksum_state *z, zs_blockid id) {
     struct hash_entry *t = &(z->blockhashes[id]);
 
-    struct hash_entry **p = &(z->rsum_hash[calc_rhash(z, t) & z->hashmask]);
+    struct hash_entry **p = &(z->rsum_hash[calc_rhash(z, t[0].r, t[1].r) & z->hashmask]);
 
     while (*p != NULL) {
         if (*p == t) {
