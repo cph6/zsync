@@ -1,3 +1,21 @@
+Changes in 0.6.4
+- Support for looking inside gzip files is deprecated; all options related to
+  compressed files are correspondingly deprecated except -Z.
+  Gzip files are not commonly used for large downloads as they were 20 years
+  ago. Supporting looking inside gzip files was a specific case that required
+  a lot of extra code, and greatly increases the potential surface area for
+  bugs.
+  zsync supports all files that are rsyncable, without needing any specific
+  support for any file format or encoding. gzip files are still and always be
+  supported if they were compressed with `--rsyncable`, so use that when
+  compressing if you want to allow incremental updating.
+  If you are hosting gzip downloads that should be incrementally updatable with
+  zsync, for compatibility with future releases you should ensure that the gzip
+  file is compressed with --rsyncable and run zsyncmake with -Z when creating
+  the zsync control file.
+- More tuning to fix some cases of poor performance scanning local data due to
+  bad checksum distribution.
+
 Changes in 0.6.3
 - Performance improvements for large (>250MB) files - on multi-gigabyte files
   this can be a very large improvement.
