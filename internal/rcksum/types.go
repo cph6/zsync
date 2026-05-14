@@ -1,13 +1,10 @@
-// Package rcksum implements the rsync rolling checksum algorithm for determining
-// which parts of a file you have and which you need.
-// Copyright (C) 2004,2005,2009 Colin Phipps <cph@moria.org.uk>
-// Converted to Go 2026
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the Artistic License v2 (see the accompanying
-// file COPYING for the full license terms), or, at your option, any later
-// version of the same license.
 package rcksum
+
+/*
+ * SPDX-FileCopyrightText: 2004,2005,2007,2009,2025,2026 Colin Phipps <cph@moria.org.uk>
+ *
+ * SPDX-License-Identifier: Artistic-2.0
+ */
 
 // AI: copilot / claude code (if I remember correctly) conversion of zsync's rcksum.h and perhaps other files in the same module.
 

@@ -1,5 +1,11 @@
 package zsync
 
+/*
+ * SPDX-FileCopyrightText: 2004,2005,2007,2009,2025,2026 Colin Phipps <cph@moria.org.uk>
+ *
+ * SPDX-License-Identifier: Artistic-2.0
+ */
+
 // AI: copilot / grok code fast conversion of the state parts of zsync's zsync.c.
 // Note: thread-unsafe, as it is still mostly a like for like conversion of the
 // thread-unsafe C version.

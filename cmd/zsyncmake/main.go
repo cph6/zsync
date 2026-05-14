@@ -1,5 +1,11 @@
 package main
 
+/*
+ * SPDX-FileCopyrightText: 2004,2005,2007,2009,2025,2026 Colin Phipps <cph@moria.org.uk>
+ *
+ * SPDX-License-Identifier: Artistic-2.0
+ */
+
 // AI: copilot / Claude Haiku conversion of zsync's make.c.
 
 import (
@@ -46,7 +52,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("zsyncmake v%s\nBy Colin Phipps <cph@moria.org.uk>\nPublished under the Artistic License v2, see the COPYING file for details.\n", version)
+		fmt.Printf("zsyncmake v%s\nBy Colin Phipps <cph@moria.org.uk>\nPublished under the Artistic License 2.0, see the LICENSE file for details.\n", version)
 		os.Exit(0)
 	}
 

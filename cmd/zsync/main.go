@@ -1,5 +1,11 @@
 package main
 
+/*
+ * SPDX-FileCopyrightText: 2004,2005,2007,2009,2025,2026 Colin Phipps <cph@moria.org.uk>
+ *
+ * SPDX-License-Identifier: Artistic-2.0
+ */
+
 // AI: copilot / Raptor mini conversion of zsync's main.c, albeit with
 // considerable simplifcation compared to the original client: no longer
 // putting multiple ranges in one request, no pipelining.
