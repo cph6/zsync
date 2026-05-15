@@ -1,10 +1,10 @@
-.TH "zsync" "1" "0.6.3" "Colin Phipps" "File Transfer"
+.TH "zsync" "1" "0.7.0" "Colin Phipps" "File Transfer"
 .SH "NAME"
 .LP 
 zsync \- Partial/differential file download client over HTTP
 .SH "SYNTAX"
 .LP 
-zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ { \-s | \-q } ] [ \-k \fIfile\fR.zsync ] [ -A \fIhostname\fP=\fIusername\fR:\fIpassword\fR ] { \fIfilename\fP | \fIurl\fR }
+zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-q ] [ \-k \fIfile\fR.zsync ] [ -A \fIhostname\fP=\fIusername\fR:\fIpassword\fR ] { \fIfilename\fP | \fIurl\fR }
 .LP 
 zsync \-V
 .SH "DESCRIPTION"
@@ -21,11 +21,12 @@ zsync retrieves the rest of the target file over HTTP. Once the download is fini
 .TP 
 \fB\-A\fR \fIhostname\fP=\fIusername\fR:\fIpassword\fR
 Specifies a username and password to be used with the given hostname. \fB-A\fR
-can be used multiple times (with different hostnames), in cases where e.g. the
- .zsync file is on a different server from the download, or there are multiple
-download servers (there could be different auth details for different servers -
-and zsync never assumes that your password should be sent to a server other
-than the one named - otherwise redirects would be dangerous!).
+can be used multiple times (with different hostnames), in cases where, for
+example, the .zsync file is on a different server from the download, or there
+are multiple download servers. Since zsync never assumes that your password
+should be sent to a server other than the one named, it is up to you to give
+credentials with \fB-A\fR for any alternate server to which the request is
+redirected.
 .TP 
 \fB\-i\fR \fIinputfile\fP
 Specifies (extra) input files. \fIinputfile\fP is scanned to identify blocks in common with the target file and zsync uses any blocks found. Can be used multiple times.
@@ -39,9 +40,6 @@ Override the default output file name.
 \fB\-q\fR
 Suppress the progress bar, download rate and ETA display.
 .TP 
-\fB\-s\fR
-Deprecated synonym for -q.
-.TP 
 \fB\-u\fR \fIurl\fP
 This specifies the referring URL.  If you have a .zsync file locally (if you
 downloaded it separately, with wget, say) and the .zsync file contains a
@@ -52,16 +50,12 @@ links work).
 .TP 
 \fB\-V\fR
 Prints the version of zsync.
-.SH "FILES"
 
 .SH "ENVIRONMENT VARIABLES"
 .LP 
 .TP 
 \fBhttp_proxy\fP
 Should be the [http://]hostname:port for your web proxy, if one is required to access the target web server(s).
-.SH "EXAMPLES"
-.LP 
-zsync \-i /var/lib/apt/lists/server.debian.org_debian_dists_etch_main_binary-i386_Packages http://zsync.moria.org.uk/s/etch/Packages.zsync 
 
 .SH "AUTHORS"
 .LP 
