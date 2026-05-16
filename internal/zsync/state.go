@@ -7,8 +7,12 @@ package zsync
  */
 
 // AI: copilot / grok code fast conversion of the state parts of zsync's zsync.c.
-// Note: thread-unsafe, as it is still mostly a like for like conversion of the
-// thread-unsafe C version.
+
+// Partially thread unsafe; methods used during setup and completion of
+// downloads should be used from a single thread. But methods used during data
+// transfer are thread safe.
+// TODO that's bad design, leftover from the single-threaded C implementation.
+// So this file in particular is probably a bad abstraction.
 
 import (
 	"crypto/sha1"

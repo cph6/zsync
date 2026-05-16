@@ -11,6 +11,7 @@ package main
 // putting multiple ranges in one request, no pipelining.
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -22,9 +23,11 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cph6/zsync/internal/zsync"
+	"golang.org/x/sync/errgroup"
 )
 
 const version = "0.7.0"
@@ -414,37 +417,52 @@ func fetchRemainingBlocksFromURL(client *http.Client, zs *zsync.State, rawURL, r
 		return nil
 	}
 
+	g, ctx := errgroup.WithContext(context.Background())
+	g.SetLimit(3)
 	start := time.Now()
-	for _, rng := range ranges {
-		req, err := http.NewRequest("GET", absUrl.String(), nil)
-		if err != nil {
-			return err
-		}
-		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rng.Start, rng.End))
-		if auth, ok := auths[absUrl.Hostname()]; ok {
-			req.SetBasicAuth(auth.username, auth.password)
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusPartialContent {
-			return fmt.Errorf("expected partial content from %s, got %s", absUrl.String(), resp.Status)
-		}
-		bytesReceived, err := zs.SubmitTargetData(rng.Start, resp.Body)
-		httpBytesDownloaded += bytesReceived
-		if err != nil {
-			return err
-		}
-		if !noProgress {
-			got, total := zs.Progress()
-			elapsed := time.Since(start)
-			fmt.Fprintf(os.Stderr, "\r%s %3.1fMBps %02.1f%% of target obtained", elapsed.Truncate(time.Millisecond*100).String(), float64(httpBytesDownloaded) / elapsed.Seconds() / 1000.0, float64(got)/float64(total)*100)
-		}
+	var mu sync.Mutex
+	for _, r := range ranges {
+		g.Go(func() error {
+			bytesReceived, err := fetchRange(ctx, zs, client, absUrl, auths, r)
+			// Lock protecting httpBytesDownloaded
+			mu.Lock()
+			defer mu.Unlock()
+			httpBytesDownloaded += bytesReceived
+			if err != nil {
+				return err
+			}
+			if !noProgress {
+				got, total := zs.Progress()
+				elapsed := time.Since(start)
+				fmt.Fprintf(os.Stderr, "\r%s %3.1fMBps %02.1f%% of target obtained", elapsed.Truncate(time.Millisecond*100).String(), float64(httpBytesDownloaded)/elapsed.Seconds()/1000000.0, float64(got)/float64(total)*100)
+			}
+			return nil
+		})
 	}
+	err = g.Wait()
 	if !noProgress {
 		fmt.Fprintf(os.Stderr, "\n")
 	}
-	return nil
+	return err
+}
+
+func fetchRange(ctx context.Context, zs *zsync.State, client *http.Client, url *url.URL, auths authMap, r zsync.ByteRange) (int64, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", r.Start, r.End))
+	req.Header.Set("User-Agent", "zsync/"+version)
+	if auth, ok := auths[url.Hostname()]; ok {
+		req.SetBasicAuth(auth.username, auth.password)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent {
+		return 0, fmt.Errorf("expected partial content from %s, got %s", url.String(), resp.Status)
+	}
+	return zs.SubmitTargetData(r.Start, resp.Body)
 }
