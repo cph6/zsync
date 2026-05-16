@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,14 +32,29 @@ type State struct {
 	checksum       string
 	checksumMethod string
 	urls           []string
-	filename       string
-	mtime          time.Time
+	tempFile       *os.File
 	curFilename    string
+	targetFilename string
+	mtime          time.Time
+}
+
+// Prepare make the State object ready for file reconstruction.
+func (zs *State) Prepare(targetFilename string) error {
+	// Create temporary file in the target directory.
+	targetDir := filepath.Dir(targetFilename)
+	tempFile, err := os.CreateTemp(targetDir, "rcksum-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file in %s: %w", targetDir, err)
+	}
+	zs.tempFile = tempFile
+	zs.curFilename = zs.tempFile.Name()
+	zs.Rs.SetTargetFile(zs.tempFile)
+	return nil
 }
 
 // Filename returns the suggested filename for the file being reconstructed.
 func (zs *State) Filename() string {
-	return zs.filename
+	return zs.targetFilename
 }
 
 // Mtime returns the mtime that the file should have when complete,
@@ -143,7 +159,7 @@ func (zs *State) SubmitSourceFile(f *os.File, progress bool) error {
 
 // RenameFile renames the file in which the target file is being reconstructed.
 func (zs *State) RenameFile(filename string) error {
-	cur := zs.currentFilename()
+	cur := zs.curFilename
 	if err := os.Rename(cur, filename); err != nil {
 		return err
 	}
@@ -151,36 +167,25 @@ func (zs *State) RenameFile(filename string) error {
 	return nil
 }
 
-func (zs *State) currentFilename() string {
-	if zs.curFilename == "" {
-		zs.curFilename = zs.Rs.Filename()
-	}
-	return zs.curFilename
-}
-
 // Complete checks that the reconstructed file is complete,
 // truncating the file to the correct length and verifying the checksum if it
 // was provided. It returns an error if any of these checks fail.
 // After this call, it is no longer valid to call other methods on the State except for End.
 func (zs *State) Complete() error {
-	filename := zs.currentFilename()
-	zs.Rs.Close()
-
 	if zs.Rs.BlocksTodo() > 0 {
 		return fmt.Errorf("file is not complete")
 	}
-	if err := os.Truncate(filename, zs.filelen); err != nil {
+	zs.Rs = nil
+	if err := zs.tempFile.Truncate(zs.filelen); err != nil {
 		return fmt.Errorf("failed to truncate file: %w", err)
 	}
-	f, err := os.Open(filename)
-	if err != nil {
-		return fmt.Errorf("failed to open file to check checksum: %w", err)
+	if _, err := zs.tempFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek to start of temporary file: %w", err)
 	}
-	defer f.Close()
 
 	if zs.checksum != "" && zs.checksumMethod == "SHA-1" {
 		h := sha1.New()
-		if _, err := io.Copy(h, f); err != nil {
+		if _, err := io.Copy(h, zs.tempFile); err != nil {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 		digest := hex.EncodeToString(h.Sum(nil))
@@ -201,11 +206,8 @@ func (zs *State) Complete() error {
 // partial data, which can be submitted as a source file for a future zsync
 // run of this or a successor version of the target file.
 func End(zs *State) string {
-	filename := zs.currentFilename()
-	if zs.Rs != nil {
-		zs.Rs.Close()
-	}
-	return filename
+	zs.tempFile.Close()
+	return zs.curFilename
 }
 
 // Returns stats on the file reconstruction process.

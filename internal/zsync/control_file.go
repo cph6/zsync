@@ -20,8 +20,8 @@ import (
 	"github.com/cph6/zsync/internal/rcksum"
 )
 
-// ZsyncBegin loads a zsync file and returns the state tracking object.
-func Begin(f *os.File) (*State, error) {
+// New loads a zsync file and returns the state tracking object.
+func New(f *os.File) (*State, error) {
 	checksumBytes := 16
 	rsumBytes := 4
 	seqMatches := 1
@@ -61,7 +61,7 @@ func Begin(f *os.File) (*State, error) {
 				return nil, fmt.Errorf("bad length: %s", value)
 			}
 		case "Filename":
-			zs.filename = value
+			zs.targetFilename = value
 		case "URL":
 			zs.urls = append(zs.urls, value)
 		case "Blocksize":

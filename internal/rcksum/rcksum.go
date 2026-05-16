@@ -75,15 +75,6 @@ func New(nblocks BlockID, blockSize int64, rsumBytes int, checksumBytes uint, re
 		}
 	}
 
-	// Create temporary file
-	// TODO: temp path needs to be in the dir with the output file.
-	tmpFile, err := os.CreateTemp(".", "rcksum-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temporary file: %w", err)
-	}
-	z.filename = tmpFile.Name()
-	z.fd = tmpFile
-
 	// Allocate hash entries.
 	z.blockHashes = make([]hashEntry, nblocks)
 
@@ -94,39 +85,11 @@ func New(nblocks BlockID, blockSize int64, rsumBytes int, checksumBytes uint, re
 	return z, nil
 }
 
-// Close cleans up resources associated with the RcksumState
-func (z *RcksumState) Close() error {
-	var err error
-
-	// Close the file descriptor
-	if z.fd != nil {
-		err = z.fd.Close()
-		z.fd = nil
-	}
-
-	// Delete the temporary file
-	if z.filename != "" {
-		_ = os.Remove(z.filename)
-		z.filename = ""
-	}
-
-	return err
-}
-
-// Filename returns the temporary filename and transfers ownership to the caller
-// After this call, the RcksumState will not manage the file
-func (z *RcksumState) Filename() string {
-	filename := z.filename
-	z.filename = ""
-	return filename
-}
-
-// File returns the file descriptor for the temporary file
-// After this call, the RcksumState will not manage the file
-func (z *RcksumState) File() *os.File {
-	fd := z.fd
-	z.fd = nil
-	return fd
+// Passes a file handle for rcksum to use for writing the reconstructed file.
+// The file should be writeable and will be overwritten.
+// rcksum expects to be the sole writer to the file for the duration.
+func (z *RcksumState) SetTargetFile(fd *os.File) {
+	z.fd = fd
 }
 
 // AddTargetBlock sets the stored hash values for the given blockid
@@ -157,11 +120,6 @@ func (z *RcksumState) BlocksTodo() int64 {
 // NeededBlockRanges returns the ranges of blocks that are still needed
 func (z *RcksumState) NeededBlockRanges(from, to BlockID) []blockIDPair {
 	return z.knownBlocks.missingBlocksBetween(from, to)
-}
-
-// Filehandle returns the file descriptor for the temporary file
-func (z *RcksumState) Filehandle() *os.File {
-	return z.fd
 }
 
 // Returns stats on the rolling checksum process.

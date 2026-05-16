@@ -177,6 +177,11 @@ func main() {
 		seedFiles = append([]string{tempFile}, seedFiles...)
 	}
 
+	if err := zs.Prepare(outputPath); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to prepare temporary file: %v", err)
+		exitWithCode(1)
+	}
+
 	localUsed := int64(0)
 	for _, file := range seedFiles {
 		if !quiet {
@@ -281,7 +286,7 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 			return nil, fmt.Errorf("failed to open .zsync: %w", err)
 		}
 		defer f.Close()
-		zs, err := zsync.Begin(f)
+		zs, err := zsync.New(f)
 		return zs, err
 	}
 
@@ -337,7 +342,7 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 		return nil, fmt.Errorf("seek: %w", err)
 	}
 
-	zs, err := zsync.Begin(tmpFile)
+	zs, err := zsync.New(tmpFile)
 	return zs, err
 }
 

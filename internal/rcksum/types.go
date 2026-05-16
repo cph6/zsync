@@ -83,7 +83,6 @@ type RcksumState struct {
 	stats Stats
 
 	// Temporary file for output
-	filename string
 	fd       *os.File
 
 	// Synchronization for thread safety

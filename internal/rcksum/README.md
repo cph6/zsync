@@ -44,6 +44,11 @@ if err != nil {
     log.Fatal(err)
 }
 defer z.Close()
+// Provide scratch file; the caller takes over this file once it is finished
+// with rcksum, and will probably want to rename it after a successful
+// reconstruction.
+f, err := os.CreateTemp("", "rcksum-XXXXXX")
+z.SetTargetFile(f)
 ```
 
 ### Matching Source Data
@@ -63,17 +68,6 @@ fmt.Printf("%d blocks remaining\n", remaining)
 
 // Get ranges of blocks still needed
 needed := z.NeededBlockRanges(0, z.blocks)
-```
-
-### Retrieving Results
-
-```go
-// Get the temporary file
-fd := z.File()
-defer fd.Close()
-
-// Get the temporary filename
-filename := z.Filename()
 ```
 
 ## Implementation Details
