@@ -222,6 +222,10 @@ func main() {
 		exitWithCode(3)
 	}
 
+	if verbose {
+		s := zs.Stats()
+		fmt.Printf("hash stats: bithash hit %d, weak hit %d, checksums calculated %d, strong hit %d\n", s.HashHit, s.WeakHit, s.Checksummed, s.StrongHit)
+	}
 	if !quiet {
 		fmt.Print("verifying download...")
 	}
@@ -267,10 +271,6 @@ func main() {
 
 	if !quiet {
 		fmt.Printf("used %d local, fetched %d\n", localUsed, httpBytesDownloaded)
-	}
-	if verbose {
-		s := zs.Stats()
-		fmt.Printf("hash stats: bithash hit %d, weak hit %d, checksums calculated %d, strong hit %d\n", s.HashHit, s.WeakHit, s.Checksummed, s.StrongHit)
 	}
 }
 
@@ -414,6 +414,7 @@ func fetchRemainingBlocksFromURL(client *http.Client, zs *zsync.State, rawURL, r
 		return nil
 	}
 
+	start := time.Now()
 	for _, rng := range ranges {
 		req, err := http.NewRequest("GET", absUrl.String(), nil)
 		if err != nil {
@@ -438,7 +439,8 @@ func fetchRemainingBlocksFromURL(client *http.Client, zs *zsync.State, rawURL, r
 		}
 		if !noProgress {
 			got, total := zs.Progress()
-			fmt.Fprintf(os.Stderr, "\r%02.1f%% of target obtained", float64(got)/float64(total)*100)
+			elapsed := time.Since(start)
+			fmt.Fprintf(os.Stderr, "\r%s %3.1fMBps %02.1f%% of target obtained", elapsed.Truncate(time.Millisecond*100).String(), float64(httpBytesDownloaded) / elapsed.Seconds() / 1000.0, float64(got)/float64(total)*100)
 		}
 	}
 	if !noProgress {
