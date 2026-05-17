@@ -154,7 +154,11 @@ func main() {
 	}
 	source := args[0]
 
-	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify}}}
+	client := &http.Client{
+		Transport: &http.Transport{
+			ForceAttemptHTTP2: true,
+			TLSClientConfig:   &tls.Config{InsecureSkipVerify: skipVerify},
+		}}
 
 	zs, err := readZsyncControlFile(client, source, keepZsync, referer, auths)
 	if err != nil {
