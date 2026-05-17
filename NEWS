@@ -1,3 +1,12 @@
+Changes in 0.7.0
+- The client was entirely rewritten. The feature set has changed substantially,
+  so if you are an existing user using zsync in any automation, read carefully.
+- Added HTTPS support.
+- Removed support for looking inside gzip files. zsync therefore only supports
+  incremental transfer for gzip files compressed with --rsyncable.
+  - Note: this breaks compatibility with zsync files created earlier versions of
+    zsyncmake if the target file is a gzip file unless -Z is used.
+ 
 Changes in 0.6.4
 - Support for looking inside gzip files is deprecated; all options related to
   compressed files are correspondingly deprecated except -Z.

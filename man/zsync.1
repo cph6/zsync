@@ -4,7 +4,7 @@
 zsync \- Partial/differential file download client over HTTP
 .SH "SYNTAX"
 .LP 
-zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-q ] [ \-k \fIfile\fR.zsync ] [ -A \fIhostname\fP=\fIusername\fR:\fIpassword\fR ] { \fIfilename\fP | \fIurl\fR }
+zsync [ \-u \fIurl\fR ] [ \-i \fIinputfile\fP ] [ \-o \fIoutputfile\fP ] [ \-q ] [ \-k \fIfile\fR.zsync ] [ -A \fIhostname\fP=\fIusername\fR:\fIpassword\fR ] [ --no-check-certificate ] { \fIfilename\fP | \fIurl\fR }
 .LP 
 zsync \-V
 .SH "DESCRIPTION"
@@ -34,6 +34,10 @@ Specifies (extra) input files. \fIinputfile\fP is scanned to identify blocks in 
 \fB\-k\fR \fIfile\fP.zsync
 Indicates that zsync should save the zsync file that it downloads, with the given filename. If that file already exists, then zsync will make a conditional request to the web server, such that it will only download it again if the server's copy is newer. zsync will append .part to the filename for storing it while it is downloading, and will only overwrite the main file once the download is done - and if the download is interrupted, it will resume using the data in the .part file.
 .TP 
+\fB--no-check-certificate\fR
+Disables verification of the hostname or SSL certificate chain for either the .zsync file download or for retrieving data blocks from the target file.
+WARNING: this makes the transfer vulnerable to man-in-the-middle attacks; you may want to independently verify the downloaded data.
+. TP 
 \fB\-o\fR \fIoutputfile\fP
 Override the default output file name.
 .TP 
@@ -56,6 +60,12 @@ Prints the version of zsync.
 .TP 
 \fBhttp_proxy\fP
 Should be the [http://]hostname:port for your web proxy, if one is required to access the target web server(s).
+.TP 
+\fBhttps_proxy\fP
+Should be the [https://]hostname:port for the proxy to use for HTTPS requests, if one is required to access the target web server(s).
+.TP 
+\fBno_proxy\fP
+NO_PROXY defines a comma-separated list of domains, IP addresses or IP ranges for which no proxy will be used.
 
 .SH "AUTHORS"
 .LP 

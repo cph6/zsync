@@ -123,6 +123,7 @@ func main() {
 		verbose    bool
 		referer    string
 		showVer    bool
+		skipVerify bool
 	)
 
 	flag.Var(&auths, "A", "hostname=username:password")
@@ -133,6 +134,7 @@ func main() {
 
 	flag.StringVar(&outputPath, "o", "", "output filename")
 	flag.Var(&seedFiles, "i", "seed file to supply as local source data")
+	flag.BoolVar(&skipVerify, "no-check-certificate", false, "Disable verifying the SSL certificate of any target server. NOTE: this makes the file transfer vulnerable to man-in-the-middle attacks.")
 	flag.BoolVar(&showVer, "V", false, "show version")
 	flag.BoolVar(&quiet, "q", false, "suppress progress output")
 	flag.StringVar(&referer, "u", "", "If a local zsync file is supplied, this supplies the URL from which the .zsync file is or could be downloaded - this is used for resolving relative URLs in the .zsync file, as if the .zsync was downloaded from this URL.")
@@ -152,7 +154,7 @@ func main() {
 	}
 	source := args[0]
 
-	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: false}}}
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify}}}
 
 	zs, err := readZsyncControlFile(client, source, keepZsync, referer, auths)
 	if err != nil {
