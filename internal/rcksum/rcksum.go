@@ -114,6 +114,8 @@ func (z *RcksumState) AddTargetBlock(b BlockID, r RSum, checksum [ChecksumSize]b
 
 // BlocksTodo returns the number of blocks still needed
 func (z *RcksumState) BlocksTodo() int64 {
+	z.mu.Lock()
+	defer z.mu.Unlock()
 	return int64(z.blocks - BlockID(z.knownBlocks.gotBlocks))
 }
 

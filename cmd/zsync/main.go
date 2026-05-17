@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/cph6/zsync/internal/zsync"
 	"golang.org/x/sync/errgroup"
@@ -74,7 +75,9 @@ func (a authMap) Set(value string) error {
 	return nil
 }
 
-func getFilenamePrefix(source string) string {
+// Returns a suggested filename for the target file, given the source path of
+// the zsync control file.
+func getFilenameBase(source string) string {
 	name := source
 	if u, err := url.Parse(source); err == nil && u.Scheme != "" && u.Host != "" {
 		name = path.Base(u.Path)
@@ -82,8 +85,16 @@ func getFilenamePrefix(source string) string {
 		name = filepath.Base(source)
 	}
 
+	// Usually the control file is the filename + .zsync, so stripping that gives
+	// a good guess at the target filename.
+	return strings.TrimSuffix(name, ".zsync")
+}
+
+// Returns a textual prefix of the filename part of the source filename.
+func getFilenamePrefix(source string) string {
+	name := getFilenameBase(source)
 	for i, r := range name {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+		if !(unicode.IsLetter(r) || unicode.IsNumber(r)) {
 			return name[:i]
 		}
 	}
@@ -91,25 +102,33 @@ func getFilenamePrefix(source string) string {
 }
 
 func getFilename(zs *zsync.State, source string) string {
+	// First try using the filename specified in the zsync control file.
 	name := zs.Filename()
 	if name != "" {
-		// TODO: dodgy security check - switch to some standard function.
-		if strings.Contains(name, "/") || strings.Contains(name, "\\") {
-			fmt.Fprintf(os.Stderr, "Rejected filename specified in %s, contained path component.\n", source)
-		} else {
-			prefix := getFilenamePrefix(source)
-			if prefix != "" && strings.HasPrefix(name, prefix) {
-				return name
-			}
-			if prefix != "" {
-				fmt.Fprintf(os.Stderr, "Rejected filename specified in %s - prefix %s differed from filename %s.\n", source, prefix, name)
-			}
+		// 1. Strip any path component from filename supplied by the remote.
+		//    i.e. the remote side should not be able to ask for ../../something to
+		//    be targetted for writing.
+		name := filepath.Base(name)
+		// 2. Accept the name only if it has a common prefix with the name of the
+		//    zsync control file. This is a principle of least surprise check:
+		//    if the user ran `zsync https://debian.org/debian-15.0.iso.zsync`, the
+		//    target file written should not be `mbox`.
+		prefix := getFilenamePrefix(source)
+		if prefix != "" && strings.HasPrefix(name, prefix) {
+			return name
+		}
+		if prefix != "" {
+			fmt.Fprintf(os.Stderr, "Rejected filename specified in %s - prefix %s differed from filename %s.\n", source, prefix, name)
 		}
 	}
-	prefix := getFilenamePrefix(source)
+	// Fallback to using the filename part of the source URL or path. Since that
+	// is what the user gave us, that name should never surprise them.
+	prefix := getFilenameBase(source)
 	if prefix != "" {
 		return prefix
 	}
+	// If the user asked for a URL with no filename component and somehow gets
+	// back a valid zsync file, then fallback to a hardcoded name.
 	return "zsync-download"
 }
 
