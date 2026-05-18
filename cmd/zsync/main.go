@@ -204,6 +204,7 @@ func main() {
 	client := &http.Client{
 		Transport: &http.Transport{
 			ForceAttemptHTTP2: true,
+			Proxy: http.ProxyFromEnvironment,
 			TLSClientConfig:   &tls.Config{InsecureSkipVerify: skipVerify},
 		}}
 

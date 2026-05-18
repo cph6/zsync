@@ -2,12 +2,16 @@ Changes in 0.7.0
 - The client was entirely rewritten. The feature set has changed substantially,
   so if you are an existing user using zsync in any automation, read carefully.
 - Now supports HTTPS.
-- Now supports HTTP/2.
+- Now supports and uses HTTP/2 instead of HTTP/1.1 pipelining.
 - Removed support for looking inside gzip files. zsync therefore only supports
   incremental transfer for gzip files compressed with --rsyncable.
-  - Note: this breaks compatibility with zsync files created earlier versions of
-    zsyncmake if the target file is a gzip file unless -Z is used.
-  - related options to zsyncmake are removed.
+  - Note: this breaks compatibility with zsync files created by earlier
+    versions of zsyncmake if the target file is a gzip file unless -Z was used.
+  - related options to zsyncmake (-e -C -z -U) are removed.
+- -k option no longer caches the .zsync file — the zsync file is always
+  downloaded. (It would be good to add this back in; it just got lost when all
+  the custom HTTP code was removed.) So -k functions but is less good than
+  fetching the file separately with a tool that implements If-Modified-Since.
 - Reject -k option if it appears that the user is accidentally overwriting a
   non-zsync file.
  

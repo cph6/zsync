@@ -35,7 +35,6 @@ func TestRcksumStateCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
-	defer z.Close()
 
 	if z.blocks != 100 {
 		t.Errorf("Expected 100 blocks, got %d", z.blocks)
@@ -54,7 +53,6 @@ func TestAddTargetBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
-	defer z.Close()
 
 	r := RSum{A: 100, B: 200}
 	checksum := CalcChecksum([]byte("test data"))
@@ -88,7 +86,6 @@ func TestHashTableBuilding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
-	defer z.Close()
 
 	// Add some target blocks
 	for i := 0; i < 10; i++ {
@@ -111,7 +108,6 @@ func TestBlocksTodo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
-	defer z.Close()
 
 	if z.BlocksTodo() != 100 {
 		t.Errorf("Expected 100 remaining blocks, got %d", z.BlocksTodo())
@@ -129,7 +125,6 @@ func TestNeededBlockRanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
-	defer z.Close()
 
 	// Mark blocks 10-19 as obtained
 	for i := 10; i < 20; i++ {
