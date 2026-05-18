@@ -8,6 +8,8 @@ Changes in 0.7.0
   - Note: this breaks compatibility with zsync files created earlier versions of
     zsyncmake if the target file is a gzip file unless -Z is used.
   - related options to zsyncmake are removed.
+- Reject -k option if it appears that the user is accidentally overwriting a
+  non-zsync file.
  
 Changes in 0.6.4
 - Support for looking inside gzip files is deprecated; all options related to

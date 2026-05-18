@@ -11,8 +11,10 @@ package main
 // putting multiple ranges in one request, no pipelining.
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -132,11 +134,37 @@ func getFilename(zs *zsync.State, source string) string {
 	return "zsync-download"
 }
 
+// Checks for a bad filename supplied for writing the local copy of the control
+// file.
+func checkSuppliedFilename(filename string) error {
+	// If the file ends in .zsync, assume it's fine. If the file is new, it's fine.
+	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if strings.HasSuffix(filename, ".zsync") {
+		return nil
+	}
+	f, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("failed to verify that %s is a zsync control file: %w", filename, err)
+	}
+	defer f.Close()
+	reader := bufio.NewReader(f)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to verify that %s is a zsync control file: %w", filename, err)
+	}
+	if !strings.HasPrefix(line, "zsync:") {
+		return fmt.Errorf("Refusing to overwrite %s with zsync control file. Did you use -k on the wrong file?", filename)
+	}
+	return nil
+}
+
 func main() {
 	var (
 		auths      authMap = make(authMap)
 		seedFiles  stringSlice
-		outputPath string
+		filename   string
 		keepZsync  string
 		quiet      bool
 		verbose    bool
@@ -151,7 +179,7 @@ func main() {
 	// as in curl. Oh well.
 	flag.StringVar(&keepZsync, "k", "", "save a copy of the .zsync file to this path. If the download is interrupted, the download can be resumed using this local copy instead of redownloading.")
 
-	flag.StringVar(&outputPath, "o", "", "output filename")
+	flag.StringVar(&filename, "o", "", "output filename")
 	flag.Var(&seedFiles, "i", "seed file to supply as local source data")
 	flag.BoolVar(&skipVerify, "no-check-certificate", false, "Disable verifying the SSL certificate of any target server. NOTE: this makes the file transfer vulnerable to man-in-the-middle attacks.")
 	flag.BoolVar(&showVer, "V", false, "show version")
@@ -179,6 +207,10 @@ func main() {
 			TLSClientConfig:   &tls.Config{InsecureSkipVerify: skipVerify},
 		}}
 
+	if err := checkSuppliedFilename(keepZsync); err != nil {
+		fmt.Fprintf(os.Stderr, "%v", err)
+		os.Exit(3)
+	}
 	zs, err := readZsyncControlFile(client, source, keepZsync, referer, auths)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed reading control file: %v\n", err)
@@ -189,7 +221,6 @@ func main() {
 		referer = source
 	}
 
-	filename := outputPath
 	if filename == "" {
 		filename = getFilename(zs, source)
 	}
@@ -205,7 +236,7 @@ func main() {
 		seedFiles = append([]string{tempFile}, seedFiles...)
 	}
 
-	if err := zs.Prepare(outputPath); err != nil {
+	if err := zs.Prepare(filename); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to prepare temporary file: %v", err)
 		exitWithCode(1)
 	}
