@@ -5,3 +5,4 @@ linters:
       checks:
         - all
         - '-SA1019'
+        - '-QF1001'

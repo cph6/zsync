@@ -297,7 +297,11 @@ func main() {
 		fmt.Println("checksum matches OK")
 	}
 
-	tempFilename := zsync.End(zs)
+	tempFilename, err := zsync.End(zs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed(%v), download available in %s\n", err, tempFilename)
+		exitWithCode(2)
+	}
 	mtime := zs.Mtime()
 
 	if filename != "" {
@@ -347,7 +351,10 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 		}
 		defer f.Close()
 		zs, err := zsync.New(f)
-		return zs, err
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse .zsync file: %w", err)
+		}
+		return zs, nil
 	}
 
 	// Otherwise, try to download from URL.
@@ -383,8 +390,13 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 		if err != nil {
 			return nil, fmt.Errorf("temp file creation failed: %w", err)
 		}
+		pathToUse = tmpFile.Name()
 		defer tmpFile.Close()
-		defer os.Remove(pathToUse)
+		defer func() {
+			if err := os.Remove(pathToUse); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to remove temporary copy of zsync file(%s): %v\n", pathToUse, err)
+			}
+		}()
 	} else {
 		tmpFile, err = os.Create(pathToUse)
 		if err != nil {
@@ -403,7 +415,10 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 	}
 
 	zs, err := zsync.New(tmpFile)
-	return zs, err
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse .zsync file: %w", err)
+	}
+	return zs, nil
 }
 
 func readSeedFile(zs *zsync.State, filename string, noProgress bool) error {
@@ -411,9 +426,14 @@ func readSeedFile(zs *zsync.State, filename string, noProgress bool) error {
 	if err != nil {
 		return fmt.Errorf("could not open seed file %s: %w", filename, err)
 	}
-	defer f.Close()
 	err = zs.SubmitSourceFile(f, !noProgress)
-	return err
+	if err != nil {
+		return err
+	}
+	if closeErr := f.Close(); closeErr != nil {
+		return fmt.Errorf("failed to close seed file: %w", closeErr)
+	}
+	return nil
 }
 
 var httpBytesDownloaded int64

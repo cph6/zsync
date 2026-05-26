@@ -150,12 +150,16 @@ func (zs *State) SubmitTargetData(offset int64, in io.Reader) (int64, error) {
 		}
 		bytesReceived += int64(n)
 		// err == nil implies a full buffer.
-		zs.Rs.SubmitBlocks(buf, id, id)
+		err = zs.Rs.SubmitBlocks(buf, id, id)
+		if err != nil {
+			return bytesReceived, err
+		}
 		id++
 	}
-	if err == io.EOF {
+	switch err {
+	case io.EOF:
 		return bytesReceived, nil
-	} else if err == io.ErrUnexpectedEOF {
+	case io.ErrUnexpectedEOF:
 		if id == rcksum.BlockID(zs.blocks-1) {
 			// Short last block. rcksum expects a full block, padded with 0s, so pad and submit.
 			for i := range buf {
@@ -163,9 +167,11 @@ func (zs *State) SubmitTargetData(offset int64, in io.Reader) (int64, error) {
 					buf[i] = 0
 				}
 			}
-			zs.Rs.SubmitBlocks(buf, id, id)
-			return bytesReceived, nil
+			err = zs.Rs.SubmitBlocks(buf, id, id)
+			return bytesReceived, err
 		} // else fall through; any other incomplete block is an error.
+	default:
+		// Any other error is returned as-is
 	}
 	return bytesReceived, err
 }
@@ -225,9 +231,9 @@ func (zs *State) Complete() error {
 // is abandoned; in that case the returned filename is the temporary file with
 // partial data, which can be submitted as a source file for a future zsync
 // run of this or a successor version of the target file.
-func End(zs *State) string {
-	zs.tempFile.Close()
-	return zs.curFilename
+func End(zs *State) (string, error) {
+	err := zs.tempFile.Close()
+	return zs.curFilename, err
 }
 
 // Stats returns stats on the file reconstruction process.
