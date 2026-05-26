@@ -99,31 +99,10 @@ func (z *RcksumState) removeBlockFromHash(id BlockID) {
 	z.blockHashes[id].next = noBlock
 }
 
-// minUint16 is a helper to find minimum of two uint16 values
-func minUint16(a, b uint16) uint16 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// maxInt returns the maximum of two int values
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // log2 returns the base-2 logarithm of x
 func log2(x uint32) int {
 	if x == 0 {
 		return 0
 	}
 	return bits.Len32(x) - 1
-}
-
-// PopCount returns the number of set bits (population count)
-func PopCount(b byte) int {
-	return bits.OnesCount8(b)
 }

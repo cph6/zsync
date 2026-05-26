@@ -73,10 +73,10 @@ func TestAddTargetBlock(t *testing.T) {
 func TestUpdateRsum(t *testing.T) {
 	r := RSum{A: 100, B: 200}
 
-	UpdateRsum(&r, 'a', 'b', 12)
+	updateRsum(&r, 'a', 'b', 12)
 
 	if r.A != 101 || r.B != 61741 {
-		t.Error("Unexpected result from UpdateRsum: A=", r.A, "B=", r.B)
+		t.Error("Unexpected result from updateRsum: A=", r.A, "B=", r.B)
 	}
 }
 

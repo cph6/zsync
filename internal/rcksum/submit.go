@@ -86,9 +86,9 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) (int, error) {
 			if blocksMatched == 0 {
 				// Advance window by 1 byte - update rolling checksum
 				if x+int(z.blockSize)*z.seqMatches < len(data) {
-					UpdateRsum(&z.r[0], data[x], data[x+int(z.blockSize)], uint(z.blockShift))
+					updateRsum(&z.r[0], data[x], data[x+int(z.blockSize)], uint(z.blockShift))
 					if z.seqMatches > 1 {
-						UpdateRsum(&z.r[1], data[x+int(z.blockSize)], data[x+2*int(z.blockSize)], uint(z.blockShift))
+						updateRsum(&z.r[1], data[x+int(z.blockSize)], data[x+2*int(z.blockSize)], uint(z.blockShift))
 					}
 				}
 				x++

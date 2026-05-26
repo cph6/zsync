@@ -60,7 +60,6 @@ type RcksumState struct {
 	blockShift    int     // log2(blocksize)
 	rsumAMask     uint16  // Mask to apply to rsum values before lookup
 	rsumBits      uint16  // Number of bits of rsum data
-	hashFuncShift uint    // Config for the hash function
 	checksumBytes uint    // Number of bytes of the MD4 checksum available
 	seqMatches    int     // Required consecutive matches
 	context       int64   // blockSize * seqMatches
@@ -83,7 +82,7 @@ type RcksumState struct {
 	stats Stats
 
 	// Temporary file for output
-	fd       *os.File
+	fd *os.File
 
 	// Synchronization for thread safety
 	mu sync.Mutex

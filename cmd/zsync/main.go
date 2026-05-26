@@ -80,7 +80,7 @@ func (a authMap) Set(value string) error {
 // Returns a suggested filename for the target file, given the source path of
 // the zsync control file.
 func getFilenameBase(source string) string {
-	name := source
+	var name string
 	if u, err := url.Parse(source); err == nil && u.Scheme != "" && u.Host != "" {
 		name = path.Base(u.Path)
 	} else {
@@ -155,14 +155,14 @@ func checkSuppliedFilename(filename string) error {
 		return fmt.Errorf("failed to verify that %s is a zsync control file: %w", filename, err)
 	}
 	if !strings.HasPrefix(line, "zsync:") {
-		return fmt.Errorf("Refusing to overwrite %s with zsync control file. Did you use -k on the wrong file?", filename)
+		return fmt.Errorf("refusing to overwrite %s with zsync control file. Did you use -k on the wrong file?", filename)
 	}
 	return nil
 }
 
 func main() {
 	var (
-		auths      authMap = make(authMap)
+		auths      = make(authMap)
 		seedFiles  stringSlice
 		filename   string
 		keepZsync  string
@@ -204,7 +204,7 @@ func main() {
 	client := &http.Client{
 		Transport: &http.Transport{
 			ForceAttemptHTTP2: true,
-			Proxy: http.ProxyFromEnvironment,
+			Proxy:             http.ProxyFromEnvironment,
 			TLSClientConfig:   &tls.Config{InsecureSkipVerify: skipVerify},
 		}}
 
@@ -451,7 +451,7 @@ func fetchRemainingBlocksFromURL(client *http.Client, zs *zsync.State, rawURL, r
 	if err != nil {
 		return fmt.Errorf("invalid URL %s: %w", rawURL, err)
 	}
-	var absUrl *url.URL
+	var absURL *url.URL
 	if !u.IsAbs() {
 		if referer == "" {
 			return fmt.Errorf("URL '%s' from the .zsync file is relative, but no referer URL is known", rawURL)
@@ -460,13 +460,13 @@ func fetchRemainingBlocksFromURL(client *http.Client, zs *zsync.State, rawURL, r
 		if err != nil {
 			return err
 		}
-		absUrl = base.ResolveReference(u)
+		absURL = base.ResolveReference(u)
 	} else {
-		absUrl = u
+		absURL = u
 	}
 
 	if !noProgress {
-		fmt.Fprintf(os.Stderr, "downloading new blocks from %s:\n", absUrl.String())
+		fmt.Fprintf(os.Stderr, "downloading new blocks from %s:\n", absURL.String())
 	}
 
 	ranges := zs.NeededByteRanges()
@@ -480,7 +480,7 @@ func fetchRemainingBlocksFromURL(client *http.Client, zs *zsync.State, rawURL, r
 	var mu sync.Mutex
 	for _, r := range ranges {
 		g.Go(func() error {
-			bytesReceived, err := fetchRange(ctx, zs, client, absUrl, auths, r)
+			bytesReceived, err := fetchRange(ctx, zs, client, absURL, auths, r)
 			// Lock protecting httpBytesDownloaded
 			mu.Lock()
 			defer mu.Unlock()

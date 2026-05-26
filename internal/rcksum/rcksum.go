@@ -1,3 +1,19 @@
+// Package rcksum is an implementation of the rsync
+// rolling checksum algorithm, used to find desired blocks
+// of data out of a data stream.
+//
+// Typical usage:
+// - create object holding state (New),
+// - specify the target blocks (AddTargetBlock) by their checksums,
+// - pass it a temporary file in which to write target data (SetTargetFile).
+// - feed it data that might contain target blocks (SubmitSourceFile).
+// - ask what blocks are still missing (NeededBlockRanges).
+// - feed it the missing target blocks (SubmitBlocks).
+// - check that you are done (BlocksTodo)
+//
+// Methods are available for retrieving stats during
+// reconstruction, and for calculating the block
+// checksums.
 package rcksum
 
 /*
@@ -34,8 +50,8 @@ func CalcChecksum(data []byte) [ChecksumSize]byte {
 	return result
 }
 
-// UpdateRsum updates the rolling checksum by removing one byte and adding another
-func UpdateRsum(r *RSum, oldC, newC byte, blockShift uint) {
+// updateRsum updates the rolling checksum by removing one byte and adding another
+func updateRsum(r *RSum, oldC, newC byte, blockShift uint) {
 	r.A += uint16(newC) - uint16(oldC)
 	r.B += r.A - (uint16(oldC) << blockShift)
 }
@@ -85,7 +101,8 @@ func New(nblocks BlockID, blockSize int64, rsumBytes int, checksumBytes uint, re
 	return z, nil
 }
 
-// Passes a file handle for rcksum to use for writing the reconstructed file.
+// SetTargetFile adds a file handle to the rcksum state to
+// be used for reconstructing the target file.
 // The file should be writeable and will be overwritten.
 // rcksum expects to be the sole writer to the file for the duration.
 func (z *RcksumState) SetTargetFile(fd *os.File) {
@@ -124,7 +141,7 @@ func (z *RcksumState) NeededBlockRanges(from, to BlockID) []blockIDPair {
 	return z.knownBlocks.missingBlocksBetween(from, to)
 }
 
-// Returns stats on the rolling checksum process.
+// Stats returns stats on the rolling checksum process.
 func (z *RcksumState) Stats() Stats {
 	return z.stats
 }

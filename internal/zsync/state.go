@@ -1,3 +1,19 @@
+// Package zsync implements the high level process of
+// loading and using a zsync control file to reconstruct a
+// target file.
+//
+// Typically it is used with the following steps:
+// - parse the zsync control file (New)
+// - prepares the state required for reconstruction
+//   (Prepare),
+// - the caller feeds it the local data
+//   (SubmitSourceFile), which is uses to partially
+//   construct the target file.
+// - the caller asks which blocks are still missing
+//   (NeededByteRanges),
+// - the caller fetches the missing blocks from the target
+//   and passes them in also (SubmitTargetData)
+// - the file is finalised and returned to the caller (Complete and End)
 package zsync
 
 /*
@@ -214,7 +230,7 @@ func End(zs *State) string {
 	return zs.curFilename
 }
 
-// Returns stats on the file reconstruction process.
+// Stats returns stats on the file reconstruction process.
 // Not wrapping this in a "package zsync" version of the object here, but I may
 // change that later. This is mostly debugging stats, I don't suggest that
 // anyone else use it as is.
