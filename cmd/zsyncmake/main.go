@@ -62,7 +62,7 @@ func main() {
 	var instream io.Reader
 	var fileHandle *os.File
 	var err error
-	var mtime time.Time
+	var fileInfo os.FileInfo
 	var isStdin bool
 
 	switch len(args) {
@@ -73,13 +73,10 @@ func main() {
 			fmt.Fprintf(os.Stderr, "open: %v\n", err)
 			os.Exit(2)
 		}
-		defer fileHandle.Close()
 
-		// Get mtime
-		fi, err := fileHandle.Stat()
-		if err == nil {
-			mtime = fi.ModTime()
-		}
+		// Get file stats.
+		fileInfo, _ = fileHandle.Stat()
+		// On error, we just continue without stat information.
 
 		if *filename == "" {
 			*filename = filepath.Base(inputFile)
@@ -95,15 +92,10 @@ func main() {
 		os.Exit(2)
 	}
 
-	// Get file length if not stdin
-	var fileLen int64
-	if !isStdin && fileHandle != nil {
-		fi, _ := fileHandle.Stat()
-		fileLen = fi.Size()
-	}
-
 	if *blocksize == 0 {
-		if fileLen < 100000000 {
+		// fileInfo.Length might be zero if we do not have file stats;
+		// defaulting to 2048 in that case.
+		if fileInfo.Size() < int64(100000000) {
 			*blocksize = 2048
 		} else {
 			*blocksize = 4096
@@ -121,7 +113,20 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error reading file: %v\n", err)
 		os.Exit(2)
 	}
-	defer os.Remove(checksumFile.Name())
+	defer func() {
+		err := os.Remove(checksumFile.Name())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to remove temporary file %s\n", checksumFile.Name())
+			// And disregard - this does not affect the generated output.
+		}
+	}()
+	if !isStdin {
+		err := fileHandle.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to finish reading file: %v\n", err)
+			os.Exit(2)
+		}
+	}
 
 	seqMatches, rsumLen, checksumLen := determineHashLengths(fileLen, *blocksize)
 
@@ -140,48 +145,84 @@ func main() {
 			fmt.Fprintf(os.Stderr, "open: %v\n", err)
 			os.Exit(2)
 		}
-		defer outstream.Close()
 	} else {
 		outstream = os.Stdout
 	}
 
-	// Write .zsync file
-	writer := bufio.NewWriter(outstream)
-	defer writer.Flush()
-
-	fmt.Fprintf(writer, "zsync: %s\n", version)
-
-	if *filename != "" {
-		fmt.Fprintf(writer, "Filename: %s\n", *filename)
-		if !mtime.IsZero() {
-			fmt.Fprintf(writer, "MTime: %s\n", mtime.UTC().Format(time.RFC1123Z))
-		}
-	}
-
-	fmt.Fprintf(writer, "Blocksize: %d\n", *blocksize)
-	fmt.Fprintf(writer, "Length: %d\n", fileLen)
-	fmt.Fprintf(writer, "Hash-Lengths: %d,%d,%d\n", seqMatches, rsumLen, checksumLen)
-
-	// Write URLs
-	for _, url := range urls {
-		fmt.Fprintf(writer, "URL: %s\n", url)
-	}
-
 	if len(urls) == 0 && inputFile != "" {
-		fmt.Fprintf(writer, "URL: %s\n", inputFile)
+		urls = []string{inputFile}
 		fmt.Fprintf(os.Stderr, "No URL given, so I am including a relative URL in the .zsync file - you must keep the file being served and the .zsync in the same public directory. Use -u %s to get this same result without this warning.\n", inputFile)
 	}
 
-	// Write SHA-1.
-	fmt.Fprintf(writer, "SHA-1: %s\n", hex.EncodeToString(sha1sum))
-
-	// End of headers
-	fmt.Fprintf(writer, "\n")
-
-	write_checksums(writer, checksumFile, *blocksize, rsumLen, checksumLen, seqMatches, *verbose)
+	err = writeControlFile(outstream, *filename, fileLen, urls, fileInfo.ModTime(), *blocksize, rsumLen, checksumLen, seqMatches, sha1sum, checksumFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed writing zsync file: %v\n", err)
+		os.Exit(2)
+	}
+	err = outstream.Close()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed finalising zsync file: %v\n", err)
+		os.Exit(2)
+	}
 	if *verbose {
 		fmt.Fprintf(os.Stderr, "Created .zsync file with %d blocks\n", fileLen / *blocksize)
 	}
+}
+
+func writeControlFile(outstream io.Writer, filename string, fileLen int64, urls []string, mtime time.Time, blocksize int64, rsumLen, checksumLen, seqMatches int, sha1sum []byte, checksumFile io.Reader) error {
+	// Write .zsync file
+	writer := bufio.NewWriter(outstream)
+
+	_, err := fmt.Fprintf(writer, "zsync: %s\n", version)
+	if err != nil {
+		return err
+	}
+
+	if filename != "" {
+		_, err = fmt.Fprintf(writer, "Filename: %s\n", filename)
+		if err != nil {
+			return err
+		}
+		if !mtime.IsZero() {
+			_, err = fmt.Fprintf(writer, "MTime: %s\n", mtime.UTC().Format(time.RFC1123Z))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	_, err = fmt.Fprintf(writer, `Blocksize: %d
+Length: %d
+Hash-Lengths: %d,%d,%d
+SHA-1: %s
+`, blocksize, fileLen,seqMatches, rsumLen, checksumLen,hex.EncodeToString(sha1sum))
+if err != nil {
+	return err
+}
+
+
+	// Write URLs
+	for _, url := range urls {
+		_, err = fmt.Fprintf(writer, "URL: %s\n", url)
+		if err != nil {
+			return err
+		}
+	}
+
+	// End of headers
+	_, err = fmt.Fprintf(writer, "\n")
+	if err != nil {
+		return err
+	}
+	err = writeChecksums(writer, checksumFile, blocksize, rsumLen, checksumLen, seqMatches)
+	if err != nil {
+		return err
+	}
+	err = writer.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func determineHashLengths(fileLengthInt, blocksizeInt int64) (int, int, int) {
@@ -264,13 +305,19 @@ func readFileCalcChecksumsAndStats(r io.Reader, blocksize int64) (int64, []byte,
 			break
 		}
 	}
-	writer.Flush()
-	tempFile.Seek(0, io.SeekStart)
+	err = writer.Flush()
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("write temp file: %v", err)
+	}
+	_, err = tempFile.Seek(0, io.SeekStart)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("seek temp file: %v", err)
+	}
 
 	return fileLen, sha1Hash.Sum(nil), tempFile, nil
 }
 
-func write_checksums(writer io.Writer, checksumFile *os.File, blocksize int64, rsumLen int, checksumLen int, seqMatches int, verbose bool) error {
+func writeChecksums(writer io.Writer, checksumFile io.Reader, blocksize int64, rsumLen int, checksumLen int, seqMatches int) error {
 	// Write block checksums
 	for {
 		var checksums blockChecksums
@@ -284,7 +331,10 @@ func write_checksums(writer io.Writer, checksumFile *os.File, blocksize int64, r
 
 		// Write rsum (network byte order, truncated to rsumLen)
 		rsumBytes := make([]byte, 4)
-		binary.Encode(rsumBytes, binary.BigEndian, checksums.Rsum)
+		_, err = binary.Encode(rsumBytes, binary.BigEndian, checksums.Rsum)
+		if err != nil {
+			return fmt.Errorf("encode: %v", err)
+		}
 		_, err = writer.Write(rsumBytes[4-rsumLen:])
 		if err != nil {
 			return fmt.Errorf("write: %v", err)
