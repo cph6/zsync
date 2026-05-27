@@ -1,3 +1,6 @@
+Changes in 0.7.1
+- Fixed some uncaught errors.
+
 Changes in 0.7.0
 - The client was entirely rewritten. The feature set has changed substantially,
   so if you are an existing user using zsync in any automation, read carefully.
