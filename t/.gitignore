@@ -1,0 +1,3 @@
+selfsigned.*
+**/target.dat
+logs/
