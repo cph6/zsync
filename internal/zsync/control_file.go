@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +20,7 @@ import (
 )
 
 // New loads a zsync file and returns the state tracking object.
-func New(f *os.File) (*State, error) {
+func New(f io.Reader) (*State, error) {
 	checksumBytes := 16
 	rsumBytes := 4
 	seqMatches := 1

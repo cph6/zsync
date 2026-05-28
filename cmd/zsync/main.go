@@ -214,7 +214,7 @@ func main() {
 	}
 	zs, err := readZsyncControlFile(client, source, keepZsync, referer, auths)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed reading control file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(3)
 	}
 
@@ -343,24 +343,46 @@ func exitWithCode(code int) {
 }
 
 func readZsyncControlFile(client *http.Client, source, keepZsync, referer string, auths authMap) (*zsync.State, error) {
+	controlReader, err := getZsyncControlFile(client, source, keepZsync, referer, auths)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch control file: %v", err)
+	}
+	zs, err := zsync.New(controlReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse control file: %v", err)
+	}
+	if err := controlReader.Close(); err != nil {
+		return nil, fmt.Errorf("failed to parse control file: %v", err)
+	}
+	return zs, nil
+}
+
+func getZsyncControlFile(client *http.Client, source, keepZsync, referer string, auths authMap) (io.ReadCloser, error) {
 	// First try to read from local file.
 	if _, err := os.Stat(source); err == nil {
 		f, err := os.Open(source)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open .zsync: %w", err)
 		}
-		defer f.Close()
-		zs, err := zsync.New(f)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse .zsync file: %w", err)
-		}
-		return zs, nil
+		return f, nil
 	}
 
 	// Otherwise, try to download from URL.
 	u, err := url.Parse(source)
 	if err != nil || u.Scheme == "" {
 		return nil, fmt.Errorf("%s is not a valid URL or local .zsync file", source)
+	}
+
+	var fileInfo os.FileInfo
+	gotMtime := false
+	if keepZsync != "" {
+		fileInfo, err = os.Stat(keepZsync)
+		if err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "failed to get mtime for existing .zsync control file: %v", err)
+			// Fall through with no mtime - we can just download the control file.
+		} else if err == nil {
+			gotMtime = true
+		}
 	}
 
 	req, err := http.NewRequest("GET", source, nil)
@@ -370,6 +392,9 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
+	if gotMtime {
+		req.Header.Set("If-Modified-Since", fileInfo.ModTime().UTC().Format(time.RFC1123))
+	}
 	if auth, ok := auths[u.Hostname()]; ok {
 		req.SetBasicAuth(auth.username, auth.password)
 	}
@@ -378,47 +403,59 @@ func readZsyncControlFile(client *http.Client, source, keepZsync, referer string
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	if keepZsync != "" && resp.StatusCode == http.StatusNotModified {
+		// Not modified, so we can drop the response and read the local copy.
+		fmt.Fprintf(os.Stderr, "control file not modified - using local copy\n")
+		_ = resp.Body.Close()
+		f, err := os.Open(keepZsync)
+		return f, err
+	}
+	// Otherwise we need the response.
 	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("failed to download .zsync: %s", resp.Status)
 	}
 
-	pathToUse := keepZsync
-	var tmpFile *os.File
-	if pathToUse == "" {
-		tmpFile, err = os.CreateTemp("", "zsync-*.zsync")
-		if err != nil {
-			return nil, fmt.Errorf("temp file creation failed: %w", err)
-		}
-		pathToUse = tmpFile.Name()
-		defer tmpFile.Close()
-		defer func() {
-			if err := os.Remove(pathToUse); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to remove temporary copy of zsync file(%s): %v\n", pathToUse, err)
-			}
-		}()
-	} else {
-		tmpFile, err = os.Create(pathToUse)
-		if err != nil {
-			return nil, fmt.Errorf("zsync local file creation failed: %w", err)
-		}
-		defer tmpFile.Close()
+	// If we are not saving a local copy of the .zsync file, we can just
+	// pass the response body reader to the caller.
+	if keepZsync == "" {
+		return resp.Body, nil
 	}
 
+	controlFile, err := os.Create(keepZsync)
+	if err != nil {
+		return nil, fmt.Errorf("zsync local file creation failed: %w", err)
+	}
 	// Copy zsync file from response to temporary file, then seek back to the
 	// start for reading.
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+	if _, err := io.Copy(controlFile, resp.Body); err != nil {
+		// We already truncated the local copy of the control file, so
+		// invalidate it here by deleting it - the code above assumes that
+		// any existing file is a valid download for If-Modified-Since.
+		_ = os.Remove(keepZsync)
 		return nil, fmt.Errorf("write error: %w", err)
 	}
-	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {
+	_ = resp.Body.Close()
+	if _, err := controlFile.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek: %w", err)
 	}
 
-	zs, err := zsync.New(tmpFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse .zsync file: %w", err)
+	// Set the mtime to the Last-Modified from the server if available,
+	// so that we supply the correct If-Modified-Since on any rerun.
+	if lastModified, ok := resp.Header["Last-Modified"]; ok && len(lastModified) > 0 {
+		if err := setMTime(keepZsync, lastModified[0]); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to set mtime of control file (%v); this may lead to incorrect caching of the zsync control file\n", err)
+		}
 	}
-	return zs, nil
+	return controlFile, nil
+}
+
+func setMTime(filename string, mTimeStr string) error {
+	mtime, err := time.Parse(time.RFC1123, mTimeStr)
+	if err != nil {
+		return err
+	}
+	return os.Chtimes(filename, time.Now(), mtime)
 }
 
 func readSeedFile(zs *zsync.State, filename string, noProgress bool) error {

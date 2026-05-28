@@ -1,4 +1,6 @@
 Changes in 0.7.1
+- -k option now (once again) caches the .zsync file if the server
+  supports Last-Modified/If-Modified-Since.
 - Fixed some uncaught errors.
 
 Changes in 0.7.0
