@@ -195,11 +195,10 @@ func writeControlFile(outstream io.Writer, filename string, fileLen int64, urls 
 Length: %d
 Hash-Lengths: %d,%d,%d
 SHA-1: %s
-`, blocksize, fileLen,seqMatches, rsumLen, checksumLen,hex.EncodeToString(sha1sum))
-if err != nil {
-	return err
-}
-
+`, blocksize, fileLen, seqMatches, rsumLen, checksumLen, hex.EncodeToString(sha1sum))
+	if err != nil {
+		return err
+	}
 
 	// Write URLs
 	for _, url := range urls {
