@@ -306,7 +306,7 @@ func TestZSyncBadSSL(t *testing.T) {
 	outfile, _, stderr, _ := tryZSync(t, targetFile+".zsync", []string{"--no-check-certificate=false"}, httpsURL, nil)
 	defer os.Remove(outfile)
 
-	if !strings.Contains(stderr, "certificate is not valid") && !strings.Contains(stderr, "certificate verification") {
+	if !strings.Contains(stderr, "certificate is not valid") && !strings.Contains(stderr, "failed to verify certificate") {
 		t.Logf("stderr: %s", stderr)
 		t.Errorf("Expected certificate validation error")
 	}
