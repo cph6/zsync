@@ -14,22 +14,22 @@ import (
 
 // calcRhash calculates the hash key for consecutive hashEntrys.
 func (z *RcksumState) calcRhash(b BlockID) uint32 {
-	rs1 := &z.blockHashes[b].rsum
-	var rs2 *RSum
+	var rs [2]RSum
+	rs[0] = z.blockHashes[b].rsum
 	if z.seqMatches > 1 {
-		rs2 = &z.blockHashes[b+1].rsum
+		rs[1] = z.blockHashes[b+1].rsum
 	}
-	return z.calcRhashFromRSums(rs1, rs2)
+	return z.calcRhashFromRSums(rs)
 }
 
-// rs2 is required iff z.seqMatches == 2.
-func (z *RcksumState) calcRhashFromRSums(rs1, rs2 *RSum) uint32 {
-	hash := uint32(rs1.B)
+// rs[1] is required iff z.seqMatches == 2; otherwise it is unused.
+func (z *RcksumState) calcRhashFromRSums(rs [2]RSum) uint32 {
+	hash := uint32(rs[0].B)
 
 	if z.seqMatches > 1 {
-		hash ^= uint32(rs2.B) << 16
+		hash ^= uint32(rs[1].B) << 16
 	} else {
-		hash ^= uint32(rs1.A&z.rsumAMask) << 16
+		hash ^= uint32(rs[0].A&z.rsumAMask) << 16
 	}
 
 	return hash
@@ -97,6 +97,27 @@ func (z *RcksumState) removeBlockFromHash(id BlockID) {
 	}
 
 	z.blockHashes[id].next = noBlock
+}
+
+// hashLookup checks whether the given pair of rolling checksums for
+// consecutive blocks are in the hash table of known block pairs for the target
+// file.
+func (z *RcksumState) hashLookup(rs [2]RSum) (b BlockID, found bool) {
+	h := z.calcRhashFromRSums(rs)
+
+	// Check bithash for fast negative lookups
+	bitIdx := (h & z.bitHashMask) >> 3
+	bitPos := h & 7
+
+	if z.bitHash != nil && int(bitIdx) < len(z.bitHash) {
+		if (z.bitHash[bitIdx] & (1 << bitPos)) != 0 {
+			z.stats.BithashHit++
+			b, found = z.rsumHash[h]
+			return
+		}
+	}
+
+	return 0, false
 }
 
 // log2 returns the base-2 logarithm of x

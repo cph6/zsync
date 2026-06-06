@@ -42,6 +42,7 @@ type hashEntry struct {
 
 // Stats tracks statistics about the matching process
 type Stats struct {
+	BithashHit  int64 // Number of hash table hits
 	HashHit     int64 // Number of hash table hits
 	WeakHit     int   // Number of weak checksum hits
 	StrongHit   int   // Number of strong checksum hits

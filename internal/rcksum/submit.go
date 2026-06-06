@@ -74,13 +74,16 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) (int, error) {
 
 		// Advance one byte at a time through the input
 		for blocksMatched == 0 && x < xLimit {
-			thismatch, err := z.matchBlock(data[x:], int64(offset)+int64(x))
-			if err != nil {
-				return gotBlocks, err
-			}
-			if thismatch > 0 {
-				blocksMatched = z.seqMatches
-				gotBlocks += thismatch
+			blockID, found := z.hashLookup(z.r)
+			if found {
+				thismatch, err := z.checkChecksumsOnHashChain(blockID, data[x:])
+				if err != nil {
+					return gotBlocks, err
+				}
+				if thismatch > 0 {
+					blocksMatched = z.seqMatches
+					gotBlocks += thismatch
+				}
 			}
 
 			if blocksMatched == 0 {
@@ -194,27 +197,6 @@ func (z *RcksumState) SubmitSourceFile(f io.Reader, showProgress bool) (int, err
 	}
 
 	return gotBlocks, nil
-}
-
-// matchBlock attempts to match a block of data at the current position
-func (z *RcksumState) matchBlock(data []byte, offset int64) (int, error) {
-	// Prepare hash values for lookup
-	h := z.calcRhashFromRSums(&z.r[0], &z.r[1])
-
-	// Check bithash for fast negative lookups
-	bitIdx := (h & z.bitHashMask) >> 3
-	bitPos := h & 7
-
-	if z.bitHash != nil && int(bitIdx) < len(z.bitHash) {
-		if (z.bitHash[bitIdx] & (1 << bitPos)) != 0 {
-			e, ok := z.rsumHash[h]
-			if ok {
-				return z.checkChecksumsOnHashChain(e, data)
-			}
-		}
-	}
-
-	return 0, nil
 }
 
 // checkChecksumsOnHashChain checks data against all blocks for a specific
