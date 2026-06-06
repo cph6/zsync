@@ -61,10 +61,10 @@ func TestAddTargetBlock(t *testing.T) {
 	z.AddTargetBlock(1, r, checksum)
 
 	// Verify blocks were added
-	if z.blockHashes[0].rsum.A != (100 & z.rsumAMask) {
+	if z.rsums[0].A != (100 & z.rsumAMask) {
 		t.Error("Block 0 rsum not set correctly")
 	}
-	if z.blockHashes[1].rsum.A != (100 & z.rsumAMask) {
+	if z.rsums[1].A != (100 & z.rsumAMask) {
 		t.Error("Block 1 rsum not set correctly")
 	}
 }

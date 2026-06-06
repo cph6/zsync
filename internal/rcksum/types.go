@@ -20,7 +20,7 @@ const (
 	ChecksumSize = md4.Size
 
 	// BithashBits is the number of bits per byte for the bithash table
-	BithashBits = 3
+	BithashBits = 4
 
 	noBlock = BlockID(-1)
 )
@@ -34,19 +34,17 @@ type RSum struct {
 	B uint16 // Weighted sum
 }
 
-type hashEntry struct {
-	next BlockID // -1 means no next element in this hash chain.
-	rsum RSum
-	md4  [16]byte
-}
+// MD4Checksum represents an MD4 checksum
+type MD4Checksum [ChecksumSize]byte
 
 // Stats tracks statistics about the matching process
 type Stats struct {
-	BithashHit  int64 // Number of hash table hits
-	HashHit     int64 // Number of hash table hits
-	WeakHit     int   // Number of weak checksum hits
-	StrongHit   int   // Number of strong checksum hits
-	Checksummed int   // Number of checksums calculated
+	BithashHit        int64 // Number of hash table hits
+	HashHit           int64 // Number of hash table hits
+	HashFalsePositive int64 // Number of hash table entries traversed with mismatching rsums
+	WeakHit           int   // Number of weak checksum hits
+	StrongHit         int   // Number of strong checksum hits
+	Checksummed       int   // Number of checksums calculated
 }
 
 // RcksumState contains the set of checksums of the blocks of a target file
@@ -65,12 +63,17 @@ type RcksumState struct {
 	seqMatches    int     // Required consecutive matches
 	context       int64   // blockSize * seqMatches
 
+	// MD4 checksums for each block
+	md4Checksums []MD4Checksum
+
+	// Rolling checksums for each block (used for hash table)
+	rsums []RSum
+
 	// Processing state
 	skip int // Skip forward on next submit_source_data
 
 	// Hash tables for rsync algorithm
-	blockHashes []hashEntry
-	rsumHash    map[uint32]BlockID
+	rsumHash map[uint32][]BlockID
 
 	// Bithash for fast negative lookups.
 	bitHash     []byte

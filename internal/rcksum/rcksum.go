@@ -91,8 +91,11 @@ func New(nblocks BlockID, blockSize int64, rsumBytes int, checksumBytes uint, re
 		}
 	}
 
-	// Allocate hash entries.
-	z.blockHashes = make([]hashEntry, nblocks)
+	// Allocate MD4 checksums array
+	z.md4Checksums = make([]MD4Checksum, nblocks)
+
+	// Allocate rolling checksums array for hash table
+	z.rsums = make([]RSum, nblocks)
 
 	// Initialize ranges and other state
 	z.knownBlocks.ranges = make([]blockIDPair, 0)
@@ -115,13 +118,10 @@ func (z *RcksumState) AddTargetBlock(b BlockID, r RSum, checksum [ChecksumSize]b
 		z.mu.Lock()
 		defer z.mu.Unlock()
 
-		// Get hash entry for this block
-		e := &z.blockHashes[b]
-
-		// Store checksums
-		e.md4 = checksum
-		e.rsum.A = r.A & z.rsumAMask
-		e.rsum.B = r.B
+		// Store checksums and rsums
+		z.md4Checksums[b] = MD4Checksum(checksum)
+		z.rsums[b].A = r.A & z.rsumAMask
+		z.rsums[b].B = r.B
 
 		// Invalidate existing hash tables since we added new data
 		z.rsumHash = nil

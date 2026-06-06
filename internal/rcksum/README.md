@@ -108,9 +108,8 @@ MD4 digest of block data for collision verification
 Hybrid approach with:
 - Bitmask (bithash) for O(1) negative lookups
   - tested on MX-25.1_Xfce_x64.iso -> MX-25.2_Xfce_x64.iso; the bithash reduced
-    total CPU cost from ~40s to ~30s. So it is still a significant saving on top
-    of the golang's native maps. Reducing the load factor did not give
-    increased savings.
+    total CPU cost during the seed file stage from ~35s to ~25s. So it is
+    still a significant saving on top of the golang's native maps.
 - Hash chains for collision resolution
 
 ## Dependencies

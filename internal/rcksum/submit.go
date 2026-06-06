@@ -33,12 +33,12 @@ func (z *RcksumState) SubmitBlocks(data []byte, bfrom, bto BlockID) error {
 		blockData := data[offset : offset+z.blockSize]
 		md4sum := CalcChecksum(blockData)
 
-		if !bytes.Equal(md4sum[:z.checksumBytes], z.blockHashes[x].md4[:z.checksumBytes]) {
+		if !bytes.Equal(md4sum[:z.checksumBytes], z.md4Checksums[x][:z.checksumBytes]) {
 			break
 		}
 	}
 
-	_, err := z.writeBlocks(data, bfrom, x-1, 0 /* no next */)
+	err := z.writeBlocks(data, bfrom, x-1)
 	return err
 }
 
@@ -74,9 +74,9 @@ func (z *RcksumState) submitSourceData(data []byte, offset int64) (int, error) {
 
 		// Advance one byte at a time through the input
 		for blocksMatched == 0 && x < xLimit {
-			blockID, found := z.hashLookup(z.r)
+			entries, found := z.hashLookup(z.r)
 			if found {
-				thismatch, err := z.checkChecksumsOnHashChain(blockID, data[x:])
+				thismatch, err := z.checkChecksumsOnHashChain(entries, data[x:])
 				if err != nil {
 					return gotBlocks, err
 				}
@@ -202,36 +202,30 @@ func (z *RcksumState) SubmitSourceFile(f io.Reader, showProgress bool) (int, err
 // checkChecksumsOnHashChain checks data against all blocks for a specific
 // hashed rsum value.
 // Arguments:
-// id: the first possible target block in the hash chain to consider;
+// entries: the list of possible target blocks with matching rsums;
 //
-//	this is usually the start of the hash chain for the hashed value of block(s) in data[].
+//	this is usually the hash chain for the hashed value of block(s) in data[].
 //
 // data: should be z.blocksize*z.seqMatches bytes of candidate data.
-func (z *RcksumState) checkChecksumsOnHashChain(id BlockID, data []byte) (int, error) {
-	r := z.r[0]
+func (z *RcksumState) checkChecksumsOnHashChain(entries []BlockID, data []byte) (int, error) {
 	gotBlocks := 0
 
 	md4sum := [][ChecksumSize]byte{}
-
-	// Invariants:
-	// - we are traversing the hash chain starting at block `next`.
-	// - the MD4sums of the next n blocks of data in `data` are calculated and
-	//   stored in `md4sum`.
-	next := id
-	for next != noBlock {
-		id = next // entry being considered in this run of the loop.
-		// Advance the pointer now, as blockHashes[e].next will be wiped if the block
-		// is matched.
-		next = z.blockHashes[id].next
-
-		// Check weak checksum first.
+	// Iterate through all matching blocks in this hash bucket.
+	// Note that we copied the hash before we start this iteration, so we can
+	// remove blocks from rs.rsumHash during this iteration without problems.
+	for _, id := range entries {
 		z.stats.HashHit++
-		if z.blockHashes[id].rsum.A != (r.A&z.rsumAMask) || z.blockHashes[id].rsum.B != r.B {
+
+		if z.rsums[id].A != (z.r[0].A&z.rsumAMask) || z.rsums[id].B != z.r[0].B {
+			z.stats.HashFalsePositive++
 			continue
 		}
-		if z.seqMatches > 1 && (z.blockHashes[id+BlockID(1)].rsum.A != (z.r[1].A&z.rsumAMask) || z.blockHashes[id+BlockID(1)].rsum.B != z.r[1].B) {
+		if z.seqMatches > 1 && (z.rsums[id+BlockID(1)].A != (z.r[1].A&z.rsumAMask) || z.rsums[id+BlockID(1)].B != z.r[1].B) {
+			z.stats.HashFalsePositive++
 			continue
 		}
+
 		z.stats.WeakHit++
 
 		// Calculate strong checksums and see if we have `seqMatches` consecutive
@@ -248,7 +242,7 @@ func (z *RcksumState) checkChecksumsOnHashChain(id BlockID, data []byte) (int, e
 				z.stats.Checksummed++
 			}
 
-			if bytes.Equal(md4sum[checkmd4][:z.checksumBytes], z.blockHashes[id+BlockID(checkmd4)].md4[:z.checksumBytes]) {
+			if bytes.Equal(md4sum[checkmd4][:z.checksumBytes], z.md4Checksums[id+BlockID(checkmd4)][:z.checksumBytes]) {
 				matching += 1
 			} else {
 				break
@@ -259,8 +253,9 @@ func (z *RcksumState) checkChecksumsOnHashChain(id BlockID, data []byte) (int, e
 			continue
 		}
 
-		// Find the next block which we already have.
 		z.stats.StrongHit += matching
+
+		// Find the next block which we already have.
 		nextKnown := z.knownBlocks.nextContainedAfter(id)
 		if nextKnown == -1 {
 			nextKnown = z.blocks
@@ -272,8 +267,7 @@ func (z *RcksumState) checkChecksumsOnHashChain(id BlockID, data []byte) (int, e
 		}
 
 		// Write the matched blocks
-		var err error
-		next, err = z.writeBlocks(data[:numWriteBlocks*int(z.blockSize)], id, id+BlockID(numWriteBlocks-1), next)
+		err := z.writeBlocks(data[:numWriteBlocks*int(z.blockSize)], id, id+BlockID(numWriteBlocks-1))
 		if err != nil {
 			return gotBlocks, err
 		}
@@ -284,9 +278,9 @@ func (z *RcksumState) checkChecksumsOnHashChain(id BlockID, data []byte) (int, e
 }
 
 // writeBlocks writes a range of blocks to the output file
-func (z *RcksumState) writeBlocks(data []byte, bfrom, bto, next BlockID) (BlockID, error) {
+func (z *RcksumState) writeBlocks(data []byte, bfrom, bto BlockID) error {
 	if z.fd == nil {
-		return next, fmt.Errorf("no file descriptor in RcksumState")
+		return fmt.Errorf("no file descriptor in RcksumState")
 	}
 
 	if int(bto+1-bfrom)<<uint(z.blockShift) != len(data) {
@@ -295,32 +289,21 @@ func (z *RcksumState) writeBlocks(data []byte, bfrom, bto, next BlockID) (BlockI
 	offset := int64(bfrom) << uint(z.blockShift)
 	_, err := z.fd.WriteAt(data, offset)
 	if err != nil {
-		return next, err
+		return err
 	}
 
 	// Mark blocks as obtained.
 	for id := bfrom; id <= bto; id++ {
-		// Removing a block from the hash wipes its `next` field, so we have to tell
-		// the caller what is the next block that it should consider.
-		if id == next {
-			next = z.blockHashes[id].next
+		var rs [2]RSum
+		rs[0] = z.rsums[id]
+		if id+1 < z.blocks {
+			rs[1] = z.rsums[id+BlockID(1)]
 		}
-
+		z.removeFromHash(bfrom, bto, rs)
 		z.knownBlocks.addToRanges(id)
-		if z.seqMatches == 2 && (id != bto || z.knownBlocks.contains(bto+1)) {
-			z.removeBlockFromHash(id)
-		}
-	}
-	// Removing blocks from the hash when we have seqMatches == 2 (the only
-	// supported setting other than 1) is tricky; we want to remove only when both
-	// a block and its trailing partner are known. So here we look at block
-	// `bfrom-1` and remove its hash entry if we delayed removing it earlier
-	// because `bfrom`` was not then known.
-	if z.seqMatches == 2 && bfrom > 0 && z.knownBlocks.contains(bfrom-1) {
-		z.removeBlockFromHash(bfrom - 1)
 	}
 
-	return next, nil
+	return nil
 }
 
 // ReadKnownData reads back data that has already been received

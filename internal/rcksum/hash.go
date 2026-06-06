@@ -10,18 +10,10 @@ package rcksum
 
 import (
 	"math/bits"
+	"slices"
 )
 
-// calcRhash calculates the hash key for consecutive hashEntrys.
-func (z *RcksumState) calcRhash(b BlockID) uint32 {
-	var rs [2]RSum
-	rs[0] = z.blockHashes[b].rsum
-	if z.seqMatches > 1 {
-		rs[1] = z.blockHashes[b+1].rsum
-	}
-	return z.calcRhashFromRSums(rs)
-}
-
+// calcRhashFromRSums calculates hash from two RSums
 // rs[1] is required iff z.seqMatches == 2; otherwise it is unused.
 func (z *RcksumState) calcRhashFromRSums(rs [2]RSum) uint32 {
 	hash := uint32(rs[0].B)
@@ -38,23 +30,25 @@ func (z *RcksumState) calcRhashFromRSums(rs [2]RSum) uint32 {
 // BuildHash builds hash tables to quickly lookup blocks based on rsum value
 func (z *RcksumState) buildHash() error {
 	// Allocate hash table
-	z.rsumHash = make(map[uint32]BlockID)
+	z.rsumHash = make(map[uint32][]BlockID)
 
 	// Allocate bithash with aim of 1/(1<<BITHASHBITS) load factor
 	bitHashBits := log2(uint32(z.blocks)) + BithashBits
 	z.bitHashMask = (1 << uint(bitHashBits)) - 1
 	z.bitHash = make([]byte, (z.bitHashMask+1+7)>>3)
 
-	// Fill hash tables in reverse order to keep blocks in order.
-	for id := z.blocks - BlockID(z.seqMatches); id >= 0; id-- {
-		// Calculate hash and prepend to the linked list for that hash value.
-		h := z.calcRhash(id)
-		next, ok := z.rsumHash[h]
-		if !ok {
-			next = noBlock
+	for id := BlockID(0); id < z.blocks+BlockID(1-z.seqMatches); id++ {
+		// For each block, create a hash entry and add it to the appropriate hash bucket
+		var rs [2]RSum
+		rs[0] = z.rsums[id]
+		if z.seqMatches > 1 {
+			rs[1] = z.rsums[id+1]
 		}
-		z.blockHashes[id].next = next
-		z.rsumHash[h] = id
+
+		h := z.calcRhashFromRSums(rs)
+
+		// Append to the slice for this hash value
+		z.rsumHash[h] = append(z.rsumHash[h], id)
 
 		// Set relevant bit in bithash.
 		bitIdx := (h & z.bitHashMask) >> 3
@@ -67,42 +61,10 @@ func (z *RcksumState) buildHash() error {
 	return nil
 }
 
-// removeBlockFromHash removes a block from the hash table
-func (z *RcksumState) removeBlockFromHash(id BlockID) {
-	// Ignore any request to remove blocks past the end of the file, or within
-	// seqMatches-1 of the end as these were never added to the hash (insufficient
-	// trailing blocks for consecutive matches).
-	if z.rsumHash == nil || id >= BlockID(len(z.blockHashes)-(z.seqMatches-1)) {
-		return
-	}
-
-	h := z.calcRhash(id)
-
-	// Find and remove from hash chain
-	p, ok := z.rsumHash[h]
-	if ok && p == id {
-		next := z.blockHashes[id].next
-		if next != noBlock {
-			z.rsumHash[h] = next
-		} else {
-			delete(z.rsumHash, h)
-		}
-	} else if ok {
-		for ; p != noBlock; p = z.blockHashes[p].next {
-			if z.blockHashes[p].next == id {
-				z.blockHashes[p].next = z.blockHashes[id].next
-				break
-			}
-		}
-	}
-
-	z.blockHashes[id].next = noBlock
-}
-
 // hashLookup checks whether the given pair of rolling checksums for
 // consecutive blocks are in the hash table of known block pairs for the target
 // file.
-func (z *RcksumState) hashLookup(rs [2]RSum) (b BlockID, found bool) {
+func (z *RcksumState) hashLookup(rs [2]RSum) ([]BlockID, bool) {
 	h := z.calcRhashFromRSums(rs)
 
 	// Check bithash for fast negative lookups
@@ -112,12 +74,45 @@ func (z *RcksumState) hashLookup(rs [2]RSum) (b BlockID, found bool) {
 	if z.bitHash != nil && int(bitIdx) < len(z.bitHash) {
 		if (z.bitHash[bitIdx] & (1 << bitPos)) != 0 {
 			z.stats.BithashHit++
-			b, found = z.rsumHash[h]
-			return
+			entries, found := z.rsumHash[h]
+			return entries, found
 		}
 	}
 
-	return 0, false
+	return nil, false
+}
+
+// removeFromHash removes a block (or blocks) from the hash table
+// once its data is obtained.
+// It might seem like this is unnecessary — we have the range tracking
+// that tracks what we already know in the target file and prevents us from
+// rewriting the data if we do find an identical block in the input. But this
+// is actually an important optimisation, because it is common to find highly
+// repeated blocks in files (particularly all-0 blocks, but blocks with
+// repeating patterns are common also). These are an O(n^2) case for the hash
+// lookups - every null block in the input scans the hash chain for every null
+// block in the output (for example). Whereas if we remove all the null block
+// entries from the hash after writing out all the null blocks, then we only
+// have to scan that long hash chain once, giving us a typical O(n) for this
+// case.
+// For that reason also, the arguments are a single RSum but a range of blocks;
+// the RSum should correspond to at least one block within that range.
+// Args:
+// - from, to: inclusive range of BlockIDs.
+// - rs: RSum of the block(s) to remove.
+func (z *RcksumState) removeFromHash(from, to BlockID, rs [2]RSum) {
+	h := z.calcRhashFromRSums(rs)
+
+	if entries, found := z.rsumHash[h]; found {
+		prunedChain := slices.DeleteFunc(entries, func(id BlockID) bool {
+			return id >= from && id <= to
+		})
+		if len(prunedChain) > 0 {
+			z.rsumHash[h] = prunedChain
+		} else {
+			delete(z.rsumHash, h)
+		}
+	}
 }
 
 // log2 returns the base-2 logarithm of x

@@ -284,7 +284,7 @@ func main() {
 
 	if verbose {
 		s := zs.Stats()
-		fmt.Printf("hash stats: bithash hit %d, hash hit %d, weak hit %d, checksums calculated %d, strong hit %d\n", s.BithashHit, s.HashHit, s.WeakHit, s.Checksummed, s.StrongHit)
+		fmt.Printf("hash stats: bithash hit %d, hash hit %d, hash false positive %d, weak hit %d, checksums calculated %d, strong hit %d\n", s.BithashHit, s.HashHit, s.HashFalsePositive, s.WeakHit, s.Checksummed, s.StrongHit)
 	}
 	if !quiet {
 		fmt.Print("verifying download...")
