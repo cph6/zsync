@@ -164,3 +164,39 @@ func TestZSyncMakeEmpty(t *testing.T) {
 		t.Errorf("Unexpected SHA-1: %s", info["SHA-1"])
 	}
 }
+
+func TestZSyncMakeFromStdin(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	input := strings.Repeat("Hello world!\n", 100)
+	zsyncFile := filepath.Join(scratchDir, "test.zsync")
+
+	args := []string{"-o", zsyncFile}
+
+	cmd := exec.Command(filepath.Join(binaryDir, "zsyncmake"), args...)
+	cmd.Stdin = strings.NewReader(input)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("zsyncmake failed: %v\nOutput: %s", err, output)
+	}
+
+	info, _, err := parseZSyncFile(zsyncFile)
+	if err != nil {
+		t.Fatalf("Failed to parse zsync file: %v", err)
+	}
+
+	if string(info["Length"]) != "1300" {
+		t.Errorf("Expected Length=1300, got %s", info["Length"])
+	}
+
+	if string(info["SHA-1"]) != "69c141690253717942a7b4ec29bf79d4138eb541" {
+		t.Errorf("Unexpected SHA-1: %s", info["SHA-1"])
+	}
+
+	if _, exists := info["Filename"]; exists {
+		t.Errorf("Unexpected filename in control file for data from stdin")
+	}
+}

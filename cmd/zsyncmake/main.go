@@ -95,7 +95,7 @@ func main() {
 	if *blocksize == 0 {
 		// fileInfo.Length might be zero if we do not have file stats;
 		// defaulting to 2048 in that case.
-		if fileInfo.Size() < int64(100000000) {
+		if fileInfo != nil && fileInfo.Size() < int64(100000000) {
 			*blocksize = 2048
 		} else {
 			*blocksize = 4096
@@ -154,7 +154,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "No URL given, so I am including a relative URL in the .zsync file - you must keep the file being served and the .zsync in the same public directory. Use -u %s to get this same result without this warning.\n", inputFile)
 	}
 
-	err = writeControlFile(outstream, *filename, fileLen, urls, fileInfo.ModTime(), *blocksize, rsumLen, checksumLen, seqMatches, sha1sum, checksumFile)
+	var mtime time.Time
+	if fileInfo != nil {
+		mtime = fileInfo.ModTime()
+	}
+	err = writeControlFile(outstream, *filename, fileLen, urls, mtime, *blocksize, rsumLen, checksumLen, seqMatches, sha1sum, checksumFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed writing zsync file: %v\n", err)
 		os.Exit(2)
