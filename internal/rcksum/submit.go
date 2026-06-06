@@ -212,8 +212,6 @@ func (z *RcksumState) checkChecksumsOnHashChain(entries []BlockID, data []byte) 
 
 	md4sum := [][ChecksumSize]byte{}
 	// Iterate through all matching blocks in this hash bucket.
-	// Note that we copied the hash before we start this iteration, so we can
-	// remove blocks from rs.rsumHash during this iteration without problems.
 	for _, id := range entries {
 		z.stats.HashHit++
 
@@ -274,6 +272,9 @@ func (z *RcksumState) checkChecksumsOnHashChain(entries []BlockID, data []byte) 
 		gotBlocks += numWriteBlocks
 	}
 
+	if gotBlocks > 0 {
+		z.removeFromHash(z.r)
+	}
 	return gotBlocks, nil
 }
 
@@ -299,7 +300,6 @@ func (z *RcksumState) writeBlocks(data []byte, bfrom, bto BlockID) error {
 		if id+1 < z.blocks {
 			rs[1] = z.rsums[id+BlockID(1)]
 		}
-		z.removeFromHash(bfrom, bto, rs)
 		z.knownBlocks.addToRanges(id)
 	}
 

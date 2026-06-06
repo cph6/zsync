@@ -232,14 +232,9 @@ func determineHashLengths(fileLengthInt, blocksizeInt int64) (int, int, int) {
 	length := float64(fileLengthInt)
 	blocksize := float64(blocksizeInt)
 	seqMatches := 1
-	rsumLen := int(math.Ceil(((math.Log2(length) + math.Log2(blocksize)) - 8.6) / 8))
 
-	if rsumLen > 4 {
+	if math.Log2(length)+math.Log2(blocksize)-8.6 > 32 {
 		seqMatches = 2
-		rsumLen = 4
-	}
-	if rsumLen < 2 {
-		rsumLen = 2
 	}
 
 	// Calculate checksum length
@@ -248,7 +243,11 @@ func determineHashLengths(fileLengthInt, blocksizeInt int64) (int, int, int) {
 		math.Ceil((20+math.Log2(1+length/blocksize))/8),
 	))
 	checksumLen = min(16, max(4, checksumLen))
-	return seqMatches, rsumLen, checksumLen
+	// zsync used to use a reduced amount of rolling checksum data per block
+	// (rsumLen < 4) for short files, to reduce the size of the control file a
+	// little. The saving is no longer worthwhile, so we always distribute all 4
+	// bytes of rolling checksum data now.
+	return seqMatches, 4 /* rsumLen */, checksumLen
 }
 
 // Temporary structure for holding checksums of a block during processing.

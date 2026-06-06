@@ -98,14 +98,13 @@ func (z *RcksumState) hashLookup(rs [2]RSum) ([]BlockID, bool) {
 // For that reason also, the arguments are a single RSum but a range of blocks;
 // the RSum should correspond to at least one block within that range.
 // Args:
-// - from, to: inclusive range of BlockIDs.
-// - rs: RSum of the block(s) to remove.
-func (z *RcksumState) removeFromHash(from, to BlockID, rs [2]RSum) {
+// - rs: the RSum of the block / every block that was removed.
+func (z *RcksumState) removeFromHash(rs [2]RSum) {
 	h := z.calcRhashFromRSums(rs)
 
 	if entries, found := z.rsumHash[h]; found {
 		prunedChain := slices.DeleteFunc(entries, func(id BlockID) bool {
-			return id >= from && id <= to
+			return z.knownBlocks.contains(id)
 		})
 		if len(prunedChain) > 0 {
 			z.rsumHash[h] = prunedChain

@@ -123,16 +123,37 @@ func TestZSyncMakeSimple(t *testing.T) {
 	}
 
 	expected := map[string]string{
-		"Filename": "target.dat",
-		"Length":   "281020",
-		"URL":      "target.dat",
-		"SHA-1":    "d0be479e0a823100bd09a997d125979626272453",
+		"Filename":  "target.dat",
+		"Length":    "281020",
+		"URL":       "target.dat",
+		"SHA-1":     "d0be479e0a823100bd09a997d125979626272453",
+		"Blocksize": "2048",
 	}
 
 	for key, expectedVal := range expected {
 		actualVal := string(info[key])
 		if actualVal != expectedVal {
 			t.Errorf("Expected %s=%s, got %s", key, expectedVal, actualVal)
+		}
+	}
+
+	if hashLengths, ok := info["Hash-Lengths"]; !ok {
+		t.Errorf("missing Hash-Lengths")
+	} else {
+		var seq, rsumLen, strongLen int
+		_, err = fmt.Sscanf(string(hashLengths), "%d,%d,%d", &seq, &rsumLen, &strongLen)
+		if err != nil {
+			t.Errorf("failed to parse Hash-Lengths header '%s': %v", hashLengths, err)
+		} else {
+			if seq != 1 {
+				t.Errorf("expected seqMatches=1, got %d", seq)
+			}
+			if rsumLen != 4 {
+				t.Errorf("expected rsumLen=4, got %d", rsumLen)
+			}
+			if strongLen != 6 {
+				t.Errorf("expected strongChecksumLen=6, got %d", strongLen)
+			}
 		}
 	}
 
