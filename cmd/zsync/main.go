@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -463,7 +464,25 @@ func readSeedFile(zs *zsync.State, filename string, noProgress bool) error {
 	if err != nil {
 		return fmt.Errorf("could not open seed file %s: %w", filename, err)
 	}
-	err = zs.SubmitSourceFile(f, !noProgress)
+
+	var bytesObtainededAtLastProgress, offsetAtLastProgress int64
+
+	pf := func(offset int64) {
+		if offset >= offsetAtLastProgress+(1<<20) {
+			bytesObtained, _ := zs.Progress()
+			useFraction := float64(bytesObtained-bytesObtainededAtLastProgress) / float64(offset-offsetAtLastProgress)
+			progressDecile := min(9, int(math.Ceil(useFraction*10)))
+			fmt.Fprintf(os.Stderr, "%d", progressDecile)
+			offsetAtLastProgress = offset
+			bytesObtainededAtLastProgress = bytesObtained
+		}
+	}
+	if noProgress {
+		pf = nil
+	}
+
+	seedSink := zs.NewSeedSink(pf)
+	_, err = seedSink.ReadFrom(f)
 	if err != nil {
 		return err
 	}

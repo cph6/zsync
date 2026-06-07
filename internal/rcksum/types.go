@@ -21,8 +21,6 @@ const (
 
 	// BithashBits is the number of bits per byte for the bithash table
 	BithashBits = 4
-
-	noBlock = BlockID(-1)
 )
 
 // BlockID represents an identifier for a block in the target file
@@ -50,9 +48,6 @@ type Stats struct {
 // RcksumState contains the set of checksums of the blocks of a target file
 // and is used to apply the rsync algorithm to detect data in common with a local file.
 type RcksumState struct {
-	// Current rolling checksums
-	r [2]RSum
-
 	// Block configuration
 	blocks        BlockID // Number of blocks in the target file
 	blockSize     int64   // Number of bytes per block
@@ -61,20 +56,14 @@ type RcksumState struct {
 	rsumBits      uint16  // Number of bits of rsum data
 	checksumBytes uint    // Number of bytes of the MD4 checksum available
 	seqMatches    int     // Required consecutive matches
-	context       int64   // blockSize * seqMatches
 
 	// MD4 checksums for each block
 	md4Checksums []MD4Checksum
-
 	// Rolling checksums for each block (used for hash table)
 	rsums []RSum
 
-	// Processing state
-	skip int // Skip forward on next submit_source_data
-
 	// Hash tables for rsync algorithm
 	rsumHash map[uint32][]BlockID
-
 	// Bithash for fast negative lookups.
 	bitHash     []byte
 	bitHashMask uint32

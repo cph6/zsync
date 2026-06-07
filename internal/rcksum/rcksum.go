@@ -25,6 +25,7 @@ package rcksum
 // AI: copilot / claude code (if I remember correctly) conversion of zsync's rcksum.c.
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 
@@ -68,7 +69,6 @@ func New(nblocks BlockID, blockSize int64, rsumBytes int, checksumBytes uint, re
 		blockSize:     blockSize,
 		checksumBytes: checksumBytes,
 		seqMatches:    requireConsecutiveMatches,
-		context:       blockSize * int64(requireConsecutiveMatches),
 	}
 
 	// Calculate rsumAMask based on rsum bytes
@@ -129,6 +129,15 @@ func (z *RcksumState) AddTargetBlock(b BlockID, r RSum, checksum [ChecksumSize]b
 	}
 }
 
+// Prepare makes the object ready to handle seed data.
+// Call after all AddTargetBlock calls are done and before NewSeedReader.
+func (z *RcksumState) Prepare() {
+	// Build hash tables if needed
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	z.buildHash()
+}
+
 // BlocksTodo returns the number of blocks still needed
 func (z *RcksumState) BlocksTodo() int64 {
 	z.mu.Lock()
@@ -139,6 +148,27 @@ func (z *RcksumState) BlocksTodo() int64 {
 // NeededBlockRanges returns the ranges of blocks that are still needed
 func (z *RcksumState) NeededBlockRanges(from, to BlockID) []blockIDPair {
 	return z.knownBlocks.missingBlocksBetween(from, to)
+}
+
+// SubmitBlocks tests and accepts data blocks matching the target checksums
+func (z *RcksumState) SubmitBlocks(data []byte, bfrom, bto BlockID) error {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+
+	// Check each block to see what the highest matching index is.
+	var x BlockID
+	for x = bfrom; x <= bto; x++ {
+		offset := int64((x - bfrom) << uint(z.blockShift))
+		blockData := data[offset : offset+z.blockSize]
+		md4sum := CalcChecksum(blockData)
+
+		if !bytes.Equal(md4sum[:z.checksumBytes], z.md4Checksums[x][:z.checksumBytes]) {
+			break
+		}
+	}
+
+	err := z.writeBlocks(data, bfrom, x-1)
+	return err
 }
 
 // Stats returns stats on the rolling checksum process.

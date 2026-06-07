@@ -69,6 +69,7 @@ func (zs *State) Prepare(targetFilename string) error {
 	zs.tempFile = tempFile
 	zs.curFilename = zs.tempFile.Name()
 	zs.Rs.SetTargetFile(zs.tempFile)
+	zs.Rs.Prepare()
 	return nil
 }
 
@@ -176,11 +177,10 @@ func (zs *State) SubmitTargetData(offset int64, in io.Reader) (int64, error) {
 	return bytesReceived, err
 }
 
-// SubmitSourceFile submits a file as a source for data for reconstructing the
+// NewSeedSink submits a file as a source for data for reconstructing the
 // target file.
-func (zs *State) SubmitSourceFile(f *os.File, progress bool) error {
-	_, err := zs.Rs.SubmitSourceFile(f, progress)
-	return err
+func (zs *State) NewSeedSink(progressCallback func(int64)) io.ReaderFrom {
+	return zs.Rs.NewSeedSink(progressCallback)
 }
 
 // RenameFile renames the file in which the target file is being reconstructed.

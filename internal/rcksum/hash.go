@@ -28,7 +28,7 @@ func (z *RcksumState) calcRhashFromRSums(rs [2]RSum) uint32 {
 }
 
 // BuildHash builds hash tables to quickly lookup blocks based on rsum value
-func (z *RcksumState) buildHash() error {
+func (z *RcksumState) buildHash() {
 	// Allocate hash table
 	z.rsumHash = make(map[uint32][]BlockID)
 
@@ -57,8 +57,6 @@ func (z *RcksumState) buildHash() error {
 			z.bitHash[bitIdx] |= 1 << bitPos
 		}
 	}
-
-	return nil
 }
 
 // hashLookup checks whether the given pair of rolling checksums for

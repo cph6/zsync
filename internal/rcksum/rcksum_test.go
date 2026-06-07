@@ -96,10 +96,9 @@ func TestHashTableBuilding(t *testing.T) {
 	}
 
 	// Build hash tables
-	err = z.buildHash()
-	if err != nil {
-		t.Fatalf("Failed to build hash tables: %v", err)
-	}
+	z.buildHash()
+
+	// TODO check something in the hash table?
 }
 
 // TestBlocksTodo tests the blocks remaining count
