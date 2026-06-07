@@ -82,29 +82,49 @@ func (z *RcksumState) hashLookup(rs [2]RSum) ([]BlockID, bool) {
 	return nil, false
 }
 
-// removeFromHash removes a block (or blocks) from the hash table
+// removeFromHash removes duplicate blocks from the hash table
 // once its data is obtained.
-// It might seem like this is unnecessary — we have the range tracking
-// that tracks what we already know in the target file and prevents us from
-// rewriting the data if we do find an identical block in the input. But this
-// is actually an important optimisation, because it is common to find highly
-// repeated blocks in files (particularly all-0 blocks, but blocks with
-// repeating patterns are common also). These are an O(n^2) case for the hash
-// lookups - every null block in the input scans the hash chain for every null
-// block in the output (for example). Whereas if we remove all the null block
-// entries from the hash after writing out all the null blocks, then we only
-// have to scan that long hash chain once, giving us a typical O(n) for this
-// case.
-// For that reason also, the arguments are a single RSum but a range of blocks;
-// the RSum should correspond to at least one block within that range.
+// If there are duplicate blocks in the output and different duplicate blocks
+// in the input with colliding hash keys, then there is an O(n^2) case where we
+// have to iterate through the duplicate output blocks to reject them for each
+// colliding duplicate input block. The case that I have seen is FreeBSD ISO
+// images with repeating patterns that have RSum{0,0} (e.g. many blocks with
+// 0x00fc repeated and 0x2020 repeated).
+// The worst case is O(n^2), but if we remove repeated blocks from the hash
+// table after they have been written out then we make the best case
+// performance O(n) — we hope that we find such a block early and so can write
+// them all and remove them from the chain early, avoiding repeated traversals.
+// But removing found blocks from the hash table entirely causes a different
+// O(n^2) case. When we first find, say, a repeated 0x00fc block in the input,
+// we write it to the relevant output locations and jump past it, but we then
+// have to do a rolling checksum of all the later 0x00fc blocks and compare
+// them to all of the 0x2020 blocks in the hash table (until we find,
+// hopefully, an 0x2020 block).
+// So the best approach is to remove duplicate blocks from the hash chain
+// *leaving just one representative entry behind*. That way we can match a
+// later recurring block against the same checksums as the earlier block, write
+// nothing out (because we already saw that data), but still skip over it like
+// any matched block.
+// Note that, as with skipping forward past matched blocks in general, this
+// does causes some misses of local data that could be used for the target
+// file. On a FreeBSD ISO, I see +0.2% data transferred, -80% CPU used, -20s
+// elapsed time, so it is very worthwhile for the cases where it matters.
+// TODO: move this explanation out to the technical paper.
 // Args:
 // - rs: the RSum of the block / every block that was removed.
 func (z *RcksumState) removeFromHash(rs [2]RSum) {
 	h := z.calcRhashFromRSums(rs)
 
 	if entries, found := z.rsumHash[h]; found {
+		seenChecksum := make(map[[ChecksumSize]byte]bool, len(entries))
 		prunedChain := slices.DeleteFunc(entries, func(id BlockID) bool {
-			return z.knownBlocks.contains(id)
+			if z.knownBlocks.contains(id) {
+				md4 := z.md4Checksums[id]
+				_, ok := seenChecksum[md4]
+				seenChecksum[md4] = true
+				return ok
+			}
+			return false
 		})
 		if len(prunedChain) > 0 {
 			z.rsumHash[h] = prunedChain
