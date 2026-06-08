@@ -233,6 +233,14 @@ func determineHashLengths(fileLengthInt, blocksizeInt int64) (int, int, int) {
 	blocksize := float64(blocksizeInt)
 	seqMatches := 1
 
+	// https://zsync.moria.org.uk/paper200503/ch02s03.html#id276977
+	// If more than 4 bytes of rolling checksum data is optimal (which it is, by
+	// this estimator, with target files larger than around 400MB), then we turn
+	// on match continuation.
+	// The value used here is based on performance numbers from 2005; with modern
+	// internet the optimal threashold might be lower, but there are other
+	// tradeoffs that the whitepaper did not consider so I will leave it as-is
+	// for now.
 	if math.Log2(length)+math.Log2(blocksize)-8.6 > 32 {
 		seqMatches = 2
 	}

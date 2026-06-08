@@ -243,6 +243,29 @@ func TestZSyncSimpleSomeLocal(t *testing.T) {
 	}
 }
 
+// TestZSyncMatchContinuation tests zsync on a control file with a shorter
+// blocksize and match continuation.
+func TestZSyncMatchContinuation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
+	defer os.Remove(seedFile)
+
+	outfile, stats, _, _ := tryZSync(t, targetFile+".sm2.zsync", []string{"-i", seedFile}, "", nil)
+	defer os.Remove(outfile)
+
+	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
+
+	if stats["local"] <= 0 {
+		t.Errorf("Expected local > 0, got %d", stats["local"])
+	}
+	if stats["fetched"] <= 0 {
+		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
+	}
+}
+
 // TestZSyncCaching tests zsync caching functionality
 func TestZSyncCaching(t *testing.T) {
 	if testing.Short() {
