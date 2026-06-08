@@ -12,26 +12,22 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 	"unicode"
 
-	"github.com/cph6/zsync/internal/zsync"
-	"golang.org/x/sync/errgroup"
+	"github.com/cph6/zsync"
+	"github.com/cph6/zsync/internal/httpbasic"
 )
 
 const version = "0.7.1"
@@ -45,36 +41,6 @@ func (s *stringSlice) String() string {
 
 func (s *stringSlice) Set(value string) error {
 	*s = append(*s, value)
-	return nil
-}
-
-type authCred struct {
-	username string
-	password string
-}
-
-type authMap map[string]authCred
-
-func (a authMap) String() string {
-	entries := make([]string, 0, len(a))
-	for host, cred := range a {
-		entries = append(entries, fmt.Sprintf("%s=%s:%s", host, cred.username, cred.password))
-	}
-	return strings.Join(entries, ",")
-}
-
-func (a authMap) Set(value string) error {
-	parts := strings.SplitN(value, "=", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid auth syntax: %s", value)
-	}
-	host := parts[0]
-	pair := parts[1]
-	creds := strings.SplitN(pair, ":", 2)
-	if len(creds) != 2 {
-		return fmt.Errorf("invalid auth syntax: %s", value)
-	}
-	a[host] = authCred{username: creds[0], password: creds[1]}
 	return nil
 }
 
@@ -104,9 +70,9 @@ func getFilenamePrefix(source string) string {
 	return name
 }
 
-func getFilename(zs *zsync.State, source string) string {
+func getFilename(zs *zsync.Syncer, source string) string {
 	// First try using the filename specified in the zsync control file.
-	name := zs.Filename()
+	name := zs.TargetFilename()
 	if name != "" {
 		// 1. Strip any path component from filename supplied by the remote.
 		//    i.e. the remote side should not be able to ask for ../../something to
@@ -163,7 +129,7 @@ func checkSuppliedFilename(filename string) error {
 
 func main() {
 	var (
-		auths      = make(authMap)
+		auths      = make(httpbasic.AuthMap)
 		seedFiles  stringSlice
 		filename   string
 		keepZsync  string
@@ -202,25 +168,35 @@ func main() {
 	}
 	source := args[0]
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			ForceAttemptHTTP2: true,
-			Proxy:             http.ProxyFromEnvironment,
-			TLSClientConfig:   &tls.Config{InsecureSkipVerify: skipVerify},
-		}}
+	client := httpbasic.Client{
+		Client: http.Client{
+			Transport: &http.Transport{
+				ForceAttemptHTTP2: true,
+				Proxy:             http.ProxyFromEnvironment,
+				TLSClientConfig:   &tls.Config{InsecureSkipVerify: skipVerify},
+			},
+		},
+		AuthByHost: auths,
+		UserAgent:  "zsync/" + version,
+	}
 
 	if err := checkSuppliedFilename(keepZsync); err != nil {
 		fmt.Fprintf(os.Stderr, "%v", err)
 		os.Exit(3)
 	}
-	zs, err := readZsyncControlFile(client, source, keepZsync, referer, auths)
+	controlReader, referer, err := getZsyncControlFile(&client, source, keepZsync, referer)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to fetch control file: %v", err)
 		os.Exit(3)
 	}
-
-	if referer == "" {
-		referer = source
+	zs, err := zsync.New(controlReader, filename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse control file: %v", err)
+		os.Exit(3)
+	}
+	if err := controlReader.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse control file: %v", err)
+		os.Exit(3)
 	}
 
 	if filename == "" {
@@ -238,11 +214,6 @@ func main() {
 		seedFiles = append([]string{tempFile}, seedFiles...)
 	}
 
-	if err := zs.Prepare(filename); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to prepare temporary file: %v", err)
-		exitWithCode(1)
-	}
-
 	localUsed := int64(0)
 	for _, file := range seedFiles {
 		if !quiet {
@@ -250,7 +221,7 @@ func main() {
 		}
 		if err := readSeedFile(zs, file, quiet); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
-			exitWithCode(1)
+			os.Exit(1)
 		}
 
 		got, total := zs.Progress()
@@ -258,33 +229,33 @@ func main() {
 		if !quiet {
 			fmt.Fprintf(os.Stderr, "Done reading %s. %02.1f%% of target obtained.      \n", file, float64(got)/float64(total)*100.0)
 		}
-		if zs.Status() >= 2 {
+		if zs.Status() == zsync.CompleteData {
 			break
 		}
 	}
 
-	if localUsed == 0 && !quiet {
+	if zs.Status() == zsync.NoData && !quiet {
 		fmt.Fprintln(os.Stderr, "No relevent local data found - I will be downloading the whole file. If that's not what you want, CTRL-C out. You should specify the local file is the old version of the file to download with -i (you might have to decompress it with gzip -d first). Or perhaps you just have no data that helps download the file")
 	}
 
 	if err := zs.RenameFile(tempFile); err != nil {
 		fmt.Fprintf(os.Stderr, "rename failed: %v\n", err)
-		exitWithCode(1)
+		os.Exit(1)
 	}
 
-	fetchErr := fetchRemainingBlocks(client, zs, referer, auths, quiet)
-	if fetchErr != nil || zs.Status() < 2 {
+	httpBytesDownloaded, fetchErr := zs.FetchRemainingBlocks(&client, referer, quiet)
+	if fetchErr != nil || zs.Status() != zsync.CompleteData {
 		errMsg := ""
 		if fetchErr != nil {
 			errMsg = fetchErr.Error()
 		}
 		fmt.Fprintf(os.Stderr, "Not all of the required data could be downloaded, and the remaining data could not be retrieved from any of the download URLs. %s\n", errMsg)
 		fmt.Fprintf(os.Stderr, "%s. Incomplete transfer left in %s.\n", "completed download left in", tempFile)
-		exitWithCode(3)
+		os.Exit(3)
 	}
 
 	if verbose {
-		s := zs.Stats()
+		s := zs.RStats()
 		fmt.Printf("hash stats: bithash hit %d, hash hit %d, hash false positive %d, weak hit %d, checksums calculated %d, strong hit %d\n", s.BithashHit, s.HashHit, s.HashFalsePositive, s.WeakHit, s.Checksummed, s.StrongHit)
 	}
 	if !quiet {
@@ -292,46 +263,32 @@ func main() {
 	}
 	if err := zs.Complete(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed(%v), download available in %s\n", err, tempFile)
-		exitWithCode(2)
+		os.Exit(2)
 	}
 	if !quiet {
 		fmt.Println("checksum matches OK")
 	}
 
-	tempFilename, err := zsync.End(zs)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed(%v), download available in %s\n", err, tempFilename)
-		exitWithCode(2)
-	}
-	mtime := zs.Mtime()
-
 	if filename != "" {
 		oldBackup := filename + ".zs-old"
-		ok := true
 
 		if _, err := os.Stat(filename); err == nil {
 			_ = os.Remove(oldBackup)
 			if err := os.Link(filename, oldBackup); err != nil {
 				if err2 := os.Rename(filename, oldBackup); err2 != nil {
-					fmt.Fprintf(os.Stderr, "Unable to back up old file %s - completed download left in %s\n", filename, tempFilename)
-					ok = false
+					fmt.Fprintf(os.Stderr, "Unable to back up old file %s - completed download left in %s\n", filename, zs.Filename())
+					os.Exit(2)
 				}
 			}
 		}
+	}
 
-		if ok {
-			if err := os.Rename(tempFilename, filename); err != nil {
-				fmt.Fprintf(os.Stderr, "Unable to move %s to %s: %v\n", tempFilename, filename, err)
-				ok = false
-			}
-			if ok && !mtime.IsZero() {
-				if err := os.Chtimes(filename, time.Now(), mtime); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to set mtime: %v\n", err)
-				}
-			}
-		}
-	} else {
-		fmt.Printf("No filename specified for download - completed download left in %s\n", tempFilename)
+	finalFilename, err := zs.End(filename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed(%v), download available in %s\n", err, finalFilename)
+		os.Exit(2)
+	} else if filename == "" {
+		fmt.Printf("No filename specified for download - completed download left in %s\n", finalFilename)
 	}
 
 	if !quiet {
@@ -339,127 +296,24 @@ func main() {
 	}
 }
 
-func exitWithCode(code int) {
-	os.Exit(code)
-}
-
-func readZsyncControlFile(client *http.Client, source, keepZsync, referer string, auths authMap) (*zsync.State, error) {
-	controlReader, err := getZsyncControlFile(client, source, keepZsync, referer, auths)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch control file: %v", err)
-	}
-	zs, err := zsync.New(controlReader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse control file: %v", err)
-	}
-	if err := controlReader.Close(); err != nil {
-		return nil, fmt.Errorf("failed to parse control file: %v", err)
-	}
-	return zs, nil
-}
-
-func getZsyncControlFile(client *http.Client, source, keepZsync, referer string, auths authMap) (io.ReadCloser, error) {
+// getZsyncControlFile wraps zsync.GetControlFile giving the option to use a
+// local file instead of fetching remotely.
+func getZsyncControlFile(client zsync.HTTPRequester, source, keepZsync, referer string) (io.ReadCloser, string, error) {
 	// First try to read from local file.
 	if _, err := os.Stat(source); err == nil {
 		f, err := os.Open(source)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open .zsync: %w", err)
+			return nil, "", fmt.Errorf("failed to open .zsync: %w", err)
 		}
-		return f, nil
+		// If the control file is local, we use the supplied referer URL as the
+		// referer for the target file requests.
+		return f, referer, nil
 	}
 
-	// Otherwise, try to download from URL.
-	u, err := url.Parse(source)
-	if err != nil || u.Scheme == "" {
-		return nil, fmt.Errorf("%s is not a valid URL or local .zsync file", source)
-	}
-
-	var fileInfo os.FileInfo
-	gotMtime := false
-	if keepZsync != "" {
-		fileInfo, err = os.Stat(keepZsync)
-		if err != nil && !os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "failed to get mtime for existing .zsync control file: %v", err)
-			// Fall through with no mtime - we can just download the control file.
-		} else if err == nil {
-			gotMtime = true
-		}
-	}
-
-	req, err := http.NewRequest("GET", source, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to form HTTP request: %w", err)
-	}
-	if referer != "" {
-		req.Header.Set("Referer", referer)
-	}
-	if gotMtime {
-		req.Header.Set("If-Modified-Since", fileInfo.ModTime().UTC().Format(time.RFC1123))
-	}
-	if auth, ok := auths[u.Hostname()]; ok {
-		req.SetBasicAuth(auth.username, auth.password)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("HTTP request failed: %w", err)
-	}
-	if keepZsync != "" && resp.StatusCode == http.StatusNotModified {
-		// Not modified, so we can drop the response and read the local copy.
-		fmt.Fprintf(os.Stderr, "control file not modified - using local copy\n")
-		_ = resp.Body.Close()
-		f, err := os.Open(keepZsync)
-		return f, err
-	}
-	// Otherwise we need the response.
-	if resp.StatusCode != http.StatusOK {
-		_ = resp.Body.Close()
-		return nil, fmt.Errorf("failed to download .zsync: %s", resp.Status)
-	}
-
-	// If we are not saving a local copy of the .zsync file, we can just
-	// pass the response body reader to the caller.
-	if keepZsync == "" {
-		return resp.Body, nil
-	}
-
-	controlFile, err := os.Create(keepZsync)
-	if err != nil {
-		return nil, fmt.Errorf("zsync local file creation failed: %w", err)
-	}
-	// Copy zsync file from response to temporary file, then seek back to the
-	// start for reading.
-	if _, err := io.Copy(controlFile, resp.Body); err != nil {
-		// We already truncated the local copy of the control file, so
-		// invalidate it here by deleting it - the code above assumes that
-		// any existing file is a valid download for If-Modified-Since.
-		_ = os.Remove(keepZsync)
-		return nil, fmt.Errorf("write error: %w", err)
-	}
-	_ = resp.Body.Close()
-	if _, err := controlFile.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("seek: %w", err)
-	}
-
-	// Set the mtime to the Last-Modified from the server if available,
-	// so that we supply the correct If-Modified-Since on any rerun.
-	if lastModified, ok := resp.Header["Last-Modified"]; ok && len(lastModified) > 0 {
-		if err := setMTime(keepZsync, lastModified[0]); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to set mtime of control file (%v); this may lead to incorrect caching of the zsync control file\n", err)
-		}
-	}
-	return controlFile, nil
+	return zsync.GetControlFile(client, source, keepZsync, referer)
 }
 
-func setMTime(filename string, mTimeStr string) error {
-	mtime, err := time.Parse(time.RFC1123, mTimeStr)
-	if err != nil {
-		return err
-	}
-	return os.Chtimes(filename, time.Now(), mtime)
-}
-
-func readSeedFile(zs *zsync.State, filename string, noProgress bool) error {
+func readSeedFile(zs *zsync.Syncer, filename string, noProgress bool) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("could not open seed file %s: %w", filename, err)
@@ -490,112 +344,4 @@ func readSeedFile(zs *zsync.State, filename string, noProgress bool) error {
 		return fmt.Errorf("failed to close seed file: %w", closeErr)
 	}
 	return nil
-}
-
-var httpBytesDownloaded int64
-
-func fetchRemainingBlocks(client *http.Client, zs *zsync.State, referer string, auths authMap, noProgress bool) error {
-	urls := zs.GetUrls()
-	if len(urls) == 0 {
-		return fmt.Errorf("no download URLs known")
-	}
-
-	failed := make([]bool, len(urls))
-	remaining := len(urls)
-
-	var err error
-	for zs.Status() < 2 && remaining > 0 {
-		try := rand.Intn(len(urls))
-		if failed[try] {
-			continue
-		}
-		if err = fetchRemainingBlocksFromURL(client, zs, urls[try], referer, auths, noProgress); err != nil {
-			failed[try] = true
-			fmt.Fprintf(os.Stderr, "failed to complete download from %s(%s): %v\n", urls[try], referer, err)
-			remaining--
-		}
-	}
-
-	if zs.Status() < 2 {
-		return fmt.Errorf("could not complete download; most recent error was: %w", err)
-	}
-	return nil
-}
-
-func fetchRemainingBlocksFromURL(client *http.Client, zs *zsync.State, rawURL, referer string, auths authMap, noProgress bool) error {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL %s: %w", rawURL, err)
-	}
-	var absURL *url.URL
-	if !u.IsAbs() {
-		if referer == "" {
-			return fmt.Errorf("URL '%s' from the .zsync file is relative, but no referer URL is known", rawURL)
-		}
-		base, err := url.Parse(referer)
-		if err != nil {
-			return err
-		}
-		absURL = base.ResolveReference(u)
-	} else {
-		absURL = u
-	}
-
-	if !noProgress {
-		fmt.Fprintf(os.Stderr, "downloading new blocks from %s:\n", absURL.String())
-	}
-
-	ranges := zs.NeededByteRanges()
-	if len(ranges) == 0 {
-		return nil
-	}
-
-	g, ctx := errgroup.WithContext(context.Background())
-	g.SetLimit(3)
-	start := time.Now()
-	var mu sync.Mutex
-	for _, r := range ranges {
-		g.Go(func() error {
-			bytesReceived, err := fetchRange(ctx, zs, client, absURL, auths, r)
-			// Lock protecting httpBytesDownloaded
-			mu.Lock()
-			defer mu.Unlock()
-			httpBytesDownloaded += bytesReceived
-			if err != nil {
-				return err
-			}
-			if !noProgress {
-				got, total := zs.Progress()
-				elapsed := time.Since(start)
-				fmt.Fprintf(os.Stderr, "\r%s %3.1fMBps %02.1f%% of target obtained", elapsed.Truncate(time.Millisecond*100).String(), float64(httpBytesDownloaded)/elapsed.Seconds()/1000000.0, float64(got)/float64(total)*100)
-			}
-			return nil
-		})
-	}
-	err = g.Wait()
-	if !noProgress {
-		fmt.Fprintf(os.Stderr, "\n")
-	}
-	return err
-}
-
-func fetchRange(ctx context.Context, zs *zsync.State, client *http.Client, url *url.URL, auths authMap, r zsync.ByteRange) (int64, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", r.Start, r.End))
-	req.Header.Set("User-Agent", "zsync/"+version)
-	if auth, ok := auths[url.Hostname()]; ok {
-		req.SetBasicAuth(auth.username, auth.password)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusPartialContent {
-		return 0, fmt.Errorf("expected partial content from %s, got %s", url.String(), resp.Status)
-	}
-	return zs.SubmitTargetData(r.Start, resp.Body)
 }

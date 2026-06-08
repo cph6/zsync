@@ -1,5 +1,11 @@
 package rcksum
 
+/*
+ * SPDX-FileCopyrightText: 2004,2005,2007,2009,2025,2026 Colin Phipps <cph@moria.org.uk>
+ *
+ * SPDX-License-Identifier: Artistic-2.0
+ */
+
 import (
 	"testing"
 )

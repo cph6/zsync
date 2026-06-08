@@ -1,5 +1,13 @@
 package rcksum
 
+/*
+ * SPDX-FileCopyrightText: 2026 Colin Phipps <cph@moria.org.uk>
+ *
+ * SPDX-License-Identifier: Artistic-2.0
+ */
+
+// AI: copilot / GPT mini
+
 import (
 	"bytes"
 	"testing"

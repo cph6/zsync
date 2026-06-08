@@ -12,6 +12,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -19,13 +21,17 @@ import (
 	"github.com/cph6/zsync/internal/rcksum"
 )
 
-// New loads a zsync file and returns the state tracking object.
-func New(f io.Reader) (*State, error) {
+// New loads a zsync control file and returns the Syncer used to reconstruct
+// the target file represented by that control file. If targetFilename is
+// non-empty, the final reconstructed file will be written to that path on
+// successful completion (via Syncer.End). The caller remains responsible for
+// calling Syncer.End to finalise and move the temporary file.
+func New(f io.Reader, targetFilename string) (*Syncer, error) {
 	checksumBytes := 16
 	rsumBytes := 4
 	seqMatches := 1
 
-	zs := &State{}
+	zs := &Syncer{}
 
 	safelines := []string{}
 
@@ -131,7 +137,7 @@ func New(f io.Reader) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	zs.Rs = rs
+	zs.rs = rs
 
 	// Read block checksums
 	for i := int64(0); i < zs.blocks; i++ {
@@ -155,8 +161,18 @@ func New(f io.Reader) (*State, error) {
 
 		var cksum [rcksum.ChecksumSize]byte
 		copy(cksum[:], checksum)
-		rs.AddTargetBlock(rcksum.BlockID(i), rsum, cksum)
+		zs.rs.AddTargetBlock(rcksum.BlockID(i), rsum, cksum)
 	}
 
+	// Create temporary file in the target directory.
+	targetDir := filepath.Dir(targetFilename)
+	tempFile, err := os.CreateTemp(targetDir, "rcksum-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary file in %s: %w", targetDir, err)
+	}
+	zs.tempFile = tempFile
+	zs.curFilename = zs.tempFile.Name()
+	zs.rs.SetTargetFile(zs.tempFile)
+	zs.rs.Prepare()
 	return zs, nil
 }
