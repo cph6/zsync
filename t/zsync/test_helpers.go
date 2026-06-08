@@ -1,5 +1,13 @@
 package main
 
+/*
+ * SPDX-FileCopyrightText: 2026 Colin Phipps <cph@moria.org.uk>
+ *
+ * SPDX-License-Identifier: Artistic-2.0
+ */
+
+// AI: copilot / Claude Haiku
+
 import (
 	"bytes"
 	"crypto/md5"
