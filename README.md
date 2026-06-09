@@ -1,4 +1,4 @@
-# zsync 0.7.1
+# zsync 0.7.2
 
 zsync is a file transfer program. It allows you to download a file from a
 web server, where you have an older version of the file on your computer
