@@ -105,7 +105,7 @@ func TestFetchRemainingBlocks(t *testing.T) {
 	client := &fakeClient{status: http.StatusPartialContent, body: data}
 
 	// Fetch remaining blocks. We provide empty referer and noProgress=true
-	got, err := s.FetchRemainingBlocks(client, "", true)
+	got, err := s.FetchRemainingBlocks(client, "", nil)
 	if err != nil {
 		t.Fatalf("FetchRemainingBlocks failed: %v", err)
 	}

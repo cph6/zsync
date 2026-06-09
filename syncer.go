@@ -35,7 +35,8 @@ import (
 
 // Syncer holds the state of the process of reconstructing and
 // downloading a target file specified by a zsync control file.
-// Syncer is not thread safe.
+// Syncer is not thread safe, except for:
+// Status() and Progress() can be called while the syncer is active.
 type Syncer struct {
 	rs             *rcksum.RcksumState
 	filelen        int64

@@ -24,6 +24,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 	"unicode"
 
 	"github.com/cph6/zsync"
@@ -243,7 +245,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	httpBytesDownloaded, fetchErr := zs.FetchRemainingBlocks(&client, referer, quiet)
+	progressReporter := NewProgressReporter(zs)
+	reportTargetProgress := func(url string, err error) {
+		progressReporter.progress(url, err)
+	}
+	if quiet {
+		reportTargetProgress = nil
+	}
+
+	httpBytesDownloaded, fetchErr := zs.FetchRemainingBlocks(&client, referer, reportTargetProgress)
 	if fetchErr != nil || zs.Status() != zsync.CompleteData {
 		errMsg := ""
 		if fetchErr != nil {
@@ -253,6 +263,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s. Incomplete transfer left in %s.\n", "completed download left in", tempFile)
 		os.Exit(3)
 	}
+	progressReporter.Close()
 
 	if verbose {
 		s := zs.RStats()
@@ -344,4 +355,60 @@ func readSeedFile(zs *zsync.Syncer, filename string, noProgress bool) error {
 		return fmt.Errorf("failed to close seed file: %w", closeErr)
 	}
 	return nil
+}
+
+type progressReporter struct {
+	zs         *zsync.Syncer
+	startTime  time.Time
+	startBytes int64
+	ticker     *time.Ticker
+	stopTicker chan struct{}
+	mu         sync.Mutex
+}
+
+func NewProgressReporter(zs *zsync.Syncer) (p *progressReporter) {
+	p = &progressReporter{
+		zs:         zs,
+		ticker:     time.NewTicker(time.Second),
+		stopTicker: make(chan struct{}),
+	}
+	go p.ShowProgress()
+	return
+}
+
+func (p *progressReporter) Close() {
+	p.ticker.Stop()
+	close(p.stopTicker)
+}
+
+func (p *progressReporter) ShowProgress() {
+	for {
+		select {
+		case <-p.ticker.C:
+			p.mu.Lock()
+			got, total := p.zs.Progress()
+			elapsed := time.Since(p.startTime)
+			fmt.Fprintf(os.Stderr, "\r%s %3.1fMBps %02.1f%% of target obtained", elapsed.Truncate(time.Millisecond*100).String(), float64(got-p.startBytes)/elapsed.Seconds()/1000000.0, float64(got)/float64(total)*100)
+			p.mu.Unlock()
+		case <-p.stopTicker:
+			return
+		}
+	}
+}
+
+func (p *progressReporter) progress(url string, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err != nil {
+		if err != io.EOF {
+			fmt.Fprintf(os.Stderr, "failed to complete download from %s: %v\n", url, err)
+		}
+	} else if err == io.EOF {
+		fmt.Fprintf(os.Stderr, "\n")
+	} else {
+		p.startTime = time.Now()
+		p.startBytes, _ = p.zs.Progress()
+		fmt.Fprintf(os.Stderr, "downloading new blocks from %s:\n", url)
+
+	}
 }

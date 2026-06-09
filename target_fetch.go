@@ -3,12 +3,11 @@ package zsync
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -33,7 +32,11 @@ type HTTPRequester interface {
 // FetchRemainingBlocks attempts to complete the target file by
 // downloading any missing blocks using the supplied HTTPRequester.
 // It uses the URLs specified in the zsync control file.
-func (zs *Syncer) FetchRemainingBlocks(client HTTPRequester, referer string, noProgress bool) (httpBytesDownloaded int64, err error) {
+// progressCallback, if supplied, will be called:
+//   - at the start of downloading from each source,
+//   - at the end of downloading from each source with err=io.EOF on no error, or
+//     otherwise with the error encountered.
+func (zs *Syncer) FetchRemainingBlocks(client HTTPRequester, referer string, progressCallback func(url string, err error)) (httpBytesDownloaded int64, err error) {
 	if len(zs.urls) == 0 {
 		return httpBytesDownloaded, fmt.Errorf("no download URLs known")
 	}
@@ -47,11 +50,22 @@ func (zs *Syncer) FetchRemainingBlocks(client HTTPRequester, referer string, noP
 			continue
 		}
 
+		url := zs.urls[try]
+		if progressCallback != nil {
+			progressCallback(url, nil)
+		}
 		var fetched int64
-		if fetched, err = zs.fetchRemainingBlocksFromURL(client, zs.urls[try], referer, noProgress); err != nil {
+		fetched, err = zs.fetchRemainingBlocksFromURL(client, url, referer)
+		if err != nil {
 			failed[try] = true
-			fmt.Fprintf(os.Stderr, "failed to complete download from %s(%s): %v\n", zs.urls[try], referer, err)
+			if progressCallback != nil {
+				progressCallback(zs.urls[try], err)
+			}
 			remaining--
+		} else {
+			if progressCallback != nil {
+				progressCallback(zs.urls[try], io.EOF)
+			}
 		}
 		httpBytesDownloaded += fetched
 	}
@@ -62,7 +76,7 @@ func (zs *Syncer) FetchRemainingBlocks(client HTTPRequester, referer string, noP
 	return
 }
 
-func (zs *Syncer) fetchRemainingBlocksFromURL(client HTTPRequester, rawURL, referer string, noProgress bool) (int64, error) {
+func (zs *Syncer) fetchRemainingBlocksFromURL(client HTTPRequester, rawURL, referer string) (int64, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return 0, fmt.Errorf("invalid URL %s: %w", rawURL, err)
@@ -81,10 +95,6 @@ func (zs *Syncer) fetchRemainingBlocksFromURL(client HTTPRequester, rawURL, refe
 		absURL = u
 	}
 
-	if !noProgress {
-		fmt.Fprintf(os.Stderr, "downloading new blocks from %s:\n", absURL.String())
-	}
-
 	ranges := zs.NeededByteRanges()
 	if len(ranges) == 0 {
 		return 0, nil
@@ -92,7 +102,6 @@ func (zs *Syncer) fetchRemainingBlocksFromURL(client HTTPRequester, rawURL, refe
 
 	g, ctx := errgroup.WithContext(context.Background())
 	g.SetLimit(3)
-	start := time.Now()
 
 	var (
 		httpBytesDownloaded int64
@@ -109,19 +118,10 @@ func (zs *Syncer) fetchRemainingBlocksFromURL(client HTTPRequester, rawURL, refe
 			if err != nil {
 				return err
 			}
-			if !noProgress {
-				got, total := zs.Progress()
-				elapsed := time.Since(start)
-				fmt.Fprintf(os.Stderr, "\r%s %3.1fMBps %02.1f%% of target obtained", elapsed.Truncate(time.Millisecond*100).String(), float64(httpBytesDownloaded)/elapsed.Seconds()/1000000.0, float64(got)/float64(total)*100)
-			}
 			return nil
 		})
 	}
-	err = g.Wait()
-	if !noProgress {
-		fmt.Fprintf(os.Stderr, "\n")
-	}
-	return httpBytesDownloaded, err
+	return httpBytesDownloaded, g.Wait()
 }
 
 func (zs *Syncer) fetchRange(ctx context.Context, client HTTPRequester, url *url.URL, r byteRange) (int64, error) {
