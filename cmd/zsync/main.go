@@ -245,12 +245,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	progressReporter := NewProgressReporter(zs)
-	reportTargetProgress := func(url string, err error) {
-		progressReporter.progress(url, err)
-	}
-	if quiet {
-		reportTargetProgress = nil
+	var progressReporter *progressReporter
+	var reportTargetProgress func(url string, event zsync.FetchEvent, err error)
+	if !quiet {
+		progressReporter = NewProgressReporter(zs)
+		reportTargetProgress = func(url string, event zsync.FetchEvent, err error) {
+			progressReporter.progress(url, event, err)
+		}
 	}
 
 	httpBytesDownloaded, fetchErr := zs.FetchRemainingBlocks(&client, referer, reportTargetProgress)
@@ -263,7 +264,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s. Incomplete transfer left in %s.\n", "completed download left in", tempFile)
 		os.Exit(3)
 	}
-	progressReporter.Close()
+	if !quiet {
+		progressReporter.Close()
+	}
 
 	if verbose {
 		s := zs.RStats()
@@ -372,7 +375,7 @@ func NewProgressReporter(zs *zsync.Syncer) (p *progressReporter) {
 		ticker:     time.NewTicker(time.Second),
 		stopTicker: make(chan struct{}),
 	}
-	go p.ShowProgress()
+	go p.ShowProgressLoop()
 	return
 }
 
@@ -381,14 +384,12 @@ func (p *progressReporter) Close() {
 	close(p.stopTicker)
 }
 
-func (p *progressReporter) ShowProgress() {
+func (p *progressReporter) ShowProgressLoop() {
 	for {
 		select {
 		case <-p.ticker.C:
 			p.mu.Lock()
-			got, total := p.zs.Progress()
-			elapsed := time.Since(p.startTime)
-			fmt.Fprintf(os.Stderr, "\r%s %3.1fMBps %02.1f%% of target obtained", elapsed.Truncate(time.Millisecond*100).String(), float64(got-p.startBytes)/elapsed.Seconds()/1000000.0, float64(got)/float64(total)*100)
+			p.showProgress()
 			p.mu.Unlock()
 		case <-p.stopTicker:
 			return
@@ -396,19 +397,26 @@ func (p *progressReporter) ShowProgress() {
 	}
 }
 
-func (p *progressReporter) progress(url string, err error) {
+func (p *progressReporter) showProgress() {
+	got, total := p.zs.Progress()
+	elapsed := time.Since(p.startTime)
+	fmt.Fprintf(os.Stderr, "\r%s %3.1fMBps %02.1f%% of target obtained", elapsed.Truncate(time.Millisecond*100).String(), float64(got-p.startBytes)/elapsed.Seconds()/1000000.0, float64(got)/float64(total)*100)
+}
+
+func (p *progressReporter) progress(url string, event zsync.FetchEvent, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err != nil {
-		if err != io.EOF {
-			fmt.Fprintf(os.Stderr, "failed to complete download from %s: %v\n", url, err)
-		}
-	} else if err == io.EOF {
-		fmt.Fprintf(os.Stderr, "\n")
-	} else {
+		fmt.Fprintf(os.Stderr, "failed to complete download from %s: %v\n", url, err)
+		return
+	}
+	switch event {
+	case zsync.FetchStarted:
 		p.startTime = time.Now()
 		p.startBytes, _ = p.zs.Progress()
 		fmt.Fprintf(os.Stderr, "downloading new blocks from %s:\n", url)
-
+	case zsync.FetchEnded:
+		p.showProgress()
+		fmt.Fprintf(os.Stderr, "\n")
 	}
 }

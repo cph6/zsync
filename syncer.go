@@ -62,8 +62,10 @@ func (zs *Syncer) Filename() string {
 	return zs.curFilename
 }
 
+type Status int
+
 const (
-	NoData = iota
+	NoData Status = iota
 	PartialData
 	CompleteData
 )
@@ -73,7 +75,7 @@ const (
 // done or not. In particular the caller might want to check that Status() !=
 // NO_DATA after seed files are read, if the caller wants to be sure that local
 // data was in fact used.
-func (zs *Syncer) Status() int {
+func (zs *Syncer) Status() Status {
 	todo := zs.rs.BlocksTodo()
 	if todo == zs.blocks {
 		return NoData
@@ -92,7 +94,7 @@ func (zs *Syncer) Progress() (got, total int64) {
 	return
 }
 
-type byteRange struct {
+type ByteRange struct {
 	Start int64
 	End   int64
 }
@@ -101,9 +103,9 @@ type byteRange struct {
 // to be obtained.
 // Public for advanced use only: this is mainly used internally, but can be
 // used by the caller if desired.
-func (zs *Syncer) NeededByteRanges() []byteRange {
+func (zs *Syncer) NeededByteRanges() []ByteRange {
 	blockRanges := zs.rs.NeededBlockRanges(0, rcksum.BlockID(zs.blocks-1))
-	byteRanges := make([]byteRange, len(blockRanges))
+	byteRanges := make([]ByteRange, len(blockRanges))
 	for i, br := range blockRanges {
 		byteRanges[i].Start = int64(br.Start) * zs.blocksize
 		end := int64(br.End+1)*zs.blocksize - 1

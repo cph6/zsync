@@ -3,7 +3,6 @@ package zsync
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -29,6 +28,14 @@ type HTTPRequester interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+// Define event types explicitly
+type FetchEvent int
+
+const (
+	FetchStarted FetchEvent = iota
+	FetchEnded
+)
+
 // FetchRemainingBlocks attempts to complete the target file by
 // downloading any missing blocks using the supplied HTTPRequester.
 // It uses the URLs specified in the zsync control file.
@@ -36,7 +43,7 @@ type HTTPRequester interface {
 //   - at the start of downloading from each source,
 //   - at the end of downloading from each source with err=io.EOF on no error, or
 //     otherwise with the error encountered.
-func (zs *Syncer) FetchRemainingBlocks(client HTTPRequester, referer string, progressCallback func(url string, err error)) (httpBytesDownloaded int64, err error) {
+func (zs *Syncer) FetchRemainingBlocks(client HTTPRequester, referer string, progressCallback func(url string, event FetchEvent, err error)) (httpBytesDownloaded int64, err error) {
 	if len(zs.urls) == 0 {
 		return httpBytesDownloaded, fmt.Errorf("no download URLs known")
 	}
@@ -52,22 +59,18 @@ func (zs *Syncer) FetchRemainingBlocks(client HTTPRequester, referer string, pro
 
 		url := zs.urls[try]
 		if progressCallback != nil {
-			progressCallback(url, nil)
+			progressCallback(url, FetchStarted, nil)
 		}
 		var fetched int64
 		fetched, err = zs.fetchRemainingBlocksFromURL(client, url, referer)
 		if err != nil {
 			failed[try] = true
-			if progressCallback != nil {
-				progressCallback(zs.urls[try], err)
-			}
 			remaining--
-		} else {
-			if progressCallback != nil {
-				progressCallback(zs.urls[try], io.EOF)
-			}
 		}
 		httpBytesDownloaded += fetched
+		if progressCallback != nil {
+			progressCallback(zs.urls[try], FetchEnded, err)
+		}
 	}
 
 	if zs.Status() != CompleteData {
@@ -124,7 +127,7 @@ func (zs *Syncer) fetchRemainingBlocksFromURL(client HTTPRequester, rawURL, refe
 	return httpBytesDownloaded, g.Wait()
 }
 
-func (zs *Syncer) fetchRange(ctx context.Context, client HTTPRequester, url *url.URL, r byteRange) (int64, error) {
+func (zs *Syncer) fetchRange(ctx context.Context, client HTTPRequester, url *url.URL, r ByteRange) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
 	if err != nil {
 		return 0, err
