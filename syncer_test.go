@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/cph6/zsync"
@@ -65,22 +64,19 @@ func MakeZsyncControl(data [][]byte) bytes.Buffer {
 }
 
 // TestNewAndEnd verifies that zsync.New can parse a minimal control file
-// and that End closes the temporary file and optionally renames it.
+// and that End closes the temporary file.
 func TestNewAndEnd(t *testing.T) {
 	// Create a one-block file control file.
 	data := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	control := MakeZsyncControl([][]byte{data})
 
 	dir := t.TempDir()
-	s, err := zsync.New(bytes.NewReader(control.Bytes()), filepath.Join(dir, "outfile"))
+	s, err := zsync.NewFromControlFile(bytes.NewReader(control.Bytes()), zsync.SyncerOptions{TargetDirectory: dir, OverrideTargetFilename: "outfile"})
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
 	// End without renaming should close the temp file and return its name
-	fname, err := s.End("")
-	if err != nil {
-		t.Fatalf("End failed: %v", err)
-	}
+	fname, _ := s.Finalize()
 	// file should exist
 	if _, err := os.Stat(fname); err != nil {
 		t.Fatalf("expected temp file to exist: %v", err)
@@ -95,7 +91,7 @@ func TestFetchRemainingBlocks(t *testing.T) {
 	control := MakeZsyncControl([][]byte{data})
 
 	dir := t.TempDir()
-	s, err := zsync.New(bytes.NewReader(control.Bytes()), filepath.Join(dir, "outfile"))
+	s, err := zsync.NewFromControlFile(bytes.NewReader(control.Bytes()), zsync.SyncerOptions{TargetDirectory: dir, OverrideTargetFilename: "outfile"})
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -116,7 +112,7 @@ func TestFetchRemainingBlocks(t *testing.T) {
 		t.Fatalf("expected Syncer to be complete, got status %d", s.Status())
 	}
 	// Verify file contents
-	fname := s.Filename()
+	fname, _ := s.Finalize()
 	b, err := os.ReadFile(fname)
 	if err != nil {
 		t.Fatalf("read file: %v", err)

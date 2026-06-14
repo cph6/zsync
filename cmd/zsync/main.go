@@ -72,40 +72,9 @@ func getFilenamePrefix(source string) string {
 	return name
 }
 
-func getFilename(zs *zsync.Syncer, source string) string {
-	// First try using the filename specified in the zsync control file.
-	name := zs.TargetFilename()
-	if name != "" {
-		// 1. Strip any path component from filename supplied by the remote.
-		//    i.e. the remote side should not be able to ask for ../../something to
-		//    be targetted for writing.
-		name := filepath.Base(name)
-		// 2. Accept the name only if it has a common prefix with the name of the
-		//    zsync control file. This is a principle of least surprise check:
-		//    if the user ran `zsync https://debian.org/debian-15.0.iso.zsync`, the
-		//    target file written should not be `mbox`.
-		prefix := getFilenamePrefix(source)
-		if prefix != "" && strings.HasPrefix(name, prefix) {
-			return name
-		}
-		if prefix != "" {
-			fmt.Fprintf(os.Stderr, "Rejected filename specified in %s - prefix %s differed from filename %s.\n", source, prefix, name)
-		}
-	}
-	// Fallback to using the filename part of the source URL or path. Since that
-	// is what the user gave us, that name should never surprise them.
-	prefix := getFilenameBase(source)
-	if prefix != "" {
-		return prefix
-	}
-	// If the user asked for a URL with no filename component and somehow gets
-	// back a valid zsync file, then fallback to a hardcoded name.
-	return "zsync-download"
-}
-
 // Checks for a bad filename supplied for writing the local copy of the control
 // file.
-func checkSuppliedFilename(filename string) error {
+func checkSuppliedControlFilename(filename string) error {
 	// If the file ends in .zsync, assume it's fine. If the file is new, it's fine.
 	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -148,7 +117,7 @@ func main() {
 	// as in curl. Oh well.
 	flag.StringVar(&keepZsync, "k", "", "save a copy of the .zsync file to this path. If the download is interrupted, the download can be resumed using this local copy instead of redownloading.")
 
-	flag.StringVar(&filename, "o", "", "output filename")
+	flag.StringVar(&filename, "o", "", "output filename or directory. A filename is required if the remote .zsync file does not set a filename.")
 	flag.Var(&seedFiles, "i", "seed file to supply as local source data")
 	flag.BoolVar(&skipVerify, "no-check-certificate", false, "Disable verifying the SSL certificate of any target server. NOTE: this makes the file transfer vulnerable to man-in-the-middle attacks.")
 	flag.BoolVar(&showVer, "V", false, "show version")
@@ -182,7 +151,7 @@ func main() {
 		UserAgent:  "zsync/" + version,
 	}
 
-	if err := checkSuppliedFilename(keepZsync); err != nil {
+	if err := checkSuppliedControlFilename(keepZsync); err != nil {
 		fmt.Fprintf(os.Stderr, "%v", err)
 		os.Exit(3)
 	}
@@ -191,7 +160,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to fetch control file: %v", err)
 		os.Exit(3)
 	}
-	zs, err := zsync.New(controlReader, filename)
+
+	var overrideTargetFilename string
+	if filename != "" {
+		overrideTargetFilename = filepath.Base(filename)
+	}
+	opts := zsync.SyncerOptions{
+		TargetDirectory:             filepath.Dir(filename),
+		OverrideTargetFilename:      overrideTargetFilename,
+		RequireTargetFilenamePrefix: getFilenamePrefix(source),
+		FallbackTargetFilename:      getFilenameBase(source),
+	}
+	zs, err := zsync.NewFromControlFile(controlReader, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to parse control file: %v", err)
 		os.Exit(3)
@@ -201,16 +181,13 @@ func main() {
 		os.Exit(3)
 	}
 
-	if filename == "" {
-		filename = getFilename(zs, source)
-	}
-	tempFile := filename + ".part"
+	tempFile := zs.GetTargetFilename() + ".part"
 
 	// If the target file, or a temporary file from a previous attempt, exists,
 	// add them to the list of seed files to read from first. We expect that
 	// these are likely to be more useful than other seed files.
-	if _, err := os.Stat(filename); err == nil {
-		seedFiles = append([]string{filename}, seedFiles...)
+	if _, err := os.Stat(zs.GetTargetFilename()); err == nil {
+		seedFiles = append([]string{zs.GetTargetFilename()}, seedFiles...)
 	}
 	if _, err := os.Stat(tempFile); err == nil {
 		seedFiles = append([]string{tempFile}, seedFiles...)
@@ -218,6 +195,9 @@ func main() {
 
 	localUsed := int64(0)
 	for _, file := range seedFiles {
+		if zs.Status() == zsync.CompleteData {
+			break
+		}
 		if !quiet {
 			fmt.Fprintf(os.Stderr, "reading seed file %s:", file)
 		}
@@ -230,9 +210,6 @@ func main() {
 		localUsed = got
 		if !quiet {
 			fmt.Fprintf(os.Stderr, "Done reading %s. %02.1f%% of target obtained.      \n", file, float64(got)/float64(total)*100.0)
-		}
-		if zs.Status() == zsync.CompleteData {
-			break
 		}
 	}
 
@@ -272,42 +249,42 @@ func main() {
 		s := zs.RStats()
 		fmt.Printf("hash stats: bithash hit %d, hash hit %d, hash false positive %d, weak hit %d, checksums calculated %d, strong hit %d\n", s.BithashHit, s.HashHit, s.HashFalsePositive, s.WeakHit, s.Checksummed, s.StrongHit)
 	}
+
+	if err = backup(zs.GetTargetFilename()); err != nil {
+		fmt.Fprintf(os.Stderr, "%v - unfinalized download left in %s\n", err, tempFile)
+		os.Exit(2)
+	}
 	if !quiet {
 		fmt.Print("verifying download...")
 	}
-	if err := zs.Complete(); err != nil {
-		fmt.Fprintf(os.Stderr, "failed(%v), download available in %s\n", err, tempFile)
+	curFilename, err := zs.Finalize()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to complete and verify download (%v), download available in %s\n", err, curFilename)
 		os.Exit(2)
 	}
 	if !quiet {
 		fmt.Println("checksum matches OK")
-	}
-
-	if filename != "" {
-		oldBackup := filename + ".zs-old"
-
-		if _, err := os.Stat(filename); err == nil {
-			_ = os.Remove(oldBackup)
-			if err := os.Link(filename, oldBackup); err != nil {
-				if err2 := os.Rename(filename, oldBackup); err2 != nil {
-					fmt.Fprintf(os.Stderr, "Unable to back up old file %s - completed download left in %s\n", filename, zs.Filename())
-					os.Exit(2)
-				}
-			}
-		}
-	}
-
-	finalFilename, err := zs.End(filename)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed(%v), download available in %s\n", err, finalFilename)
-		os.Exit(2)
-	} else if filename == "" {
-		fmt.Printf("No filename specified for download - completed download left in %s\n", finalFilename)
+		fmt.Printf("Download complete: %s\n", curFilename)
 	}
 
 	if !quiet {
 		fmt.Printf("used %d local, fetched %d\n", localUsed, httpBytesDownloaded)
 	}
+}
+
+func backup(filename string) error {
+	oldBackup := filename + ".zs-old"
+
+	if _, err := os.Stat(filename); err == nil {
+		_ = os.Remove(oldBackup)
+		if err := os.Link(filename, oldBackup); err != nil {
+			// Fallback to a rename if linking does not work.
+			if err2 := os.Rename(filename, oldBackup); err2 != nil {
+				return fmt.Errorf("unable to back up old file %s, %v", filename, err)
+			}
+		}
+	}
+	return nil
 }
 
 // getZsyncControlFile wraps zsync.GetControlFile giving the option to use a

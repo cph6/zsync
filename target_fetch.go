@@ -28,7 +28,7 @@ type HTTPRequester interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// Define event types explicitly
+// FetchEvent represents the type of a progress event from FetchRemainingBlocks
 type FetchEvent int
 
 const (

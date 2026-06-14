@@ -12,8 +12,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -21,17 +19,10 @@ import (
 	"github.com/cph6/zsync/internal/rcksum"
 )
 
-// New loads a zsync control file and returns the Syncer used to reconstruct
-// the target file represented by that control file. If targetFilename is
-// non-empty, the final reconstructed file will be written to that path on
-// successful completion (via Syncer.End). The caller remains responsible for
-// calling Syncer.End to finalise and move the temporary file.
-func New(f io.Reader, targetFilename string) (*Syncer, error) {
+func (zs *Syncer) parseControlFile(f io.Reader) error {
 	checksumBytes := 16
 	rsumBytes := 4
 	seqMatches := 1
-
-	zs := &Syncer{}
 
 	safelines := []string{}
 
@@ -39,7 +30,7 @@ func New(f io.Reader, targetFilename string) (*Syncer, error) {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			return nil, err
+			return err
 		}
 		line = strings.TrimSuffix(line, "\n")
 		if line == "" {
@@ -48,14 +39,14 @@ func New(f io.Reader, targetFilename string) (*Syncer, error) {
 
 		parts := strings.SplitN(line, ": ", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("bad line: %s", line)
+			return fmt.Errorf("bad line: %s", line)
 		}
 		key, value := parts[0], parts[1]
 
 		switch key {
 		case "zsync":
 			if value == "0.0.4" {
-				return nil, fmt.Errorf("not compatible with zsync 0.0.4")
+				return fmt.Errorf("not compatible with zsync 0.0.4")
 			}
 		case "Min-Version":
 			// Assume version is ok
@@ -63,7 +54,7 @@ func New(f io.Reader, targetFilename string) (*Syncer, error) {
 			var err error
 			zs.filelen, err = strconv.ParseInt(value, 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("bad length: %s", value)
+				return fmt.Errorf("bad length: %s", value)
 			}
 		case "Filename":
 			zs.targetFilename = value
@@ -72,45 +63,45 @@ func New(f io.Reader, targetFilename string) (*Syncer, error) {
 		case "Blocksize":
 			blocksize, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("bad blocksize: %s", value)
+				return fmt.Errorf("bad blocksize: %s", value)
 			}
 			if blocksize&(blocksize-1) != 0 {
-				return nil, fmt.Errorf("nonsensical blocksize %d", blocksize)
+				return fmt.Errorf("nonsensical blocksize %d", blocksize)
 			}
 			zs.blocksize = blocksize
 		case "Hash-Lengths":
 			parts := strings.Split(value, ",")
 			if len(parts) != 3 {
-				return nil, fmt.Errorf("bad hash lengths: %s", value)
+				return fmt.Errorf("bad hash lengths: %s", value)
 			}
 			var err error
 			seqMatches, err = strconv.Atoi(parts[0])
 			if err != nil {
-				return nil, fmt.Errorf("bad seqMatches: %s", parts[0])
+				return fmt.Errorf("bad seqMatches: %s", parts[0])
 			}
 			rsumBytes, err = strconv.Atoi(parts[1])
 			if err != nil {
-				return nil, fmt.Errorf("bad rsumBytes: %s", parts[1])
+				return fmt.Errorf("bad rsumBytes: %s", parts[1])
 			}
 			checksumBytes, err = strconv.Atoi(parts[2])
 			if err != nil {
-				return nil, fmt.Errorf("bad checksumBytes: %s", parts[2])
+				return fmt.Errorf("bad checksumBytes: %s", parts[2])
 			}
 			if rsumBytes < 1 || rsumBytes > 4 || checksumBytes < 3 || checksumBytes > 16 || seqMatches < 1 || seqMatches > 2 {
-				return nil, fmt.Errorf("nonsensical hash lengths: %s", value)
+				return fmt.Errorf("nonsensical hash lengths: %s", value)
 			}
 		case "Safe":
 			safelines = append(safelines, value)
 		case "SHA-1":
 			if len(value) != sha1.Size*2 {
-				return nil, fmt.Errorf("SHA-1 digest wrong length")
+				return fmt.Errorf("SHA-1 digest wrong length")
 			}
 			zs.checksum = value
 			zs.checksumMethod = "SHA-1"
 		case "MTime":
 			t, err := time.Parse(time.RFC1123Z, value)
 			if err != nil {
-				return nil, fmt.Errorf("bad mtime: %s", value)
+				return fmt.Errorf("bad mtime: %s", value)
 			}
 			zs.mtime = t
 		default:
@@ -121,7 +112,7 @@ func New(f io.Reader, targetFilename string) (*Syncer, error) {
 				}
 			}
 			// Otherwise reject unknown header.
-			return nil, fmt.Errorf("unknown header: %s", key)
+			return fmt.Errorf("unknown header: %s", key)
 		}
 	}
 
@@ -130,12 +121,12 @@ func New(f io.Reader, targetFilename string) (*Syncer, error) {
 	}
 
 	if zs.filelen == 0 || zs.blocksize == 0 {
-		return nil, fmt.Errorf("not a zsync file")
+		return fmt.Errorf("not a zsync file")
 	}
 
 	rs, err := rcksum.New(rcksum.BlockID(zs.blocks), zs.blocksize, int(rsumBytes), uint(checksumBytes), seqMatches)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	zs.rs = rs
 
@@ -147,32 +138,21 @@ func New(f io.Reader, targetFilename string) (*Syncer, error) {
 
 		// Read rsum.
 		if _, err := io.ReadFull(reader, rsumByte[4-rsumBytes:]); err != nil {
-			return nil, err
+			return err
 		}
 		_, err = binary.Decode(rsumByte, binary.BigEndian, &rsum)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// Read checksum
 		if _, err := io.ReadFull(reader, checksum); err != nil {
-			return nil, err
+			return err
 		}
 
 		var cksum [rcksum.ChecksumSize]byte
 		copy(cksum[:], checksum)
 		zs.rs.AddTargetBlock(rcksum.BlockID(i), rsum, cksum)
 	}
-
-	// Create temporary file in the target directory.
-	targetDir := filepath.Dir(targetFilename)
-	tempFile, err := os.CreateTemp(targetDir, "rcksum-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temporary file in %s: %w", targetDir, err)
-	}
-	zs.tempFile = tempFile
-	zs.curFilename = zs.tempFile.Name()
-	zs.rs.SetTargetFile(zs.tempFile)
-	zs.rs.Prepare()
-	return zs, nil
+	return nil
 }

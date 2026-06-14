@@ -3,14 +3,14 @@
 // target file.
 //
 // Typically it is used with the following steps:
-//   - create a Syncer with New, passing in a zsync control file.
-//   - create SeedReaders and feed local data sources (older versions,
-//     previous partial downloads) to them.
+//   - create a Syncer with NewFromControlData, passing in a zsync control
+//     file.
+//   - create SeedReaders and feed local data sources (older versions, previous
+//     partial downloads) to them.
 //   - call FetchRemainingBlocks to cause the Syncer to download and fill
 //     in missing data.
-//   - call Complete to verify the reconstructed file.
-//   - call End to close the file and optionally move it to the final
-//     filename.
+//   - call Finalize to verify the contents, close the file and move it to the
+//     final filename.
 package zsync
 
 /*
@@ -24,9 +24,11 @@ package zsync
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,15 +53,68 @@ type Syncer struct {
 	mtime          time.Time
 }
 
-// TargetFilename returns the suggested filename for the file being reconstructed.
-func (zs *Syncer) TargetFilename() string {
-	return zs.targetFilename
+// SyncerOptions allows aspects of the syncer's behaviour to be controlled.
+type SyncerOptions struct {
+	// TargetDirectory sets the directory where the target file and any temporary
+	// file will be saved. If empty, the current working directory is used.
+	TargetDirectory string
+
+	// If specified, RequireTargetFilenamePrefix disallows any filename set by
+	// the zsync control file unless it has this prefix.
+	RequireTargetFilenamePrefix string
+	// FallbackTargetFilename is the zsync control file does not set a filename
+	// at all.
+	FallbackTargetFilename string
+	// OverrideTargetFilename if set forces the target file to be given this
+	// name; if set then RequireTargetFilenamePrefix and FallbackTargetFilename
+	// are ignored.
+	OverrideTargetFilename string
 }
 
-// Filename returns the current filename if any of the temporary file where the
-// target is being reconstructed.
-func (zs *Syncer) Filename() string {
-	return zs.curFilename
+var (
+	errNoFilename = errors.New("no target filename supplied or defined by the control file")
+	errBadPrefix  = errors.New("filename from zsync control file was rejected")
+)
+
+// NewFromControlFile loads a zsync control file and returns a Syncer to be
+// used to reconstruct the target file.
+func NewFromControlFile(f io.Reader, options SyncerOptions) (*Syncer, error) {
+	zs := &Syncer{}
+	err := zs.parseControlFile(f)
+	if err != nil {
+		return nil, err
+	}
+
+	if options.OverrideTargetFilename != "" {
+		zs.targetFilename = options.OverrideTargetFilename
+	} else if zs.targetFilename == "" {
+		zs.targetFilename = options.FallbackTargetFilename
+		if zs.targetFilename == "" {
+			return nil, errNoFilename
+		}
+	} else {
+		// Strip any leading path component from the control file, to stop any
+		// "Filename: ../../" trickery.
+		zs.targetFilename = filepath.Base(zs.targetFilename)
+		if !strings.HasPrefix(zs.targetFilename, options.RequireTargetFilenamePrefix) {
+			return nil, errBadPrefix
+		}
+	}
+	zs.targetFilename = filepath.Join(options.TargetDirectory, zs.targetFilename)
+
+	zs.tempFile, err = os.CreateTemp(options.TargetDirectory, "rcksum-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary file in %s: %w", options.TargetDirectory, err)
+	}
+	zs.rs.SetTargetFile(zs.tempFile)
+	zs.curFilename = zs.tempFile.Name()
+	zs.rs.Prepare()
+	return zs, nil
+}
+
+// GetTargetFilename returns the filename for the file being reconstructed.
+func (zs *Syncer) GetTargetFilename() string {
+	return zs.targetFilename
 }
 
 type Status int
@@ -175,70 +230,19 @@ func (zs *Syncer) NewSeedSink(progressCallback func(int64)) io.ReaderFrom {
 }
 
 // RenameFile renames the file in which the target file is being reconstructed.
+// This exists to allow the caller to deal with resuming interrupted zsync
+// reconstructions. The module starts reconstruction in a new file on each run so as to not
+// overwrite the partial result of a previous run. But most tools will
+// want to rename the file to an easily-located name so that, if interrupted,
+// they can recover that partial result and use it as a seed for the current
+// run. So this is not a required step, but is a useful step for a well-behaved
+// client.
 func (zs *Syncer) RenameFile(filename string) error {
-	cur := zs.curFilename
-	if err := os.Rename(cur, filename); err != nil {
+	if err := os.Rename(zs.curFilename, filename); err != nil {
 		return err
 	}
 	zs.curFilename = filename
 	return nil
-}
-
-// Complete checks that the reconstructed file is complete,
-// truncating the file to the correct length and verifying the checksum if it
-// was provided. It returns an error if any of these checks fail.
-// After this call, it is no longer valid to call other methods on the Syncer except for End.
-func (zs *Syncer) Complete() error {
-	if zs.rs.BlocksTodo() > 0 {
-		return fmt.Errorf("file is not complete")
-	}
-	zs.rs = nil
-	if err := zs.tempFile.Truncate(zs.filelen); err != nil {
-		return fmt.Errorf("failed to truncate file: %w", err)
-	}
-	if _, err := zs.tempFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek to start of temporary file: %w", err)
-	}
-
-	if zs.checksum != "" && zs.checksumMethod == "SHA-1" {
-		h := sha1.New()
-		if _, err := io.Copy(h, zs.tempFile); err != nil {
-			return fmt.Errorf("failed to read file: %w", err)
-		}
-		digest := hex.EncodeToString(h.Sum(nil))
-		if strings.EqualFold(digest, zs.checksum) {
-			return nil
-		}
-		return fmt.Errorf("checksum mismatch")
-	}
-	return nil
-}
-
-// End cleans up resources held by the Syncer and returns the filename of the
-// reconstructed file. The file returned is the fully reconstructed and
-// verified target file if and only if the caller has previously called
-// Complete() and it returned nil.
-// End can be called without Complete() in the event that file reconstruction
-// is abandoned; in that case the returned filename is the temporary file with
-// partial data, which can be submitted as a source file for a future zsync
-// run of this or a successor version of the target file.
-func (zs *Syncer) End(targetFilename string) (string, error) {
-	err := zs.tempFile.Close()
-	if err != nil {
-		return zs.curFilename, err
-	}
-	if targetFilename != "" {
-		if err := os.Rename(zs.curFilename, targetFilename); err != nil {
-			return zs.curFilename, fmt.Errorf("unable to move %s to %s: %v", zs.curFilename, targetFilename, err)
-		}
-		zs.curFilename = targetFilename
-	}
-	if !zs.mtime.IsZero() {
-		if err := os.Chtimes(zs.curFilename, time.Now(), zs.mtime); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to set mtime: %v\n", err)
-		}
-	}
-	return zs.curFilename, nil
 }
 
 // RStats returns stats on the rsync/rolling checksum part of the file
@@ -246,4 +250,51 @@ func (zs *Syncer) End(targetFilename string) (string, error) {
 // suggest that anyone else use it as is.
 func (zs *Syncer) RStats() rcksum.Stats {
 	return zs.rs.Stats()
+}
+
+// Finalize checks that the reconstructed file is complete,
+// truncating the file to the correct length and verifying the checksum if it
+// was provided. It returns the name of the file with the target file
+// data, and any error encountered in verification; the target file
+// data is complete and correct (to the extend that it could be
+// verified) if no error is returned.
+// After this call, it is no longer valid to call other methods on
+// the Syncer except for TargetFilename.
+func (zs *Syncer) Finalize() (string, error) {
+	if zs.rs.BlocksTodo() > 0 {
+		return zs.curFilename, fmt.Errorf("file is not complete")
+	}
+	zs.rs = nil
+	if err := zs.tempFile.Truncate(zs.filelen); err != nil {
+		return zs.curFilename, fmt.Errorf("failed to truncate file: %w", err)
+	}
+	if _, err := zs.tempFile.Seek(0, io.SeekStart); err != nil {
+		return zs.curFilename, fmt.Errorf("failed to verify target file: %w", err)
+	}
+
+	if zs.checksum != "" && zs.checksumMethod == "SHA-1" {
+		h := sha1.New()
+		if _, err := io.Copy(h, zs.tempFile); err != nil {
+			return zs.curFilename, fmt.Errorf("failed to read file: %w", err)
+		}
+		digest := hex.EncodeToString(h.Sum(nil))
+		if !strings.EqualFold(digest, zs.checksum) {
+			return zs.curFilename, fmt.Errorf("checksum mismatch")
+		}
+	}
+	if zs.targetFilename != "" {
+		if err := os.Rename(zs.curFilename, zs.targetFilename); err != nil {
+			return zs.curFilename, fmt.Errorf("unable to move %s to %s: %v", zs.curFilename, zs.targetFilename, err)
+		}
+		zs.curFilename = zs.targetFilename
+	}
+
+	err := zs.tempFile.Close()
+	if !zs.mtime.IsZero() {
+		if mtimeErr := os.Chtimes(zs.curFilename, time.Now(), zs.mtime); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to set mtime: %v\n", mtimeErr)
+		}
+	}
+
+	return zs.curFilename, err
 }
