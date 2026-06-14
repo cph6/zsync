@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -99,8 +100,6 @@ func teardown() {
 
 // tryZSync runs zsync command and returns output file, stats, and stderr
 func tryZSync(t *testing.T, zsyncFile string, parameters []string, url string, env map[string]string) (string, map[string]int, string, error) {
-	outfile := filepath.Join(scratchDir, fmt.Sprintf("output-%d", time.Now().UnixNano()))
-
 	if url == "" {
 		url = httpsURL
 	}
@@ -119,8 +118,14 @@ func tryZSync(t *testing.T, zsyncFile string, parameters []string, url string, e
 		args = append(args, "--no-check-certificate")
 	}
 
+	var outfile string
+	if !slices.Contains(parameters, "-o") {
+		outfile = filepath.Join(scratchDir, fmt.Sprintf("output-%d", time.Now().UnixNano()))
+		args = append(args, "-o", outfile)
+	}
+
 	args = append(args, parameters...)
-	args = append(args, "-o", outfile, url+zsyncFile)
+	args = append(args, url+zsyncFile)
 
 	cmd := exec.Command(filepath.Join(binaryDir, "zsync"), args...)
 
@@ -301,6 +306,72 @@ func TestZSyncCaching(t *testing.T) {
 	}
 
 	assertFilesEqual(t, outfile2, filepath.Join(testDataDir, targetFile))
+}
+
+// TestZSyncBadTargetData tests zsync with remote data not matching the block checksums.
+func TestZSyncBadTargetData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	outfile := filepath.Join(scratchDir, "bad-target-data")
+
+	f, err := os.Create(outfile)
+	if err != nil {
+		t.Errorf("failed to create old version of output: %v", err)
+	}
+	f.WriteString("abcd")
+	_, _, stderr, err := tryZSync(t, targetFile+".bad.zsync", []string{}, "", nil)
+	defer os.Remove(outfile)
+
+	if err == nil {
+		t.Errorf("zsync succeeded unexpectedly")
+	}
+
+	if !strings.Contains(stderr, "Not all of the required data could be downloaded") {
+		t.Errorf("zsync did not report target download failure (%v)", stderr)
+	}
+
+	info, err := os.Stat(outfile)
+	if err != nil {
+		t.Errorf("previous version of output deleted by zsync? %v", err)
+	}
+	if info.Size() != 4 {
+		t.Errorf("previous version of output has been overwritten? size=%d", info.Size())
+	}
+}
+
+// TestZSyncBadChecksum tests zsync with remote data not matching the target checksum.
+func TestZSyncBadChecksum(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	outfile := filepath.Join(scratchDir, "bad-checksum")
+
+	f, err := os.Create(outfile)
+	if err != nil {
+		t.Errorf("failed to create old version of output: %v", err)
+	}
+	f.WriteString("abcd")
+	_, _, stderr, err := tryZSync(t, targetFile+".bad-checksum.zsync", []string{}, "", nil)
+	defer os.Remove(outfile)
+
+	if err == nil {
+		t.Errorf("zsync succeeded unexpectedly")
+	}
+
+	if !strings.Contains(stderr, "checksum mismatch") {
+		t.Errorf("zsync did not report checksum mismatch (%v)", stderr)
+	}
+
+	info, err := os.Stat(outfile)
+	if err != nil {
+		t.Errorf("previous version of output deleted by zsync? %v", err)
+	}
+	if info.Size() != 4 {
+		t.Errorf("previous version of output has been overwritten? size=%d", info.Size())
+	}
 }
 
 // TestZSyncSimpleSomeLocal tests zsync with partial local seed file

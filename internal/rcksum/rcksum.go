@@ -26,10 +26,15 @@ package rcksum
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 
 	"golang.org/x/crypto/md4"
+)
+
+var (
+	errBadTargetData = errors.New("downloaded target data does not match zsync file")
 )
 
 // CalcRsumBlock calculates the rsum for a single block of data
@@ -167,8 +172,16 @@ func (z *RcksumState) SubmitBlocks(data []byte, bfrom, bto BlockID) error {
 		}
 	}
 
-	err := z.writeBlocks(data, bfrom, x-1)
-	return err
+	if x > bfrom {
+		err := z.writeBlocks(data, bfrom, x-1)
+		if err != nil {
+			return err
+		}
+	}
+	if x <= bto {
+		return errBadTargetData
+	}
+	return nil
 }
 
 // Stats returns stats on the rolling checksum process.
