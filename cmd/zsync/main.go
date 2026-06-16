@@ -17,7 +17,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -198,9 +197,6 @@ func main() {
 		if zs.Status() == zsync.CompleteData {
 			break
 		}
-		if !quiet {
-			fmt.Fprintf(os.Stderr, "reading seed file %s:", file)
-		}
 		if err := readSeedFile(zs, file, quiet); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
@@ -305,24 +301,31 @@ func getZsyncControlFile(client zsync.HTTPRequester, source, keepZsync, referer 
 }
 
 func readSeedFile(zs *zsync.Syncer, filename string, noProgress bool) error {
+	if !noProgress {
+		fmt.Fprintf(os.Stderr, "reading seed file %s:\n", filename)
+	}
 	f, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("could not open seed file %s: %w", filename, err)
 	}
+	var fileLength int64
+	if fi, err := f.Stat(); err == nil {
+		fileLength = fi.Size()
+	}  // else leave fileLength = 0 and we disable progress reporting further down.
 
-	var bytesObtainededAtLastProgress, offsetAtLastProgress int64
+	var offsetAtLastProgress int64
+	startTime := time.Now()
 
 	pf := func(offset int64) {
-		if offset >= offsetAtLastProgress+(1<<20) {
+		if offset/(fileLength/200) > offsetAtLastProgress/(fileLength/200) {
 			bytesObtained, _ := zs.Progress()
-			useFraction := float64(bytesObtained-bytesObtainededAtLastProgress) / float64(offset-offsetAtLastProgress)
-			progressDecile := min(9, int(math.Ceil(useFraction*10)))
-			fmt.Fprintf(os.Stderr, "%d", progressDecile)
+			useFraction := float64(bytesObtained) / float64(offset)
+			elapsed := time.Since(startTime)
+			fmt.Fprintf(os.Stderr, "%s %3.1fMBps %.1f%% processed; %.1f%% useful \r", elapsed.Truncate(time.Millisecond*100).String(),  float64(offset)/elapsed.Seconds()/1000000.0, 100.0*float64(offset)/float64(fileLength), 100.0*useFraction)
 			offsetAtLastProgress = offset
-			bytesObtainededAtLastProgress = bytesObtained
 		}
 	}
-	if noProgress {
+	if noProgress || fileLength == 0 {
 		pf = nil
 	}
 
@@ -331,6 +334,7 @@ func readSeedFile(zs *zsync.Syncer, filename string, noProgress bool) error {
 	if err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "                          \r")
 	if closeErr := f.Close(); closeErr != nil {
 		return fmt.Errorf("failed to close seed file: %w", closeErr)
 	}
