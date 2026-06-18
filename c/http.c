@@ -1040,20 +1040,18 @@ int get_range_block(struct range_fetch *rf, off_t * offset, unsigned char *data,
 
         /* Okay, if we're (now) reading a MIME boundary */
         if (rf->boundary) {
-            /* Throw away blank line */
             char buf[512];
             int gotr = 0;
-            if (!rfgets(buf, sizeof(buf), rf))
-                return 0;
 
-            /* Get, hopefully, boundary marker line */
-            if (!rfgets(buf, sizeof(buf), rf))
-                return 0;
-            if (buf[0] != '-' || buf[1] != '-')
-                return 0;
+            /* Skip CRLF until the boundary marker line */
+            do {
+                if (!rfgets(buf, sizeof(buf), rf))
+                    return 0;
+            } while (buf[0] == '\r' && buf[1] == '\n');
 
-            if (memcmp(&buf[2], rf->boundary, strlen(rf->boundary))) {
-                fprintf(stderr, "got bad block boundary: %s != %s",
+            if (buf[0] != '-' || buf[1] != '-'
+                || memcmp(&buf[2], rf->boundary, strlen(rf->boundary))) {
+                fprintf(stderr, "got bad block boundary: --%s != %s",
                         rf->boundary, buf);
                 return -1;      /* This is an error now */
             }

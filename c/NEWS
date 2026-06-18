@@ -1,3 +1,11 @@
+Changes in 0.6.5
+- Fix an incompatibility between zsync and the RFC7233 rules for
+  multipart/byteranges. zsync was written to RFC2046 a long time ago, now
+  obsolete; responses from newer HTTP servers following the newer standard
+  could cause zsync to fail to parse the response. zsync also was not treating
+  failing to find the MIME boundary as a hard error and retrying indefinitely;
+  changed to report this as an error.
+
 Changes in 0.6.4
 - Support for looking inside gzip files is deprecated; all options related to
   compressed files are correspondingly deprecated except -Z.
