@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"crypto/sha1"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -19,12 +20,28 @@ import (
 	"github.com/cph6/zsync/internal/rcksum"
 )
 
+var (
+	ErrNotZsyncFile           = errors.New("not a zsync file")
+	ErrMissingRequiredFields  = errors.New("required fields missing from zsync control file")
+	ErrNotSupportedCompressed = errors.New("zsync file only offers compressed download options - not supported in this version")
+	ErrNotSupported004        = errors.New("zsync 0.0.4 control files are not supported")
+)
+
+const (
+	sizeofStructGzblock = 4 // from zsync-0.6.x
+)
+
 func (zs *Syncer) parseControlFile(f io.Reader) error {
 	checksumBytes := 16
 	rsumBytes := 4
 	seqMatches := 1
 
-	safelines := []string{}
+	// Set of headers that we can ignore safely, and counts of how often they
+	// were seen.
+	safelines := make(map[string]int)
+	safelines["Z-URL"] = 0
+	safelines["Min-Version"] = 0
+	seenHeader := false
 
 	reader := bufio.NewReader(f)
 	for {
@@ -43,13 +60,19 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 		}
 		key, value := parts[0], parts[1]
 
-		switch key {
-		case "zsync":
-			if value == "0.0.4" {
-				return fmt.Errorf("not compatible with zsync 0.0.4")
+		// Require the "zsync:" header to come first.
+		if !seenHeader {
+			if key != "zsync" {
+				return ErrNotZsyncFile
 			}
-		case "Min-Version":
-			// Assume version is ok
+			if value == "0.0.4" {
+				return ErrNotSupported004
+			}
+			seenHeader = true
+			continue
+		}
+
+		switch key {
 		case "Length":
 			var err error
 			zs.filelen, err = strconv.ParseInt(value, 10, 64)
@@ -91,7 +114,7 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 				return fmt.Errorf("nonsensical hash lengths: %s", value)
 			}
 		case "Safe":
-			safelines = append(safelines, value)
+			safelines[value] = 0
 		case "SHA-1":
 			if len(value) != sha1.Size*2 {
 				return fmt.Errorf("SHA-1 digest wrong length")
@@ -104,24 +127,46 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 				return fmt.Errorf("bad mtime: %s", value)
 			}
 			zs.mtime = t
+		case "Z-Map2":
+			// zsync-0.7.0 and onwards does not support downloading required data
+			// from inside a compressed version of that data. (It supports
+			// downloading gzip --rsyncable compressed data where the compressed data
+			// is the target.)
+			// But a zsync-0.6.x control file can support uncompressed and compressed
+			// downloads, so the client library here is capable of *skipping* a Z-Map2
+			// header.
+			numEntries, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return fmt.Errorf("bad Z-Map2 size: %s", value)
+			}
+			buf := make([]byte, numEntries*sizeofStructGzblock)
+			if _, err := io.ReadFull(reader, buf); err != nil {
+				return err
+			}
+			_ = buf
 		default:
 			// Ignore headers if they were included in "Safe".
-			for _, safe := range safelines {
-				if safe == key {
-					break
-				}
+			if _, ok := safelines[key]; ok {
+				safelines[key]++
+			} else {
+				return fmt.Errorf("unknown header: %s", key)
 			}
-			// Otherwise reject unknown header.
-			return fmt.Errorf("unknown header: %s", key)
 		}
 	}
 
-	if zs.filelen != 0 && zs.blocksize != 0 {
-		zs.blocks = (zs.filelen + zs.blocksize - 1) / zs.blocksize
-	}
-
 	if zs.filelen == 0 || zs.blocksize == 0 {
-		return fmt.Errorf("not a zsync file")
+		return ErrMissingRequiredFields
+	}
+	zs.blocks = (zs.filelen + zs.blocksize - 1) / zs.blocksize
+
+	// The current client does not support any file without a "URL" provided; but
+	// someone using the library might provide alternative download mechanisms so
+	// we do not treat all files without a URL line as unsupported here. However
+	// any zsync-0.6.x control file with a compressed URL is clearly intended to
+	// be used with HTTP downloading, which is not supported by zsync-0.7.0 and
+	// above unless a non-compressed alternative URL was given.
+	if len(zs.urls) == 0 && safelines["Z-URL"] > 0 {
+		return ErrNotSupportedCompressed
 	}
 
 	rs, err := rcksum.New(rcksum.BlockID(zs.blocks), zs.blocksize, int(rsumBytes), uint(checksumBytes), seqMatches)

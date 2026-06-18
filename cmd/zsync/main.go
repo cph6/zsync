@@ -172,11 +172,11 @@ func main() {
 	}
 	zs, err := zsync.NewFromControlFile(controlReader, opts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse control file: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to parse control file: %v\n", err)
 		os.Exit(3)
 	}
 	if err := controlReader.Close(); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse control file: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to parse control file: %v\n", err)
 		os.Exit(3)
 	}
 
@@ -311,7 +311,7 @@ func readSeedFile(zs *zsync.Syncer, filename string, noProgress bool) error {
 	var fileLength int64
 	if fi, err := f.Stat(); err == nil {
 		fileLength = fi.Size()
-	}  // else leave fileLength = 0 and we disable progress reporting further down.
+	} // else leave fileLength = 0 and we disable progress reporting further down.
 
 	var offsetAtLastProgress int64
 	startTime := time.Now()
@@ -321,7 +321,7 @@ func readSeedFile(zs *zsync.Syncer, filename string, noProgress bool) error {
 			bytesObtained, _ := zs.Progress()
 			useFraction := float64(bytesObtained) / float64(offset)
 			elapsed := time.Since(startTime)
-			fmt.Fprintf(os.Stderr, "%s %3.1fMBps %.1f%% processed; %.1f%% useful \r", elapsed.Truncate(time.Millisecond*100).String(),  float64(offset)/elapsed.Seconds()/1000000.0, 100.0*float64(offset)/float64(fileLength), 100.0*useFraction)
+			fmt.Fprintf(os.Stderr, "%s %3.1fMBps %.1f%% processed; %.1f%% useful \r", elapsed.Truncate(time.Millisecond*100).String(), float64(offset)/elapsed.Seconds()/1000000.0, 100.0*float64(offset)/float64(fileLength), 100.0*useFraction)
 			offsetAtLastProgress = offset
 		}
 	}
