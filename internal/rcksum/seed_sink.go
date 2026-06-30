@@ -166,7 +166,10 @@ func (s *SeedSink) ReadFrom(r io.Reader) (N int64, err error) {
 func (z *RcksumState) checkChecksumsOnHashChain(entries []BlockID, r [2]RSum, data []byte) (int, error) {
 	gotBlocks := 0
 
-	md4sum := [][ChecksumSize]byte{}
+	// MD4sums for blocks in data[], lazily populated as needed.
+	var md4sum [2][ChecksumSize]byte
+	donemd4 := 0  // How many entries in `md4sum` are populated.
+
 	// Iterate through all matching blocks in this hash bucket.
 	// Note that we copied the hash before we start this iteration, so we can
 	// remove blocks from rs.rsumHash during this iteration without problems.
@@ -189,12 +192,13 @@ func (z *RcksumState) checkChecksumsOnHashChain(entries []BlockID, r [2]RSum, da
 		// MD4sums for blocks in data[] are stored in md4sum[], lazily populated as needed.
 		matching := 0
 		for checkmd4 := 0; checkmd4 < z.seqMatches; checkmd4++ {
-			if checkmd4 >= len(md4sum) {
+			if checkmd4 >= donemd4 {
 				offset := checkmd4 * int(z.blockSize)
 				if offset+int(z.blockSize) > len(data) {
 					break
 				}
-				md4sum = append(md4sum, CalcChecksum(data[offset:offset+int(z.blockSize)]))
+				md4sum[checkmd4] = CalcChecksum(data[offset : offset+int(z.blockSize)])
+				donemd4++
 				z.stats.Checksummed++
 			}
 

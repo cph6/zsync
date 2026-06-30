@@ -19,7 +19,11 @@ const (
 	// ChecksumSize is the size of MD4 checksums in bytes
 	ChecksumSize = md4.Size
 
-	// BithashBits is the number of bits per byte for the bithash table
+	// BithashBits is the number of extra bits used for the bithash table, on top
+	// of log2(numBlocks). The bithash is probed on every byte of seed data, so we
+	// want it to be small enough to fit in CPU cache. A larger
+	// value reduces false positives but thrashes the cache and
+	// is dramatically slower overall.
 	BithashBits = 4
 )
 
