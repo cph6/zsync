@@ -168,7 +168,7 @@ func (z *RcksumState) checkChecksumsOnHashChain(entries []BlockID, r [2]RSum, da
 
 	// MD4sums for blocks in data[], lazily populated as needed.
 	var md4sum [2][ChecksumSize]byte
-	donemd4 := 0  // How many entries in `md4sum` are populated.
+	donemd4 := 0 // How many entries in `md4sum` are populated.
 
 	// Iterate through all matching blocks in this hash bucket.
 	// Note that we copied the hash before we start this iteration, so we can

@@ -11,7 +11,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"flag"
@@ -108,7 +108,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	fileLen, sha1sum, checksumFile, err := readFileCalcChecksumsAndStats(instream, *blocksize)
+	fileLen, sha256sum, checksumFile, err := readFileCalcChecksumsAndStats(instream, *blocksize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading file: %v\n", err)
 		os.Exit(2)
@@ -158,7 +158,7 @@ func main() {
 	if fileInfo != nil {
 		mtime = fileInfo.ModTime()
 	}
-	err = writeControlFile(outstream, *filename, fileLen, urls, mtime, *blocksize, rsumLen, checksumLen, seqMatches, sha1sum, checksumFile)
+	err = writeControlFile(outstream, *filename, fileLen, urls, mtime, *blocksize, rsumLen, checksumLen, seqMatches, sha256sum, checksumFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed writing zsync file: %v\n", err)
 		os.Exit(2)
@@ -173,7 +173,7 @@ func main() {
 	}
 }
 
-func writeControlFile(outstream io.Writer, filename string, fileLen int64, urls []string, mtime time.Time, blocksize int64, rsumLen, checksumLen, seqMatches int, sha1sum []byte, checksumFile io.Reader) error {
+func writeControlFile(outstream io.Writer, filename string, fileLen int64, urls []string, mtime time.Time, blocksize int64, rsumLen, checksumLen, seqMatches int, sha256sum []byte, checksumFile io.Reader) error {
 	// Write .zsync file
 	writer := bufio.NewWriter(outstream)
 
@@ -198,8 +198,9 @@ func writeControlFile(outstream io.Writer, filename string, fileLen int64, urls 
 	_, err = fmt.Fprintf(writer, `Blocksize: %d
 Length: %d
 Hash-Lengths: %d,%d,%d
-SHA-1: %s
-`, blocksize, fileLen, seqMatches, rsumLen, checksumLen, hex.EncodeToString(sha1sum))
+Safe: File-Hash
+File-Hash: SHA-256:%s
+`, blocksize, fileLen, seqMatches, rsumLen, checksumLen, hex.EncodeToString(sha256sum))
 	if err != nil {
 		return err
 	}
@@ -268,8 +269,7 @@ func readFileCalcChecksumsAndStats(r io.Reader, blocksize int64) (int64, []byte,
 	// Create temporary buffer for reading blocks
 	buffer := make([]byte, blocksize)
 
-	// SHA-1 context
-	sha1Hash := sha1.New()
+	fileHash := sha256.New()
 	fileLen := int64(0)
 
 	tempFile, err := os.CreateTemp("", "zsyncmake-*")
@@ -288,9 +288,9 @@ func readFileCalcChecksumsAndStats(r io.Reader, blocksize int64) (int64, []byte,
 		if n > 0 {
 			fileLen += int64(n)
 
-			// Add to SHA-1. SHA-1 is calculated on the actual file data,
+			// Add to whole-file hash. This is calculated on the actual file data,
 			// not the padded blocks, so only add the bytes read.
-			sha1Hash.Write(buffer[:n])
+			fileHash.Write(buffer[:n])
 
 			// Now pad to blocksize if needed for checksum calculation.
 			if n < int(blocksize) {
@@ -324,7 +324,7 @@ func readFileCalcChecksumsAndStats(r io.Reader, blocksize int64) (int64, []byte,
 		return 0, nil, nil, fmt.Errorf("seek temp file: %v", err)
 	}
 
-	return fileLen, sha1Hash.Sum(nil), tempFile, nil
+	return fileLen, fileHash.Sum(nil), tempFile, nil
 }
 
 func writeChecksums(writer io.Writer, checksumFile io.Reader, blocksize int64, rsumLen int, checksumLen int, seqMatches int) error {

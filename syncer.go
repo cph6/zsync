@@ -22,7 +22,7 @@ package zsync
 // AI: copilot / grok code fast conversion of the state parts of zsync's zsync.c.
 
 import (
-	"crypto/sha1"
+	"crypto"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -45,7 +45,7 @@ type Syncer struct {
 	blocks         int64
 	blocksize      int64
 	checksum       string
-	checksumMethod string
+	checksumMethod crypto.Hash
 	urls           []string
 	tempFile       *os.File
 	curFilename    string
@@ -272,8 +272,8 @@ func (zs *Syncer) Finalize() (string, error) {
 		return zs.curFilename, fmt.Errorf("failed to verify target file: %w", err)
 	}
 
-	if zs.checksum != "" && zs.checksumMethod == "SHA-1" {
-		h := sha1.New()
+	if zs.checksum != "" {
+		h := zs.checksumMethod.New()
 		if _, err := io.Copy(h, zs.tempFile); err != nil {
 			return zs.curFilename, fmt.Errorf("failed to read file: %w", err)
 		}

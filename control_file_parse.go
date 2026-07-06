@@ -8,7 +8,9 @@ package zsync
 
 import (
 	"bufio"
+	"crypto"
 	"crypto/sha1"
+	_ "crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -115,12 +117,26 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 			}
 		case "Safe":
 			safelines[value] = 0
+		case "File-Hash":
+			vs := strings.SplitN(value, ":", 2)
+			alg := vs[0]
+			if len(vs) == 2 {
+				switch alg {
+				case "SHA-1":
+					zs.checksumMethod = crypto.SHA1
+					zs.checksum = vs[1]
+				case "SHA-256":
+					zs.checksumMethod = crypto.SHA256
+					zs.checksum = vs[1]
+				}
+			}
+			// Else, proceed without verification.
 		case "SHA-1":
 			if len(value) != sha1.Size*2 {
 				return fmt.Errorf("SHA-1 digest wrong length")
 			}
 			zs.checksum = value
-			zs.checksumMethod = "SHA-1"
+			zs.checksumMethod = crypto.SHA1
 		case "MTime":
 			t, err := time.Parse(time.RFC1123Z, value)
 			if err != nil {

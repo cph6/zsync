@@ -134,7 +134,8 @@ func TestZSyncMakeSimple(t *testing.T) {
 		"Filename":  "target.dat",
 		"Length":    "281020",
 		"URL":       "target.dat",
-		"SHA-1":     "d0be479e0a823100bd09a997d125979626272453",
+		"File-Hash": "SHA-256:e342d5e314285c95ee8ad3c28838b4a6e6139f4ef64d689490a30785e79ceb83",
+		"Safe":      "File-Hash",
 		"Blocksize": "2048",
 	}
 
@@ -189,8 +190,8 @@ func TestZSyncMakeEmpty(t *testing.T) {
 		t.Errorf("Expected Length=0, got %s", info["Length"])
 	}
 
-	if string(info["SHA-1"]) != "da39a3ee5e6b4b0d3255bfef95601890afd80709" {
-		t.Errorf("Unexpected SHA-1: %s", info["SHA-1"])
+	if string(info["File-Hash"]) != "SHA-256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" {
+		t.Errorf("Unexpected File-Hash: %s", info["File-Hash"])
 	}
 }
 
@@ -221,8 +222,8 @@ func TestZSyncMakeFromStdin(t *testing.T) {
 		t.Errorf("Expected Length=1300, got %s", info["Length"])
 	}
 
-	if string(info["SHA-1"]) != "69c141690253717942a7b4ec29bf79d4138eb541" {
-		t.Errorf("Unexpected SHA-1: %s", info["SHA-1"])
+	if string(info["File-Hash"]) != "SHA-256:6b9cd113a7e81efe71a13b50076f9196422d2275ef8d73bad555536a44cbf3f3" {
+		t.Errorf("Unexpected File-Hash: %s", info["File-Hash"])
 	}
 
 	if _, exists := info["Filename"]; exists {
