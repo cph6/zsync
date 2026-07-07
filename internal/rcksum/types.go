@@ -9,15 +9,15 @@ package rcksum
 // AI: copilot / claude code (if I remember correctly) conversion of zsync's rcksum.h and perhaps other files in the same module.
 
 import (
+	"crypto"
 	"os"
 	"sync"
-
-	"golang.org/x/crypto/md4"
 )
 
 const (
-	// ChecksumSize is the size of MD4 checksums in bytes
-	ChecksumSize = md4.Size
+	// MaxChecksumSize is the largest strong checksum size across the supported
+	// checksum types. Currently SHA-224.
+	MaxChecksumSize = 28
 
 	// BithashBits is the number of extra bits used for the bithash table, on top
 	// of log2(numBlocks). The bithash is probed on every byte of seed data, so we
@@ -36,8 +36,8 @@ type RSum struct {
 	B uint16 // Weighted sum
 }
 
-// MD4Checksum represents an MD4 checksum
-type MD4Checksum [ChecksumSize]byte
+// StrongChecksum represents the strong checksum of a single block.
+type StrongChecksum [MaxChecksumSize]byte
 
 // Stats tracks statistics about the matching process
 type Stats struct {
@@ -61,8 +61,9 @@ type RcksumState struct {
 	checksumBytes uint    // Number of bytes of the MD4 checksum available
 	seqMatches    int     // Required consecutive matches
 
-	// MD4 checksums for each block
-	md4Checksums []MD4Checksum
+	// Strong checksums for each block
+	strongChecksums []StrongChecksum
+	strongHash      crypto.Hash
 	// Rolling checksums for each block (used for hash table)
 	rsums []RSum
 
@@ -83,11 +84,4 @@ type RcksumState struct {
 
 	// Synchronization for thread safety
 	mu sync.Mutex
-}
-
-// MatchedBlock represents a block that matched during the algorithm
-type MatchedBlock struct {
-	BlockID  BlockID
-	Checksum [ChecksumSize]byte
-	WeakSum  RSum
 }

@@ -10,6 +10,7 @@ package rcksum
 
 import (
 	"bytes"
+	"crypto"
 	"os"
 	"testing"
 )
@@ -19,7 +20,7 @@ func TestSeedSink(t *testing.T) {
 	const nblocks = 8
 	const blockSize = 16
 
-	z, err := New(nblocks, blockSize, 4, ChecksumSize, 1)
+	z, err := New(nblocks, blockSize, crypto.MD4, 4, MaxChecksumSize, 1)
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -40,7 +41,7 @@ func TestSeedSink(t *testing.T) {
 	for i := 0; i < nblocks; i++ {
 		data := bytes.Repeat([]byte{byte(i + 1)}, blockSize)
 		blocks = append(blocks, data)
-		z.AddTargetBlock(BlockID(i), CalcRsumBlock(data), CalcChecksum(data))
+		z.AddTargetBlock(BlockID(i), CalcRsumBlock(data), CalcChecksum(data, crypto.MD4))
 	}
 
 	// Build hash tables

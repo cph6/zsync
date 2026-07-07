@@ -256,6 +256,50 @@ func TestZSyncSimpleSomeLocal(t *testing.T) {
 	}
 }
 
+// TestZSyncSimpleMD5 tests zsync with MD5 checksums.
+func TestZSyncSimpleMD5(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
+	defer os.Remove(seedFile)
+
+	outfile, stats, _, _ := tryZSync(t, targetFile+".md5.zsync", []string{"-i", seedFile}, "", nil)
+	defer os.Remove(outfile)
+
+	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
+
+	if stats["local"] <= 0 {
+		t.Errorf("Expected local > 0, got %d", stats["local"])
+	}
+	if stats["fetched"] <= 0 {
+		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
+	}
+}
+
+// TestZSyncSimpleSHA224 tests zsync with MD5 checksums.
+func TestZSyncSimpleSHA224(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
+	defer os.Remove(seedFile)
+
+	outfile, stats, _, _ := tryZSync(t, targetFile+".sha224.zsync", []string{"-i", seedFile}, "", nil)
+	defer os.Remove(outfile)
+
+	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
+
+	if stats["local"] <= 0 {
+		t.Errorf("Expected local > 0, got %d", stats["local"])
+	}
+	if stats["fetched"] <= 0 {
+		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
+	}
+}
+
 // TestZSyncMatchContinuation tests zsync on a control file with a shorter
 // blocksize and match continuation.
 func TestZSyncMatchContinuation(t *testing.T) {
@@ -374,8 +418,7 @@ func TestZSyncBadChecksum(t *testing.T) {
 	}
 }
 
-// TestZSyncSimpleSomeLocal tests zsync with partial local seed file
-func TestZSyncProxy(t *testing.T) {
+func TestZSyncViaProxy(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}

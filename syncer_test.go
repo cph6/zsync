@@ -9,6 +9,7 @@ package zsync_test
 
 import (
 	"bytes"
+	"crypto"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -51,7 +52,7 @@ func MakeZsyncControl(data [][]byte) bytes.Buffer {
 	for _, d := range data {
 		// compute rsum and md4
 		rsum := rcksum.CalcRsumBlock(d)
-		md4sum := rcksum.CalcChecksum(d)
+		md4sum := rcksum.CalcChecksum(d, crypto.MD4)
 
 		// write rsum as big-endian two uint16
 		var rsumBuf [4]byte

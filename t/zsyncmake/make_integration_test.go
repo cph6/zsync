@@ -85,7 +85,12 @@ func parseZSyncFile(filePath string) (map[string][]byte, []byte, error) {
 			}
 			info[key] = mapData
 		} else {
-			info[key] = value
+			if _, ok := info[key]; ok {
+				info[key] = append(info[key], ',')
+				info[key] = append(info[key], value...)
+			} else {
+				info[key] = value
+			}
 		}
 	}
 
@@ -131,12 +136,13 @@ func TestZSyncMakeSimple(t *testing.T) {
 	}
 
 	expected := map[string]string{
-		"Filename":  "target.dat",
-		"Length":    "281020",
-		"URL":       "target.dat",
-		"File-Hash": "SHA-256:e342d5e314285c95ee8ad3c28838b4a6e6139f4ef64d689490a30785e79ceb83",
-		"Safe":      "File-Hash",
-		"Blocksize": "2048",
+		"Filename":              "target.dat",
+		"Length":                "281020",
+		"URL":                   "target.dat",
+		"File-Hash":             "SHA-256:e342d5e314285c95ee8ad3c28838b4a6e6139f4ef64d689490a30785e79ceb83",
+		"Strong-Hash-Algorithm": "MD4",
+		"Safe":                  "File-Hash,Strong-Hash-Algorithm",
+		"Blocksize":             "2048",
 	}
 
 	for key, expectedVal := range expected {
@@ -160,8 +166,8 @@ func TestZSyncMakeSimple(t *testing.T) {
 			if rsumLen != 4 {
 				t.Errorf("expected rsumLen=4, got %d", rsumLen)
 			}
-			if strongLen != 6 {
-				t.Errorf("expected strongChecksumLen=6, got %d", strongLen)
+			if strongLen != 16 {
+				t.Errorf("expected strongChecksumLen=16, got %d", strongLen)
 			}
 		}
 	}

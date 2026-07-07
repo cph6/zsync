@@ -10,6 +10,7 @@ package rcksum
 
 import (
 	"bytes"
+	"crypto"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func TestHashLookupSingle(t *testing.T) {
 	const blockSize = 16
 
 	// use rsumBytes=4 to get full rsumAMask (0xffff)
-	z, err := New(nblocks, blockSize, 4, ChecksumSize, 1)
+	z, err := New(nblocks, blockSize, crypto.MD4, 4, MaxChecksumSize, 1)
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -38,7 +39,7 @@ func TestHashLookupSingle(t *testing.T) {
 	for i := 0; i < nblocks; i++ {
 		data := bytes.Repeat([]byte{byte(i + 1)}, blockSize)
 		r := CalcRsumBlock(data)
-		checksum := CalcChecksum(data)
+		checksum := CalcChecksum(data, crypto.MD4)
 		z.AddTargetBlock(BlockID(i), r, checksum)
 	}
 
@@ -64,7 +65,7 @@ func TestHashLookupSeq2(t *testing.T) {
 	const blockSize = 16
 
 	// rsumBytes=4 so rsumAMask is wide; seqMatches=2 to use two-block hashes
-	z, err := New(nblocks, blockSize, 4, ChecksumSize, 2)
+	z, err := New(nblocks, blockSize, crypto.MD4, 4, MaxChecksumSize, 2)
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestHashLookupSeq2(t *testing.T) {
 	for i := 0; i < nblocks; i++ {
 		data := bytes.Repeat([]byte{byte(i + 1)}, blockSize)
 		r := CalcRsumBlock(data)
-		checksum := CalcChecksum(data)
+		checksum := CalcChecksum(data, crypto.MD4)
 		z.AddTargetBlock(BlockID(i), r, checksum)
 	}
 

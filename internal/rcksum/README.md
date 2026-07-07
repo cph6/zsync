@@ -27,7 +27,7 @@ PARTICULAR PURPOSE.  See the COPYING file for details.
 - **Rolling Checksum**: Fast, byte-by-byte scanning using Adler-style checksums.
 - Hash table and lookup for rolling checksums, to allow quick comparison of
   matching blocks.
-- **Strong Checksums**: MD4-based verification of potential matches.
+- **Strong Checksums**: verification of matching blocks using a strong hash, currently MD4, MD5 or SHA-224.
 - **Range Tracking**: to keep track of which blocks have been received.
 - **File Handling and handoff of temporary file created during reconstruction.
 
@@ -39,7 +39,7 @@ PARTICULAR PURPOSE.  See the COPYING file for details.
 import "github.com/cph/zsync/internal/rcksum"
 
 // Create state for 100 blocks of 4096 bytes each
-z, err := rcksum.New(100, 4096, 2, 16, 1)
+z, err := rcksum.New(100, 4096, crypto.MD5, 2, 16, 1)
 if err != nil {
     log.Fatal(err)
 }
@@ -84,7 +84,7 @@ needed := z.NeededBlockRanges(0, z.blocks)
 
 RcksumState - The main state object that holds:
 
-  - Block checksums (both weak rolling checksums and strong MD4 hashes)
+  - Block checksums (both weak rolling checksums and strong hashes)
   - Hash tables for fast block lookup
   - Tracking of known blocks
   - Temporary file for accumulating received data

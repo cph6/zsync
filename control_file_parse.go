@@ -43,6 +43,7 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 	safelines := make(map[string]int)
 	safelines["Z-URL"] = 0
 	safelines["Min-Version"] = 0
+	strongHash := crypto.MD4 // Default from older versions of zsync.
 	seenHeader := false
 
 	reader := bufio.NewReader(f)
@@ -94,6 +95,17 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 				return fmt.Errorf("nonsensical blocksize %d", blocksize)
 			}
 			zs.blocksize = blocksize
+		case "Strong-Hash-Algorithm":
+			switch value {
+			case "MD4":
+				strongHash = crypto.MD4
+			case "MD5":
+				strongHash = crypto.MD5
+			case "SHA-224":
+				strongHash = crypto.SHA224
+			default:
+				return fmt.Errorf("unsupported strong checksum algorithm: %s", value)
+			}
 		case "Hash-Lengths":
 			parts := strings.Split(value, ",")
 			if len(parts) != 3 {
@@ -112,11 +124,13 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 			if err != nil {
 				return fmt.Errorf("bad checksumBytes: %s", parts[2])
 			}
-			if rsumBytes < 1 || rsumBytes > 4 || checksumBytes < 3 || checksumBytes > 16 || seqMatches < 1 || seqMatches > 2 {
+			if rsumBytes < 1 || rsumBytes > 4 || seqMatches < 1 || seqMatches > 2 {
 				return fmt.Errorf("nonsensical hash lengths: %s", value)
 			}
 		case "Safe":
-			safelines[value] = 0
+			for _, s := range strings.Split(value, ",") {
+				safelines[s] = 0
+			}
 		case "File-Hash":
 			vs := strings.SplitN(value, ":", 2)
 			alg := vs[0]
@@ -175,6 +189,10 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 	}
 	zs.blocks = (zs.filelen + zs.blocksize - 1) / zs.blocksize
 
+	if checksumBytes < 3 || checksumBytes > strongHash.New().Size() {
+		return fmt.Errorf("nonsensical strong hash size specified: %d", checksumBytes)
+	}
+
 	// The current client does not support any file without a "URL" provided; but
 	// someone using the library might provide alternative download mechanisms so
 	// we do not treat all files without a URL line as unsupported here. However
@@ -185,7 +203,7 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 		return ErrNotSupportedCompressed
 	}
 
-	rs, err := rcksum.New(rcksum.BlockID(zs.blocks), zs.blocksize, int(rsumBytes), uint(checksumBytes), seqMatches)
+	rs, err := rcksum.New(rcksum.BlockID(zs.blocks), zs.blocksize, strongHash, int(rsumBytes), uint(checksumBytes), seqMatches)
 	if err != nil {
 		return err
 	}
@@ -211,7 +229,7 @@ func (zs *Syncer) parseControlFile(f io.Reader) error {
 			return err
 		}
 
-		var cksum [rcksum.ChecksumSize]byte
+		var cksum rcksum.StrongChecksum
 		copy(cksum[:], checksum)
 		zs.rs.AddTargetBlock(rcksum.BlockID(i), rsum, cksum)
 	}

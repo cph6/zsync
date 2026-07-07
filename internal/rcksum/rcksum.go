@@ -26,11 +26,14 @@ package rcksum
 
 import (
 	"bytes"
+	"crypto"
+	_ "crypto/md5"
+	_ "crypto/sha256" // For SHA-224
 	"errors"
 	"fmt"
 	"os"
 
-	"golang.org/x/crypto/md4"
+	_ "golang.org/x/crypto/md4"
 )
 
 var (
@@ -47,11 +50,11 @@ func CalcRsumBlock(data []byte) RSum {
 	return RSum{A: a, B: b}
 }
 
-// CalcChecksum returns the MD4 checksum of the given data block
-func CalcChecksum(data []byte) [ChecksumSize]byte {
-	h := md4.New()
+// CalcChecksum returns the strong checksum of the given data block
+func CalcChecksum(data []byte, hash crypto.Hash) StrongChecksum {
+	h := hash.New()
 	h.Write(data)
-	var result [ChecksumSize]byte
+	var result StrongChecksum
 	copy(result[:], h.Sum(nil))
 	return result
 }
@@ -63,15 +66,20 @@ func updateRsum(r *RSum, oldC, newC byte, blockShift uint) {
 }
 
 // New creates and returns an RcksumState with the given properties
-func New(nblocks BlockID, blockSize int64, rsumBytes int, checksumBytes uint, requireConsecutiveMatches int) (*RcksumState, error) {
+func New(nblocks BlockID, blockSize int64, strongHash crypto.Hash, rsumBytes int, checksumBytes uint, requireConsecutiveMatches int) (*RcksumState, error) {
 	// Validate block size is a power of two
 	if blockSize&(blockSize-1) != 0 {
 		return nil, fmt.Errorf("block size must be a power of two, got %d", blockSize)
 	}
 
+	if !strongHash.Available() {
+		return nil, fmt.Errorf("unsupported strong hash algorithm: %d", strongHash)
+	}
+
 	z := &RcksumState{
 		blocks:        nblocks,
 		blockSize:     blockSize,
+		strongHash:    strongHash,
 		checksumBytes: checksumBytes,
 		seqMatches:    requireConsecutiveMatches,
 	}
@@ -97,7 +105,7 @@ func New(nblocks BlockID, blockSize int64, rsumBytes int, checksumBytes uint, re
 	}
 
 	// Allocate MD4 checksums array
-	z.md4Checksums = make([]MD4Checksum, nblocks)
+	z.strongChecksums = make([]StrongChecksum, nblocks)
 
 	// Allocate rolling checksums array for hash table
 	z.rsums = make([]RSum, nblocks)
@@ -118,13 +126,13 @@ func (z *RcksumState) SetTargetFile(fd *os.File) {
 }
 
 // AddTargetBlock sets the stored hash values for the given blockid
-func (z *RcksumState) AddTargetBlock(b BlockID, r RSum, checksum [ChecksumSize]byte) {
+func (z *RcksumState) AddTargetBlock(b BlockID, r RSum, checksum StrongChecksum) {
 	if b < z.blocks {
 		z.mu.Lock()
 		defer z.mu.Unlock()
 
 		// Store checksums and rsums
-		z.md4Checksums[b] = MD4Checksum(checksum)
+		z.strongChecksums[b] = checksum
 		z.rsums[b].A = r.A & z.rsumAMask
 		z.rsums[b].B = r.B
 
@@ -165,9 +173,9 @@ func (z *RcksumState) SubmitBlocks(data []byte, bfrom, bto BlockID) error {
 	for x = bfrom; x <= bto; x++ {
 		offset := int64((x - bfrom) << uint(z.blockShift))
 		blockData := data[offset : offset+z.blockSize]
-		md4sum := CalcChecksum(blockData)
+		ssum := CalcChecksum(blockData, z.strongHash)
 
-		if !bytes.Equal(md4sum[:z.checksumBytes], z.md4Checksums[x][:z.checksumBytes]) {
+		if !bytes.Equal(ssum[:z.checksumBytes], z.strongChecksums[x][:z.checksumBytes]) {
 			break
 		}
 	}

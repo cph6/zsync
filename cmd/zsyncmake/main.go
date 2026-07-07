@@ -11,18 +11,21 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto"
+	_ "crypto/md5"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cph6/zsync/internal/rcksum"
+	_ "golang.org/x/crypto/md4"
 )
 
 const (
@@ -34,6 +37,7 @@ func main() {
 	blocksize := flag.Int64("b", 0, "block size (must be power of 2)")
 	outputFile := flag.String("o", "", "filename for the created .zsync file")
 	filename := flag.String("f", "", "recommended filename clients should use for the target file")
+	strongHash := flag.String("s", "MD4", "strong hash algorithm used. Options are MD4 (default), MD5 or SHA-224. Note that older versions of the zsync client only support .zsync files using MD4.")
 	verbose := flag.Bool("v", false, "verbose output")
 	urls := make([]string, 0)
 
@@ -108,7 +112,20 @@ func main() {
 		os.Exit(2)
 	}
 
-	fileLen, sha256sum, checksumFile, err := readFileCalcChecksumsAndStats(instream, *blocksize)
+	// Map supported checksum methods.
+	supportedStrongHash := map[string]crypto.Hash{
+		"MD4":     crypto.MD4,
+		"MD5":     crypto.MD5,
+		"SHA-224": crypto.SHA224,
+	}
+
+	hash, supported := supportedStrongHash[*strongHash]
+	if !supported {
+		fmt.Fprintf(os.Stderr, "unsupported strong checksum specified (%s)", *strongHash)
+		os.Exit(2)
+	}
+
+	fileLen, sha256sum, checksumFile, err := readFileCalcChecksumsAndStats(instream, *blocksize, hash)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading file: %v\n", err)
 		os.Exit(2)
@@ -128,7 +145,7 @@ func main() {
 		}
 	}
 
-	seqMatches, rsumLen, checksumLen := determineHashLengths(fileLen, *blocksize)
+	seqMatches, rsumLen, checksumLen := determineHashLengths(fileLen, hash.New().Size())
 
 	// Prepare output filename
 	outName := *outputFile
@@ -158,7 +175,7 @@ func main() {
 	if fileInfo != nil {
 		mtime = fileInfo.ModTime()
 	}
-	err = writeControlFile(outstream, *filename, fileLen, urls, mtime, *blocksize, rsumLen, checksumLen, seqMatches, sha256sum, checksumFile)
+	err = writeControlFile(outstream, *filename, fileLen, urls, mtime, *blocksize, *strongHash, rsumLen, checksumLen, seqMatches, sha256sum, checksumFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed writing zsync file: %v\n", err)
 		os.Exit(2)
@@ -173,7 +190,7 @@ func main() {
 	}
 }
 
-func writeControlFile(outstream io.Writer, filename string, fileLen int64, urls []string, mtime time.Time, blocksize int64, rsumLen, checksumLen, seqMatches int, sha256sum []byte, checksumFile io.Reader) error {
+func writeControlFile(outstream io.Writer, filename string, fileLen int64, urls []string, mtime time.Time, blocksize int64, strongHash string, rsumLen, checksumLen, seqMatches int, sha256sum []byte, checksumFile io.Reader) error {
 	// Write .zsync file
 	writer := bufio.NewWriter(outstream)
 
@@ -195,12 +212,18 @@ func writeControlFile(outstream io.Writer, filename string, fileLen int64, urls 
 		}
 	}
 
+	safe := []string{"File-Hash"}
+	if strongHash == "MD4" {
+		safe = append(safe, "Strong-Hash-Algorithm")
+	}
+
 	_, err = fmt.Fprintf(writer, `Blocksize: %d
 Length: %d
+Safe: %s
 Hash-Lengths: %d,%d,%d
-Safe: File-Hash
+Strong-Hash-Algorithm: %s
 File-Hash: SHA-256:%s
-`, blocksize, fileLen, seqMatches, rsumLen, checksumLen, hex.EncodeToString(sha256sum))
+`, blocksize, fileLen, strings.Join(safe, ","), seqMatches, rsumLen, checksumLen, strongHash, hex.EncodeToString(sha256sum))
 	if err != nil {
 		return err
 	}
@@ -229,43 +252,38 @@ File-Hash: SHA-256:%s
 	return nil
 }
 
-func determineHashLengths(fileLengthInt, blocksizeInt int64) (int, int, int) {
-	length := float64(fileLengthInt)
-	blocksize := float64(blocksizeInt)
-	seqMatches := 1
+func determineHashLengths(fileLength int64, maxStrongHashLen int) (seqMatches, rsumLen, shashLen int) {
+	seqMatches = 1
 
-	// https://zsync.moria.org.uk/paper200503/ch02s03.html#id276977
-	// If more than 4 bytes of rolling checksum data is optimal (which it is, by
-	// this estimator, with target files larger than around 400MB), then we turn
-	// on match continuation.
-	// The value used here is based on performance numbers from 2005; with modern
-	// internet the optimal threashold might be lower, but there are other
-	// tradeoffs that the whitepaper did not consider so I will leave it as-is
-	// for now.
-	if math.Log2(length)+math.Log2(blocksize)-8.6 > 32 {
+	// If more than 4 bytes of rolling checksum data is optimal, then we turn on
+	// match continuation.
+	// https://zsync.moria.org.uk/paper200503/ch02s03.html#id276977 for the
+	// original calculation, but in practice the threshold was around 400MB so
+	// just make that the heuristic here.
+	if fileLength > 400000000 {
 		seqMatches = 2
 	}
 
-	// Calculate checksum length
-	checksumLen := int(math.Max(
-		math.Ceil((20+math.Log2(length)+math.Log2(1+length/blocksize))/float64(seqMatches)/8),
-		math.Ceil((20+math.Log2(1+length/blocksize))/8),
-	))
-	checksumLen = min(16, max(4, checksumLen))
 	// zsync used to use a reduced amount of rolling checksum data per block
 	// (rsumLen < 4) for short files, to reduce the size of the control file a
 	// little. The saving is no longer worthwhile, so we always distribute all 4
 	// bytes of rolling checksum data now.
-	return seqMatches, 4 /* rsumLen */, checksumLen
+	rsumLen = 4
+	// zsync used to reduce the number of checksum bytes distributed per block to
+	// reduce the largest part of the metadata overhead. But the reduced resistance
+	// to collisions can be a problem, so today we choose to always give the full
+	// hash of each block.
+	shashLen = maxStrongHashLen
+	return
 }
 
 // Temporary structure for holding checksums of a block during processing.
 type blockChecksums struct {
-	Rsum rcksum.RSum
-	MD4  [16]byte
+	Rsum           rcksum.RSum
+	StrongChecksum rcksum.StrongChecksum
 }
 
-func readFileCalcChecksumsAndStats(r io.Reader, blocksize int64) (int64, []byte, *os.File, error) {
+func readFileCalcChecksumsAndStats(r io.Reader, blocksize int64, strongHash crypto.Hash) (int64, []byte, *os.File, error) {
 	// Create temporary buffer for reading blocks
 	buffer := make([]byte, blocksize)
 
@@ -300,8 +318,8 @@ func readFileCalcChecksumsAndStats(r io.Reader, blocksize int64) (int64, []byte,
 
 			// Calculate checksums on the data.
 			checksums := &blockChecksums{
-				Rsum: rcksum.CalcRsumBlock(buffer),
-				MD4:  rcksum.CalcChecksum(buffer),
+				Rsum:           rcksum.CalcRsumBlock(buffer),
+				StrongChecksum: rcksum.CalcChecksum(buffer, strongHash),
 			}
 
 			// And write out to the temp file; these will be read back for
@@ -351,25 +369,11 @@ func writeChecksums(writer io.Writer, checksumFile io.Reader, blocksize int64, r
 		}
 
 		// Write checksum (truncated to checksumLen)
-		_, err = writer.Write(checksums.MD4[:checksumLen])
+		_, err = writer.Write(checksums.StrongChecksum[:checksumLen])
 		if err != nil {
 			return fmt.Errorf("write: %v", err)
 		}
 	}
 
 	return nil
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

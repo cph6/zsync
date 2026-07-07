@@ -114,12 +114,12 @@ func (z *RcksumState) removeFromHash(rs [2]RSum) {
 	h := z.calcRhashFromRSums(rs)
 
 	if entries, found := z.rsumHash[h]; found {
-		seenChecksum := make(map[[ChecksumSize]byte]bool, len(entries))
+		seenChecksum := make(map[StrongChecksum]bool, len(entries))
 		prunedChain := slices.DeleteFunc(entries, func(id BlockID) bool {
 			if z.knownBlocks.contains(id) {
-				md4 := z.md4Checksums[id]
-				_, ok := seenChecksum[md4]
-				seenChecksum[md4] = true
+				sc := z.strongChecksums[id]
+				_, ok := seenChecksum[sc]
+				seenChecksum[sc] = true
 				return ok
 			}
 			return false

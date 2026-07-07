@@ -10,6 +10,7 @@ package rcksum
 
 import (
 	"bytes"
+	"crypto"
 	"testing"
 )
 
@@ -29,9 +30,9 @@ func TestCalcRsumBlock(t *testing.T) {
 // TestCalcChecksum tests MD4 checksum calculation
 func TestCalcChecksum(t *testing.T) {
 	data := []byte("hello world")
-	sum := CalcChecksum(data)
+	sum := CalcChecksum(data, crypto.MD4)
 
-	if sum != [ChecksumSize]byte{
+	if sum != [MaxChecksumSize]byte{
 		0xaa, 0x01, 0x0f, 0xbc, 0x1d, 0x14, 0xc7, 0x95, 0xd8, 0x6e, 0xf9, 0x8c, 0x95, 0x47, 0x9d, 0x17} {
 		t.Errorf("Unexpected checksum: %x", sum)
 	}
@@ -39,7 +40,7 @@ func TestCalcChecksum(t *testing.T) {
 
 // TestRcksumStateCreation tests creating an RcksumState
 func TestRcksumStateCreation(t *testing.T) {
-	z, err := New(100, 4096, 2, ChecksumSize, 1)
+	z, err := New(100, 4096, crypto.MD4, 2, MaxChecksumSize, 1)
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
@@ -57,13 +58,13 @@ func TestRcksumStateCreation(t *testing.T) {
 
 // TestAddTargetBlock tests adding a target block
 func TestAddTargetBlock(t *testing.T) {
-	z, err := New(10, 4096, 2, ChecksumSize, 1)
+	z, err := New(10, 4096, crypto.MD4, 2, MaxChecksumSize, 1)
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
 
 	r := RSum{A: 100, B: 200}
-	checksum := CalcChecksum([]byte("test data"))
+	checksum := CalcChecksum([]byte("test data"), crypto.MD4)
 
 	z.AddTargetBlock(0, r, checksum)
 	z.AddTargetBlock(1, r, checksum)
@@ -90,7 +91,7 @@ func TestUpdateRsum(t *testing.T) {
 
 // TestHashTableBuilding tests building hash tables
 func TestHashTableBuilding(t *testing.T) {
-	z, err := New(10, 4096, 2, ChecksumSize, 1)
+	z, err := New(10, 4096, crypto.MD4, 2, MaxChecksumSize, 1)
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestHashTableBuilding(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		data := bytes.Repeat([]byte{byte(i)}, 4096)
 		r := CalcRsumBlock(data)
-		checksum := CalcChecksum(data)
+		checksum := CalcChecksum(data, crypto.MD4)
 		z.AddTargetBlock(BlockID(i), r, checksum)
 	}
 
@@ -111,7 +112,7 @@ func TestHashTableBuilding(t *testing.T) {
 
 // TestBlocksTodo tests the blocks remaining count
 func TestBlocksTodo(t *testing.T) {
-	z, err := New(100, 4096, 2, ChecksumSize, 1)
+	z, err := New(100, 4096, crypto.MD4, 2, MaxChecksumSize, 1)
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
@@ -128,7 +129,7 @@ func TestBlocksTodo(t *testing.T) {
 
 // TestNeededBlockRanges tests getting ranges of needed blocks
 func TestNeededBlockRanges(t *testing.T) {
-	z, err := New(100, 4096, 2, ChecksumSize, 1)
+	z, err := New(100, 4096, crypto.MD4, 2, MaxChecksumSize, 1)
 	if err != nil {
 		t.Fatalf("Failed to create RcksumState: %v", err)
 	}
