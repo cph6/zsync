@@ -80,40 +80,78 @@ func teardown() {
 	}
 }
 
+// makeZSync creates a zsync file using the zsyncmake command
+func makeZSync(t *testing.T, filename string, params ...string) string {
+	outfile := filepath.Join(testDataDir, "test.zsync")
+
+	args := []string{"-o", outfile, "-u", filepath.Base(filename)}
+	args = append(args, params...)
+	args = append(args, filename)
+
+	cmd := exec.Command(filepath.Join(binaryDir, "zsyncmake"), args...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("zsyncmake failed: %v\nOutput: %s", err, output)
+	}
+
+	return outfile
+}
+
+type tryZSyncOptions struct {
+	Parameters []string
+	URL        string
+	Env        map[string]string
+	Binary     string
+}
+
 // tryZSync runs zsync command and returns output file, stats, and stderr
-func tryZSync(t *testing.T, zsyncFile string, parameters []string, url string, env map[string]string) (string, map[string]int, string, error) {
+func tryZSync(t *testing.T, zsyncFile string, opts tryZSyncOptions) (string, map[string]int, string, error) {
+	url := opts.URL
 	if url == "" {
 		url = zstesting.HttpsURL
+	}
+	binary := filepath.Join(binaryDir, "zsync")
+	if opts.Binary != "" {
+		binary = opts.Binary
 	}
 
 	args := []string{}
 
 	// Add certificate check parameter if not already specified
 	hasCertParam := false
-	for _, p := range parameters {
-		if strings.HasPrefix(p, "--no-check-certificate") {
-			hasCertParam = true
-			break
+	if opts.Parameters != nil {
+		for _, p := range opts.Parameters {
+			if strings.HasPrefix(p, "--no-check-certificate") {
+				hasCertParam = true
+				break
+			}
 		}
 	}
-	if !hasCertParam {
+	if !hasCertParam && opts.Binary == "" {
 		args = append(args, "--no-check-certificate")
 	}
 
 	var outfile string
-	if !slices.Contains(parameters, "-o") {
-		outfile = filepath.Join(scratchDir, fmt.Sprintf("output-%d", time.Now().UnixNano()))
+	if !slices.Contains(opts.Parameters, "-o") {
+		outfile = fmt.Sprintf("output-%d", time.Now().UnixNano())
+		// zsync-0.6 has problems with temporary files and named output paths.
+		if opts.Binary == "" {
+			outfile = filepath.Join(scratchDir, outfile)
+		}
 		args = append(args, "-o", outfile)
 	}
 
-	args = append(args, parameters...)
+	if opts.Parameters != nil {
+		args = append(args, opts.Parameters...)
+	}
 	args = append(args, url+zsyncFile)
 
-	cmd := exec.Command(filepath.Join(binaryDir, "zsync"), args...)
+	cmd := exec.Command(binary, args...)
 
-	if env != nil {
+	if opts.Env != nil {
 		cmd.Env = os.Environ()
-		for k, v := range env {
+		for k, v := range opts.Env {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
@@ -136,6 +174,29 @@ func tryZSync(t *testing.T, zsyncFile string, parameters []string, url string, e
 	return outfile, stats, stderr, err
 }
 
+// TestZSyncmakeAndZsync tests the whole system - making a zsync file and then
+// using it to reconstruct a target file.
+func TestZSyncmakeAndZsync(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	targetPath := filepath.Join(testDataDir, targetFile)
+	controlFile := makeZSync(t, targetPath)
+	defer os.Remove(controlFile)
+	fmt.Fprintf(os.Stderr, "control file: %s\n", controlFile)
+
+	seedFile := zstesting.ProvideSeed(t, scratchDir, filepath.Join(testDataDir, targetFile), 281020)
+	defer os.Remove(seedFile)
+
+	outfile1, _, _, _ := tryZSync(t, "test.zsync", tryZSyncOptions{
+		Parameters: []string{"-i", seedFile},
+	})
+	defer os.Remove(outfile1)
+
+	zstesting.AssertFilesEqual(t, outfile1, filepath.Join(testDataDir, targetFile))
+}
+
 // TestZSyncCaching tests zsync caching functionality
 func TestZSyncCaching(t *testing.T) {
 	if testing.Short() {
@@ -149,11 +210,14 @@ func TestZSyncCaching(t *testing.T) {
 
 	controlFile := filepath.Join(scratchDir, "control-cache")
 
+	opts := tryZSyncOptions{
+		Parameters: []string{"-i", seedFile, "-k", controlFile},
+	}
 	// First run
-	outfile1, _, _, _ := tryZSync(t, targetFile+".zsync", []string{"-i", seedFile, "-k", controlFile}, "", nil)
+	outfile1, _, _, _ := tryZSync(t, targetFile+".zsync", opts)
 
 	// Second run (should use cache)
-	outfile2, _, stderr, _ := tryZSync(t, targetFile+".zsync", []string{"-i", seedFile, "-k", controlFile}, "", nil)
+	outfile2, _, stderr, _ := tryZSync(t, targetFile+".zsync", opts)
 	defer os.Remove(outfile1)
 	defer os.Remove(outfile2)
 	defer os.Remove(controlFile)
@@ -174,9 +238,9 @@ func TestZSyncWithAuth(t *testing.T) {
 	seedFile := zstesting.ProvideSeed(t, scratchDir, filepath.Join(testDataDir, "with-auth", targetFile), 9475)
 	defer os.Remove(seedFile)
 
-	outfile, _, _, _ := tryZSync(t, filepath.Join("with-auth", targetFile+".zsync"), []string{
-		"-i", seedFile, "-A", "localhost=user:mypass",
-	}, "", nil)
+	outfile, _, _, _ := tryZSync(t, filepath.Join("with-auth", targetFile+".zsync"), tryZSyncOptions{
+		Parameters: []string{"-i", seedFile, "-A", "localhost=user:mypass"},
+	})
 	defer os.Remove(outfile)
 
 	zstesting.AssertFilesEqual(t, outfile, filepath.Join(testDataDir, "with-auth", targetFile))
@@ -209,7 +273,9 @@ func TestZSyncMoreThan4G(t *testing.T) {
 	defer os.Remove(seedFile)
 
 	start := time.Now()
-	outfile, _, _, _ := tryZSync(t, "hugefile.zsync", []string{"-i", seedFile}, "", nil)
+	outfile, _, _, _ := tryZSync(t, "hugefile.zsync", tryZSyncOptions{
+		Parameters: []string{"-i", seedFile},
+	})
 	elapsed := time.Since(start)
 	defer os.Remove(outfile)
 
