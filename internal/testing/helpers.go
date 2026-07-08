@@ -1,4 +1,4 @@
-package main
+package testing
 
 /*
  * SPDX-FileCopyrightText: 2026 Colin Phipps <cph@moria.org.uk>
@@ -14,11 +14,17 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
-func writeTestFile(filePath string, length int, seed int64) error {
+// WriteTestFile writes a test file with a given length
+// and contents derived deterministically from a random
+// seed.
+func WriteTestFile(filePath string, length int, seed int64) error {
 	rnd := rand.New(rand.NewSource(seed))
 	f, err := os.Create(filePath)
 	if err != nil {
@@ -44,8 +50,39 @@ func writeTestFile(filePath string, length int, seed int64) error {
 	return nil
 }
 
-// hexMD5 calculates MD5 hash of a file and returns hex string
-func hexMD5(filePath string) (string, error) {
+// ProvideSeed creates a partial seed file from source.
+func ProvideSeed(t *testing.T, scratchDir, source string, length int) string {
+	seedFile := filepath.Join(scratchDir, fmt.Sprintf("seed-%d", time.Now().UnixNano()))
+
+	srcFile, err := os.Open(source)
+	if err != nil {
+		t.Fatalf("Failed to open source file: %v", err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(seedFile)
+	if err != nil {
+		t.Fatalf("Failed to create seed file: %v", err)
+	}
+	defer dstFile.Close()
+
+	// Write portion from position length/10 to length/10 + length/5
+	srcFile.Seek(int64(length/10), 0)
+	if _, err := io.CopyN(dstFile, srcFile, int64(length/5)); err != nil && err != io.EOF {
+		t.Fatalf("Failed to copy seed data: %v", err)
+	}
+
+	// Write portion from position length/3 to length/3 + length/3
+	srcFile.Seek(int64(length/3), 0)
+	if _, err := io.CopyN(dstFile, srcFile, int64(length/3)); err != nil && err != io.EOF {
+		t.Fatalf("Failed to copy seed data: %v", err)
+	}
+
+	return seedFile
+}
+
+// HexMD5 calculates MD5 hash of a file and returns hex string
+func HexMD5(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "", err
@@ -60,8 +97,8 @@ func hexMD5(filePath string) (string, error) {
 	return fmt.Sprintf("%x", md5hash.Sum(nil)), nil
 }
 
-// copyFile copies a file from src to dst
-func copyFile(src, dst string) error {
+// CopyFile copies a file from src to dst
+func CopyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -78,8 +115,8 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-// assertFilesEqual checks if two files are identical
-func assertFilesEqual(t *testing.T, file1, file2 string) {
+// AssertFilesEqual checks if two files are identical
+func AssertFilesEqual(t *testing.T, file1, file2 string) {
 	stat1, err := os.Stat(file1)
 	if err != nil {
 		t.Fatalf("Failed to stat %s: %v", file1, err)
@@ -127,4 +164,19 @@ func assertFilesEqual(t *testing.T, file1, file2 string) {
 			break
 		}
 	}
+}
+
+// GetLocalIP returns the local machine's IP address (excluding localhost)
+// It tries to connect to a remote address to determine the local interface
+func GetLocalIP() string {
+	// Try to connect to a public DNS server to determine local interface
+	// This doesn't actually send any data, just determines which interface would be used
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }

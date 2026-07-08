@@ -10,8 +10,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +18,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	zstesting "github.com/cph6/zsync/internal/testing"
 )
 
 var (
@@ -27,9 +27,6 @@ var (
 	binaryDir   = "../.."
 	scratchDir  string
 
-	// URLs for testing
-	httpURL  = "http://localhost:8081/"
-	httpsURL = "https://localhost:8082/"
 	proxyURL string
 
 	targetFile = "target.dat"
@@ -49,7 +46,7 @@ func TestMain(m *testing.M) {
 func setup() {
 	// Get local machine IP address (excluding localhost)
 	// This is needed for proxy testing since Go's HTTP client doesn't proxy localhost requests
-	localIP := getLocalIP()
+	localIP := zstesting.GetLocalIP()
 	if localIP == "" {
 		// Fall back to 127.0.0.1 if we can't find the IP
 		localIP = "127.0.0.1"
@@ -61,37 +58,22 @@ func setup() {
 	if scratchDir, err = os.MkdirTemp("", "zsync-test-"); err != nil {
 		panic(fmt.Sprintf("Failed to create scratch directory: %v", err))
 	}
-	if err := SetupApacheServer(); err != nil {
+	if err := zstesting.SetupApacheServer(".."); err != nil {
 		panic(fmt.Sprintf("failed to start apache: %v", err))
 	}
 	// The sizes and seed numbers below are arbitrary, but the the
 	// corresponding generated .zsync files committed to the
 	// t/data directory must be regenerated if they are changed.
-	if err := writeTestFile(filepath.Join(testDataDir, targetFile), 281020, 0x12d0d83dc21135be); err != nil {
+	if err := zstesting.WriteTestFile(filepath.Join(testDataDir, targetFile), 281020, 0x12d0d83dc21135be); err != nil {
 		panic("failed to write test data file")
 	}
-	if err := writeTestFile(filepath.Join(testDataDir, "with-auth", targetFile), 9553, 0x6a0039489f8705d6); err != nil {
+	if err := zstesting.WriteTestFile(filepath.Join(testDataDir, "with-auth", targetFile), 9553, 0x6a0039489f8705d6); err != nil {
 		panic("failed to write test data file")
 	}
-}
-
-// getLocalIP returns the local machine's IP address (excluding localhost)
-// It tries to connect to a remote address to determine the local interface
-func getLocalIP() string {
-	// Try to connect to a public DNS server to determine local interface
-	// This doesn't actually send any data, just determines which interface would be used
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		return ""
-	}
-	defer conn.Close()
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr.IP.String()
 }
 
 func teardown() {
-	TeardownApacheServer()
+	zstesting.TeardownApacheServer()
 	// Clean up scratch directory
 	if strings.HasPrefix(filepath.Base(scratchDir), "zsync-test-") {
 		os.RemoveAll(scratchDir)
@@ -101,7 +83,7 @@ func teardown() {
 // tryZSync runs zsync command and returns output file, stats, and stderr
 func tryZSync(t *testing.T, zsyncFile string, parameters []string, url string, env map[string]string) (string, map[string]int, string, error) {
 	if url == "" {
-		url = httpsURL
+		url = zstesting.HttpsURL
 	}
 
 	args := []string{}
@@ -154,175 +136,6 @@ func tryZSync(t *testing.T, zsyncFile string, parameters []string, url string, e
 	return outfile, stats, stderr, err
 }
 
-// provideSeed creates a partial seed file from source
-func provideSeed(t *testing.T, source string, length int) string {
-	seedFile := filepath.Join(scratchDir, fmt.Sprintf("seed-%d", time.Now().UnixNano()))
-
-	srcFile, err := os.Open(source)
-	if err != nil {
-		t.Fatalf("Failed to open source file: %v", err)
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(seedFile)
-	if err != nil {
-		t.Fatalf("Failed to create seed file: %v", err)
-	}
-	defer dstFile.Close()
-
-	// Write portion from position length/10 to length/10 + length/5
-	srcFile.Seek(int64(length/10), 0)
-	if _, err := io.CopyN(dstFile, srcFile, int64(length/5)); err != nil && err != io.EOF {
-		t.Fatalf("Failed to copy seed data: %v", err)
-	}
-
-	// Write portion from position length/3 to length/3 + length/3
-	srcFile.Seek(int64(length/3), 0)
-	if _, err := io.CopyN(dstFile, srcFile, int64(length/3)); err != nil && err != io.EOF {
-		t.Fatalf("Failed to copy seed data: %v", err)
-	}
-
-	return seedFile
-}
-
-// TestZSyncSimpleNoLocal tests zsync without local file
-func TestZSyncSimpleNoLocal(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	outfile, stats, _, err := tryZSync(t, targetFile+".zsync", []string{}, "", nil)
-	defer os.Remove(outfile)
-
-	if err != nil {
-		t.Logf("zsync output: %v", err)
-	}
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] != 0 {
-		t.Errorf("Expected local=0, got %d", stats["local"])
-	}
-}
-
-// TestZSyncSimpleAllLocal tests zsync with complete local seed file
-func TestZSyncSimpleAllLocal(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	// Create seed file
-	seedFile := filepath.Join(scratchDir, "seed")
-	if err := copyFile(filepath.Join(testDataDir, targetFile), seedFile); err != nil {
-		t.Fatalf("Failed to copy seed file: %v", err)
-	}
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+".zsync", []string{"-i", seedFile}, "", nil)
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["fetched"] != 0 {
-		t.Errorf("Expected fetched=0, got %d", stats["fetched"])
-	}
-
-	// Check that backup file was not created
-	backupFile := outfile + ".zs-old"
-	if _, err := os.Stat(backupFile); err == nil {
-		t.Error("Backup file should not have been created")
-		os.Remove(backupFile)
-	}
-}
-
-// TestZSyncSimpleSomeLocal tests zsync with partial local seed file
-func TestZSyncSimpleSomeLocal(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
-	defer os.Remove(seedFile)
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+".zsync", []string{"-i", seedFile}, "", nil)
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] <= 0 {
-		t.Errorf("Expected local > 0, got %d", stats["local"])
-	}
-	if stats["fetched"] <= 0 {
-		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
-	}
-}
-
-// TestZSyncSimpleMD5 tests zsync with MD5 checksums.
-func TestZSyncSimpleMD5(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
-	defer os.Remove(seedFile)
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+".md5.zsync", []string{"-i", seedFile}, "", nil)
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] <= 0 {
-		t.Errorf("Expected local > 0, got %d", stats["local"])
-	}
-	if stats["fetched"] <= 0 {
-		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
-	}
-}
-
-// TestZSyncSimpleSHA224 tests zsync with MD5 checksums.
-func TestZSyncSimpleSHA224(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
-	defer os.Remove(seedFile)
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+".sha224.zsync", []string{"-i", seedFile}, "", nil)
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] <= 0 {
-		t.Errorf("Expected local > 0, got %d", stats["local"])
-	}
-	if stats["fetched"] <= 0 {
-		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
-	}
-}
-
-// TestZSyncMatchContinuation tests zsync on a control file with a shorter
-// blocksize and match continuation.
-func TestZSyncMatchContinuation(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
-	defer os.Remove(seedFile)
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+".sm2.zsync", []string{"-i", seedFile}, "", nil)
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] <= 0 {
-		t.Errorf("Expected local > 0, got %d", stats["local"])
-	}
-	if stats["fetched"] <= 0 {
-		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
-	}
-}
-
 // TestZSyncCaching tests zsync caching functionality
 func TestZSyncCaching(t *testing.T) {
 	if testing.Short() {
@@ -330,7 +143,7 @@ func TestZSyncCaching(t *testing.T) {
 	}
 
 	seedFile := filepath.Join(scratchDir, "seed-cache")
-	if err := copyFile(filepath.Join(testDataDir, targetFile), seedFile); err != nil {
+	if err := zstesting.CopyFile(filepath.Join(testDataDir, targetFile), seedFile); err != nil {
 		t.Fatalf("Failed to copy seed file: %v", err)
 	}
 
@@ -349,134 +162,7 @@ func TestZSyncCaching(t *testing.T) {
 		t.Errorf("Expected 'using local copy' in stderr")
 	}
 
-	assertFilesEqual(t, outfile2, filepath.Join(testDataDir, targetFile))
-}
-
-// TestZSyncBadTargetData tests zsync with remote data not matching the block checksums.
-func TestZSyncBadTargetData(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	outfile := filepath.Join(scratchDir, "bad-target-data")
-
-	f, err := os.Create(outfile)
-	if err != nil {
-		t.Errorf("failed to create old version of output: %v", err)
-	}
-	f.WriteString("abcd")
-	_, _, stderr, err := tryZSync(t, targetFile+".bad.zsync", []string{}, "", nil)
-	defer os.Remove(outfile)
-
-	if err == nil {
-		t.Errorf("zsync succeeded unexpectedly")
-	}
-
-	if !strings.Contains(stderr, "Not all of the required data could be downloaded") {
-		t.Errorf("zsync did not report target download failure (%v)", stderr)
-	}
-
-	info, err := os.Stat(outfile)
-	if err != nil {
-		t.Errorf("previous version of output deleted by zsync? %v", err)
-	}
-	if info.Size() != 4 {
-		t.Errorf("previous version of output has been overwritten? size=%d", info.Size())
-	}
-}
-
-// TestZSyncBadChecksum tests zsync with remote data not matching the target checksum.
-func TestZSyncBadChecksum(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	outfile := filepath.Join(scratchDir, "bad-checksum")
-
-	f, err := os.Create(outfile)
-	if err != nil {
-		t.Errorf("failed to create old version of output: %v", err)
-	}
-	f.WriteString("abcd")
-	_, _, stderr, err := tryZSync(t, targetFile+".bad-checksum.zsync", []string{}, "", nil)
-	defer os.Remove(outfile)
-
-	if err == nil {
-		t.Errorf("zsync succeeded unexpectedly")
-	}
-
-	if !strings.Contains(stderr, "checksum mismatch") {
-		t.Errorf("zsync did not report checksum mismatch (%v)", stderr)
-	}
-
-	info, err := os.Stat(outfile)
-	if err != nil {
-		t.Errorf("previous version of output deleted by zsync? %v", err)
-	}
-	if info.Size() != 4 {
-		t.Errorf("previous version of output has been overwritten? size=%d", info.Size())
-	}
-}
-
-func TestZSyncViaProxy(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	SetupProxyServer(t)
-	defer TeardownProxyServer()
-
-	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
-	defer os.Remove(seedFile)
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+".zsync", []string{"-i", seedFile}, proxyURL, map[string]string{"https_proxy": "http://localhost:8083/"})
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] <= 0 {
-		t.Errorf("Expected local > 0, got %d", stats["local"])
-	}
-	if stats["fetched"] <= 0 {
-		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
-	}
-}
-
-// TestZSyncBadSSL tests zsync with invalid SSL certificate
-func TestZSyncBadSSL(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	outfile, _, stderr, _ := tryZSync(t, targetFile+".zsync", []string{"--no-check-certificate=false"}, httpsURL, nil)
-	defer os.Remove(outfile)
-
-	if !strings.Contains(stderr, "certificate is not valid") && !strings.Contains(stderr, "failed to verify certificate") {
-		t.Logf("stderr: %s", stderr)
-		t.Errorf("Expected certificate validation error")
-	}
-}
-
-// TestZSyncNoSSL tests zsync over HTTP (no SSL)
-func TestZSyncNoSSL(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
-	defer os.Remove(seedFile)
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+".zsync", []string{"-i", seedFile}, httpURL, nil)
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] <= 0 {
-		t.Errorf("Expected local > 0, got %d", stats["local"])
-	}
-	if stats["fetched"] <= 0 {
-		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
-	}
+	zstesting.AssertFilesEqual(t, outfile2, filepath.Join(testDataDir, targetFile))
 }
 
 // TestZSyncWithAuth tests zsync with authentication
@@ -485,7 +171,7 @@ func TestZSyncWithAuth(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	seedFile := provideSeed(t, filepath.Join(testDataDir, "with-auth", targetFile), 9475)
+	seedFile := zstesting.ProvideSeed(t, scratchDir, filepath.Join(testDataDir, "with-auth", targetFile), 9475)
 	defer os.Remove(seedFile)
 
 	outfile, _, _, _ := tryZSync(t, filepath.Join("with-auth", targetFile+".zsync"), []string{
@@ -493,51 +179,7 @@ func TestZSyncWithAuth(t *testing.T) {
 	}, "", nil)
 	defer os.Remove(outfile)
 
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, "with-auth", targetFile))
-}
-
-// TestZSyncRedirect tests zsync with redirected zsync file
-func TestZSyncRedirect(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
-	defer os.Remove(seedFile)
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+"2.zsync", []string{"-i", seedFile}, "", nil)
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] <= 0 {
-		t.Errorf("Expected local > 0, got %d", stats["local"])
-	}
-	if stats["fetched"] <= 0 {
-		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
-	}
-}
-
-// TestZSyncTargetRedirect tests zsync with redirected target file
-func TestZSyncTargetRedirect(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	seedFile := provideSeed(t, filepath.Join(testDataDir, targetFile), 281020)
-	defer os.Remove(seedFile)
-
-	outfile, stats, _, _ := tryZSync(t, targetFile+"3.zsync", []string{"-i", seedFile}, "", nil)
-	defer os.Remove(outfile)
-
-	assertFilesEqual(t, outfile, filepath.Join(testDataDir, targetFile))
-
-	if stats["local"] <= 0 {
-		t.Errorf("Expected local > 0, got %d", stats["local"])
-	}
-	if stats["fetched"] <= 0 {
-		t.Errorf("Expected fetched > 0, got %d", stats["fetched"])
-	}
+	zstesting.AssertFilesEqual(t, outfile, filepath.Join(testDataDir, "with-auth", targetFile))
 }
 
 // TestZSyncMoreThan4G tests zsync with files larger than 4GB
@@ -571,7 +213,7 @@ func TestZSyncMoreThan4G(t *testing.T) {
 	elapsed := time.Since(start)
 	defer os.Remove(outfile)
 
-	md5hash, err := hexMD5(outfile)
+	md5hash, err := zstesting.HexMD5(outfile)
 	if err != nil {
 		t.Fatalf("Failed to calculate MD5: %v", err)
 	}

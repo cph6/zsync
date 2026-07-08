@@ -1,4 +1,4 @@
-package main
+package testing
 
 /*
  * SPDX-FileCopyrightText: 2026 Colin Phipps <cph@moria.org.uk>
@@ -24,29 +24,32 @@ var (
 	apacheProcess *exec.Cmd
 	apacheConfig  *os.File
 	proxyProcess  *exec.Cmd
-	testDir       = ".."
+
+	// URLs for testing
+	HttpURL  = "http://localhost:8081/"
+	HttpsURL = "https://localhost:8082/"
 )
 
 // SetupApacheServer sets up and starts the Apache HTTP server for testing
-func SetupApacheServer() error {
-	if err := os.Mkdir(filepath.Join(testDir, "logs"), 0750); err != nil && !os.IsExist(err) {
+func SetupApacheServer(configDir string) error {
+	if err := os.Mkdir(filepath.Join(configDir, "logs"), 0750); err != nil && !os.IsExist(err) {
 		return fmt.Errorf("failed to make logs directory: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(testDir, "selfsigned.crt")); os.IsNotExist(err) {
-		err = CreateSSLCertificate(filepath.Join(testDir, "selfsigned.crt"), filepath.Join(testDir, "selfsigned.key"))
+	if _, err := os.Stat(filepath.Join(configDir, "selfsigned.crt")); os.IsNotExist(err) {
+		err = CreateSSLCertificate(filepath.Join(configDir, "selfsigned.crt"), filepath.Join(configDir, "selfsigned.key"))
 		if err != nil {
 			return fmt.Errorf("failed creating self-signed certificate: %v", err)
 		}
 	}
 	// Read template config
-	templatePath := filepath.Join(testDir, "apache.conf.template")
+	templatePath := filepath.Join(configDir, "apache.conf.template")
 	templateContent, err := os.ReadFile(templatePath)
 	if err != nil {
 		return fmt.Errorf("failed to read apache config template: %w", err)
 	}
 
 	// Get absolute path of test directory
-	absTestDir, err := filepath.Abs(testDir)
+	absTestDir, err := filepath.Abs(configDir)
 	if err != nil {
 		return fmt.Errorf("failed to get absolute path: %w", err)
 	}
@@ -106,8 +109,8 @@ func TeardownApacheServer() error {
 }
 
 // SetupProxyServer sets up and starts tinyproxy for testing
-func SetupProxyServer(t *testing.T) error {
-	configPath := filepath.Join(testDir, "tinyproxy.conf")
+func SetupProxyServer(t *testing.T, configDir string) error {
+	configPath := filepath.Join(configDir, "tinyproxy.conf")
 
 	proxyProcess = exec.Command("/usr/sbin/tinyproxy", "-c", configPath, "-d")
 	if err := proxyProcess.Start(); err != nil {
