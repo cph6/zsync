@@ -41,6 +41,13 @@ X_DECL_H_ERRNO
 dnl Solaris needs -lsocket - and we need this for the getaddrinfo test
 AC_CHECK_LIB(socket,socket)
 
+dnl - OpenSSL libcrypto: used for MD4 (block strong checksum) and SHA-1
+dnl   (target file verification). MD4 is in the legacy provider on OpenSSL 3.
+AC_CHECK_LIB([crypto], [OPENSSL_init_crypto], [],
+             [AC_MSG_ERROR([OpenSSL libcrypto required (for MD4/SHA1)])])
+AC_CHECK_HEADERS([openssl/sha.h openssl/md4.h], [],
+             [AC_MSG_ERROR([OpenSSL development headers (openssl/sha.h, openssl/md4.h) required)])])
+
 AC_REPLACE_FUNCS(getaddrinfo)
 
 dnl - Large file support if available

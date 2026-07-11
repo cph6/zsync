@@ -4,7 +4,6 @@
 #include <sys/time.h>
 
 #include "rcksum.h"
-#include "md4.h"
 #include "internal.h"
 
 static void test_eq(int a, int b) {
@@ -76,6 +75,7 @@ void perf_test_fc000000(int n) {
 }
 
 int main(void) {
+    rcksum_crypto_init();
     test_00000000();
     test_abcde();
     test_fc000000();

@@ -59,6 +59,7 @@ zs_blockid* rcksum_needed_block_ranges(const struct rcksum_state* z, int* num, z
 int rcksum_blocks_todo(const struct rcksum_state*);
 
 /* For preparing rcksum control files - in both cases len is the block size. */
+void rcksum_crypto_init();  // Must be called once before rcksum_calc_checksum.
 struct rsum __attribute__((pure))
 rcksum_calc_rsum_block(const unsigned char *data, size_t len);
 

@@ -32,12 +32,43 @@
 # include <dmalloc.h>
 #endif
 
-#include "md4.h"
+#include <openssl/md4.h>
+#include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+# include <openssl/provider.h>
+#endif
 #include "rcksum.h"
 #include "internal.h"
 /* TODO: decide how to handle progress; this is now being used by the client
  * and by the library, which is ugly. */
 #include "../progress.h"
+
+/* rcksum_crypto_init
+ * Initialises the crypto library; must be called before any calls to
+ * rcksum_calc_checksum.
+ * Idempotent.
+ */
+void rcksum_crypto_init(void) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    /* On OpenSSL 3, MD4 is only available via the legacy provider. MD4 is
+     * required for block verification - if the legacy provider cannot be
+     * loaded we must abort rather than silently produce empty digests. */
+    static int providers_ready = 0;
+    if (!providers_ready) {
+        OSSL_PROVIDER *legacy = OSSL_PROVIDER_load(NULL, "legacy");
+        if (legacy == NULL) {
+            fprintf(stderr,
+                "zsync: OpenSSL legacy provider not available; "
+                "MD4 unavailable.\n"
+                "Install the OpenSSL legacy provider package "
+                "(e.g. openssl-provider-legacy).\n");
+            exit(1);
+        }
+        OSSL_PROVIDER_load(NULL, "default");
+        providers_ready = 1;
+    }
+#endif
+}
 
 #define UPDATE_RSUM(a, b, oldc, newc, bshift) do { (a) += ((unsigned char)(newc)) - ((unsigned char)(oldc)); (b) += (a) - ((oldc) << (bshift)); } while (0)
 
@@ -67,9 +98,10 @@ rcksum_calc_rsum_block(const unsigned char *data, size_t len) {
 void rcksum_calc_checksum(unsigned char *c, const unsigned char *data,
                           size_t len) {
     MD4_CTX ctx;
-    MD4Init(&ctx);
-    MD4Update(&ctx, data, len);
-    MD4Final(c, &ctx);
+
+    MD4_Init(&ctx);
+    MD4_Update(&ctx, data, len);
+    MD4_Final(c, &ctx);
 }
 
 #ifndef HAVE_PWRITE

@@ -87,13 +87,10 @@ getaddrinfo.c for the license, it's a BSD-style license; but normally zsync
 compiles against the getaddrinfo() in the system libc, so this code is not
 normally used.
 
-zsync also includes checksum code taken from OpenBSD. The MD4 code is public
-domain, by Colin Plumb and Todd C. Miller. The SHA1 code is also public
-domain, by Steve Reid. This code is in the libhash/ subdirectory, see the
-individual files for their non-copyright notices.
+zsync uses OpenSSL (libcrypto) for MD4 and SHA-1 hashing.
 
-The rest of the code (that is, everything not in the zlib and libhash
-subdirectories) is
+The rest of the code (that is, everything not in the zlib
+subdirectory) is
 Copyright (C) 2004,2005,2007,2009,2025,2026 Colin Phipps <cph@moria.org.uk>.
 zsync is made available under the (clarified) Artistic License - see the file
 COPYING for details.

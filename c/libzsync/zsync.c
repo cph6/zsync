@@ -53,7 +53,7 @@
 
 #include "librcksum/rcksum.h"
 #include "zsync.h"
-#include "sha1.h"
+#include <openssl/sha.h>
 #include "zmap.h"
 
 /* Probably we really want a table of compression methods here. But I've only
@@ -155,6 +155,8 @@ struct zsync_state *zsync_begin(FILE * f) {
     /* Allocate memory for the object */
     struct zsync_state *zs = calloc(1, sizeof *zs);
 
+    rcksum_crypto_init();
+
     if (!zs)
         return NULL;
 
@@ -254,7 +256,7 @@ struct zsync_state *zsync_begin(FILE * f) {
                 }
             }
             else if (!strcmp(buf, ckmeth_sha1)) {
-                if (strlen(p) != SHA1_DIGEST_LENGTH * 2) {
+                if (strlen(p) != SHA_DIGEST_LENGTH * 2) {
                     fprintf(stderr, "SHA-1 digest from control file is wrong length.\n");
                 }
                 else {
@@ -597,15 +599,15 @@ int zsync_complete(struct zsync_state *zs) {
  * Returns -1 or 1 as per zsync_complete.
  */
 static int zsync_sha1(struct zsync_state *zs, int fh) {
-    SHA1_CTX shactx;
+    SHA_CTX shactx;
 
     {                           /* Do SHA1 of file contents */
         unsigned char buf[4096];
         int rc;
 
-        SHA1Init(&shactx);
+        SHA1_Init(&shactx);
         while (0 < (rc = read(fh, buf, sizeof buf))) {
-            SHA1Update(&shactx, buf, rc);
+            SHA1_Update(&shactx, buf, rc);
         }
         if (rc < 0) {
             perror("read");
@@ -614,12 +616,12 @@ static int zsync_sha1(struct zsync_state *zs, int fh) {
     }
 
     {                           /* And compare result of the SHA1 with the one from the .zsync */
-        unsigned char digest[SHA1_DIGEST_LENGTH];
+        unsigned char digest[SHA_DIGEST_LENGTH];
         int i;
 
-        SHA1Final(digest, &shactx);
+        SHA1_Final(digest, &shactx);
 
-        for (i = 0; i < SHA1_DIGEST_LENGTH; i++) {
+        for (i = 0; i < SHA_DIGEST_LENGTH; i++) {
             int j;
             sscanf(&(zs->checksum[2 * i]), "%2x", &j);
             if (j != digest[i]) {

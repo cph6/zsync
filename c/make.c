@@ -42,13 +42,13 @@
 #include "makegz.h"
 #include "librcksum/rcksum.h"
 #include "libzsync/zmap.h"
-#include "libzsync/sha1.h"
+#include <openssl/sha.h>
 #include "zlib/zlib.h"
 #include "format_string.h"
 
 /* We're only doing one file per run, so these are global state for the current
  * file being processed */
-SHA1_CTX shactx;
+SHA_CTX shactx;
 size_t blocksize = 0;
 off_t len = 0;
 
@@ -289,7 +289,7 @@ void do_zstream(FILE * fin, FILE * fout, const char *bufsofar, size_t got) {
             /* If the output buffer is filled, i.e. we've now got a whole block of uncompressed data. */
             if (zs.avail_out == 0 || rc == Z_STREAM_END) {
                 /* Add to the running SHA1 of the entire file. */
-                SHA1Update(&shactx, outbuf, blocksize - zs.avail_out);
+                SHA1_Update(&shactx, outbuf, blocksize - zs.avail_out);
 
                 /* Completed a block; write out its checksums */
                 write_block_sums(outbuf, blocksize - zs.avail_out, fout);
@@ -370,7 +370,7 @@ void read_stream_write_blocksums(FILE * fin, FILE * fout) {
             }
 
             /* The SHA-1 sum, unlike our internal block-based sums, is on the whole file and nothing else - no padding */
-            SHA1Update(&shactx, buf, got);
+            SHA1_Update(&shactx, buf, got);
 
             write_block_sums(buf, got, fout);
             len += got;
@@ -719,9 +719,11 @@ int main(int argc, char **argv) {
             free(newfname);
     }
 
+    rcksum_crypto_init();
+
     /* Read the input file and construct the checksum of the whole file, and
      * the per-block checksums */
-    SHA1Init(&shactx);
+    SHA1_Init(&shactx);
     read_stream_write_blocksums(instream, tf);
 
     {   /* Decide how long a rsum hash and checksum hash per block we need for this file */
@@ -879,12 +881,12 @@ int main(int argc, char **argv) {
     }
 
     {   /* Write out SHA1 checksum of the entire file */
-        unsigned char digest[SHA1_DIGEST_LENGTH];
+        unsigned char digest[SHA_DIGEST_LENGTH];
         unsigned int i;
 
         fputs("SHA-1: ", fout);
 
-        SHA1Final(digest, &shactx);
+        SHA1_Final(digest, &shactx);
 
         for (i = 0; i < sizeof digest; i++)
             fprintf(fout, "%02x", digest[i]);
