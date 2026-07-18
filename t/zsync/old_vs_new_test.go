@@ -53,3 +53,60 @@ func TestCurrentControlFileWith06Client(t *testing.T) {
 
 	zstesting.AssertFilesEqual(t, outfile1, filepath.Join(testDataDir, targetFile))
 }
+
+// TestCurrentControlFileWith06Client
+func TestCurrentControlFileWith06ClientMD5(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	binary := filepath.Join(binaryDir, "zsync-0.6")
+	if _, err := os.Stat(binary); os.IsNotExist(err) {
+		t.Skip("no zsync-0.6 available")
+	}
+
+	targetPath := filepath.Join(testDataDir, targetFile)
+	controlFile := makeZSync(t, targetPath, "-s", "MD5")
+	defer os.Remove(controlFile)
+	fmt.Fprintf(os.Stderr, "control file: %s\n", controlFile)
+
+	seedFile := zstesting.ProvideSeed(t, scratchDir, filepath.Join(testDataDir, targetFile), 281020)
+	defer os.Remove(seedFile)
+
+	outfile1, _, _, _ := tryZSync(t, "test.zsync", tryZSyncOptions{
+		Parameters: []string{"-i", seedFile},
+		Binary:     binary,
+		URL:        zstesting.HttpURL,
+	})
+	defer os.Remove(outfile1)
+
+	zstesting.AssertFilesEqual(t, outfile1, filepath.Join(testDataDir, targetFile))
+}
+
+// TestCurrentControlFileWith065Client
+func TestCurrentControlFileWith065Client(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	binary := filepath.Join(binaryDir, "zsync-0.6.5")
+	if _, err := os.Stat(binary); os.IsNotExist(err) {
+		t.Skip("no zsync-0.6.5 available")
+	}
+
+	targetPath := filepath.Join(testDataDir, targetFile)
+	controlFile := makeZSync(t, targetPath)
+	defer os.Remove(controlFile)
+	fmt.Fprintf(os.Stderr, "control file: %s\n", controlFile)
+
+	seedFile := zstesting.ProvideSeed(t, scratchDir, filepath.Join(testDataDir, targetFile), 281020)
+	defer os.Remove(seedFile)
+
+	outfile1, _, _, _ := tryZSync(t, "test.zsync", tryZSyncOptions{
+		Parameters: []string{"-i", seedFile},
+		Binary:     binary,
+		URL:        zstesting.HttpURL,
+	})
+	defer os.Remove(outfile1)
+
+	zstesting.AssertFilesEqual(t, outfile1, filepath.Join(testDataDir, targetFile))
+}
+
