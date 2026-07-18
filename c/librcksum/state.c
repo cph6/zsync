@@ -2,7 +2,7 @@
 /*
  *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
- *   Copyright (C) 2004,2005,2007,2009 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005,2007,2009,2026 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -32,12 +32,13 @@
 #include "rcksum.h"
 #include "internal.h"
 
-/* rcksum_init(num_blocks, block_size, rsum_bytes, checksum_bytes, require_consecutive_matches)
+/* rcksum_init(num_blocks, block_size, rsum_bytes, checksum_bytes, require_consecutive_matches, strong_alg)
  * Creates and returns an rcksum_state with the given properties
  */
 struct rcksum_state *rcksum_init(zs_blockid nblocks, size_t blocksize,
                                  int rsum_bytes, unsigned int checksum_bytes,
-                                 int require_consecutive_matches) {
+                                 int require_consecutive_matches,
+                                 enum rcksum_strong_hash strong_alg) {
     /* Allocate memory for the object */
     struct rcksum_state *z = malloc(sizeof(struct rcksum_state));
     if (z == NULL) return NULL;
@@ -48,6 +49,7 @@ struct rcksum_state *rcksum_init(zs_blockid nblocks, size_t blocksize,
     z->rsum_a_mask = rsum_bytes < 3 ? 0 : rsum_bytes == 3 ? 0xff : 0xffff;
     z->rsum_bits = rsum_bytes * 8;
     z->checksum_bytes = checksum_bytes;
+    z->strong_hash = strong_alg;
     z->seq_matches = require_consecutive_matches;
 
     /* require_consecutive_matches is 1 if true; and if true we need 1 block of

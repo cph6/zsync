@@ -67,7 +67,7 @@ void __attribute__ ((noreturn)) stream_error(const char *func, FILE * stream) {
  * them (as raw bytes) to the given output stream */
 static void write_block_sums(unsigned char *buf, size_t got, FILE * f) {
     struct rsum r;
-    unsigned char checksum[CHECKSUM_SIZE];
+    unsigned char checksum[MAX_CHECKSUM_SIZE];
 
     /* Pad for our checksum, if this is a short last block  */
     if (got < blocksize)
@@ -75,7 +75,7 @@ static void write_block_sums(unsigned char *buf, size_t got, FILE * f) {
 
     /* Do rsum and checksum, and convert to network endian */
     r = rcksum_calc_rsum_block(buf, blocksize);
-    rcksum_calc_checksum(&checksum[0], buf, blocksize);
+    rcksum_calc_checksum(&checksum[0], buf, blocksize, RCKSUM_MD4);
     r.a = htons(r.a);
     r.b = htons(r.b);
 
@@ -408,7 +408,7 @@ void fcopy(FILE * fin, FILE * fout) {
  * parameters.
  */
 void fcopy_hashes(FILE * fin, FILE * fout, size_t rsum_bytes, size_t hash_bytes) {
-    unsigned char buf[20];
+    unsigned char buf[sizeof(struct rsum) + MAX_CHECKSUM_SIZE];
     size_t len;
 
     while ((len = fread(buf, 1, sizeof(buf), fin)) > 0) {
@@ -719,7 +719,7 @@ int main(int argc, char **argv) {
             free(newfname);
     }
 
-    rcksum_crypto_init();
+    rcksum_crypto_init(RCKSUM_MD4);
 
     /* Read the input file and construct the checksum of the whole file, and
      * the per-block checksums */
@@ -833,14 +833,18 @@ int main(int argc, char **argv) {
     /* Okay, start writing the zsync file */
     fprintf(fout, "zsync: " VERSION "\n");
 
-    /* Lines we might include but which older clients can ignore */
-    if (do_recompress) {
-        if (zfname)
-            fprintf(fout, "Safe: Z-Filename Recompress MTime\nZ-Filename: %s\n",
-                    zfname);
-        else
-            fprintf(fout, "Safe: Recompress MTime:\n");
+    /* Lines new to spec-0.8 that older zsync clients can ignore. Always emit
+     * File-Hash and Strong-Hash-Algorithm here since we always emit those
+     * headers below. If we're recompressing, also flag Z-Filename/Recompress/
+     * MTime as safe-to-ignore for the benefit of very old clients. */
+    {
+        const char *rc_extra = do_recompress ? ",Recompress,MTime" : "";
+        const char *zf_extra = zfname ? ",Z-Filename" : "";
+        fprintf(fout, "Safe: File-Hash,Strong-Hash-Algorithm%s%s\n",
+                rc_extra, zf_extra);
     }
+    if (zfname)
+        fprintf(fout, "Z-Filename: %s\n", zfname);
 
     if (fname) {
         fprintf(fout, "Filename: %s\n", fname);
@@ -880,7 +884,7 @@ int main(int argc, char **argv) {
                 infname);
     }
 
-    {   /* Write out SHA1 checksum of the entire file */
+    {   /* Write out whole-file hash in both old and new forms. */
         unsigned char digest[SHA_DIGEST_LENGTH];
         unsigned int i;
 
@@ -891,7 +895,14 @@ int main(int argc, char **argv) {
         for (i = 0; i < sizeof digest; i++)
             fprintf(fout, "%02x", digest[i]);
         fputc('\n', fout);
+
+        fputs("File-Hash: SHA-1:", fout);
+        for (i = 0; i < sizeof digest; i++)
+            fprintf(fout, "%02x", digest[i]);
+        fputc('\n', fout);
     }
+
+    fputs("Strong-Hash-Algorithm: MD4\n", fout);
 
     if (do_recompress)      /* Write Recompress header if wanted */
         fprintf(fout, "Recompress: %s %s\n", zhead, gzopts);

@@ -2,7 +2,7 @@
 /*
  *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
- *   Copyright (C) 2004,2005,2007,2009 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005,2007,2009,2026 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -32,7 +32,10 @@
 # include <dmalloc.h>
 #endif
 
+#include <openssl/crypto.h>
 #include <openssl/md4.h>
+#include <openssl/md5.h>
+#include <openssl/sha.h>
 #include <openssl/opensslv.h>
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 # include <openssl/provider.h>
@@ -46,26 +49,35 @@
 /* rcksum_crypto_init
  * Initialises the crypto library; must be called before any calls to
  * rcksum_calc_checksum.
- * Idempotent.
+ * Idempotent. Loads the default OpenSSL provider (covers MD5 and SHA-224 on
+ * OpenSSL 3); also loads the legacy provider if MD4 is specified
+ * as the strong checksum.
  */
-void rcksum_crypto_init(void) {
+void rcksum_crypto_init(enum rcksum_strong_hash strong_hash) {
+    /* Make sure OpenSSL is initialised and that the built-in digest names are
+     * registered so EVP_get_digestbyname() (used by the client for whole-file
+     * verification) can find sha1/sha256 etc. Idempotent. */
+    OPENSSL_init_crypto(OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    /* On OpenSSL 3, MD4 is only available via the legacy provider. MD4 is
-     * required for block verification - if the legacy provider cannot be
-     * loaded we must abort rather than silently produce empty digests. */
-    static int providers_ready = 0;
-    if (!providers_ready) {
-        OSSL_PROVIDER *legacy = OSSL_PROVIDER_load(NULL, "legacy");
-        if (legacy == NULL) {
-            fprintf(stderr,
-                "zsync: OpenSSL legacy provider not available; "
-                "MD4 unavailable.\n"
-                "Install the OpenSSL legacy provider package "
-                "(e.g. openssl-provider-legacy).\n");
-            exit(1);
+    static int legacy_ready = 0;
+    if (!legacy_ready) {
+        /* Load default explicitly so MD5/SHA-224 work even if the host's
+         * openssl.cnf has deselected the default provider. */
+        (void)OSSL_PROVIDER_load(NULL, "default");
+        if (strong_hash = RCKSUM_MD4) {
+            OSSL_PROVIDER *legacy = OSSL_PROVIDER_load(NULL, "legacy");
+            if (legacy == NULL) {
+                fprintf(stderr,
+                    "zsync: OpenSSL legacy provider not available; "
+                    "MD4 is required for block verification.\n"
+                    "Install the OpenSSL legacy provider package "
+                    "(e.g. openssl-provider-legacy).\n");
+                exit(1);
+            }
         }
-        OSSL_PROVIDER_load(NULL, "default");
-        providers_ready = 1;
+        /* Provider handles stay loaded for the process lifetime; we never
+         * unload them. */
+        legacy_ready = 1;
     }
 #endif
 }
@@ -93,15 +105,38 @@ rcksum_calc_rsum_block(const unsigned char *data, size_t len) {
     }
 }
 
-/* rcksum_calc_checksum(checksum_buf, data, data_len)
- * Returns the MD4 checksum (in checksum_buf) of the given data block */
+/* rcksum_calc_checksum(checksum_buf, data, data_len, alg)
+ * Writes the strong checksum of the given data block into checksum_buf using
+ * the named algorithm. checksum_buf must be at least MAX_CHECKSUM_SIZE bytes.
+ */
 void rcksum_calc_checksum(unsigned char *c, const unsigned char *data,
-                          size_t len) {
-    MD4_CTX ctx;
-
-    MD4_Init(&ctx);
-    MD4_Update(&ctx, data, len);
-    MD4_Final(c, &ctx);
+                          size_t len, enum rcksum_strong_hash alg) {
+    switch (alg) {
+    case RCKSUM_MD4: {
+        MD4_CTX ctx;
+        MD4_Init(&ctx);
+        MD4_Update(&ctx, data, len);
+        MD4_Final(c, &ctx);
+        return;
+    }
+    case RCKSUM_MD5: {
+        MD5_CTX ctx;
+        MD5_Init(&ctx);
+        MD5_Update(&ctx, data, len);
+        MD5_Final(c, &ctx);
+        return;
+    }
+    case RCKSUM_SHA224: {
+        SHA256_CTX ctx;
+        SHA224_Init(&ctx);
+        SHA224_Update(&ctx, data, len);
+        SHA224_Final(c, &ctx);
+        return;
+    }
+    }
+    /* Unknown algorithm: refuse to produce a digest. */
+    fprintf(stderr, "zsync: unknown strong hash algorithm %d\n", (int)alg);
+    exit(1);
 }
 
 #ifndef HAVE_PWRITE
@@ -180,7 +215,7 @@ ssize_t rcksum_read_known_data(struct rcksum_state *z, unsigned char *buf,
 int rcksum_submit_blocks(struct rcksum_state *const z, const unsigned char *data,
                          zs_blockid bfrom, zs_blockid bto) {
     zs_blockid x;
-    unsigned char md4sum[CHECKSUM_SIZE];
+    unsigned char strongsum[MAX_CHECKSUM_SIZE];
 
     /* Build checksum hash tables if we don't have them yet */
     if (!z->rsum_hash)
@@ -189,9 +224,10 @@ int rcksum_submit_blocks(struct rcksum_state *const z, const unsigned char *data
 
     /* Check each block */
     for (x = bfrom; x <= bto; x++) {
-        rcksum_calc_checksum(&md4sum[0], data + ((x - bfrom) << z->blockshift),
-                             z->blocksize);
-        if (memcmp(&md4sum, &(z->blockhashes[x].checksum[0]), z->checksum_bytes)) {
+        rcksum_calc_checksum(&strongsum[0],
+                             data + ((x - bfrom) << z->blockshift),
+                             z->blocksize, z->strong_hash);
+        if (memcmp(&strongsum, &(z->blockhashes[x].checksum[0]), z->checksum_bytes)) {
             if (x > bfrom)      /* Write any good blocks we did get */
                 write_blocks(z, data, bfrom, x - 1);
             return -1;
@@ -218,8 +254,8 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
                                          const struct hash_entry *e,
                                          const unsigned char *data,
                                          int onlyone) {
-    unsigned char md4sum[2][CHECKSUM_SIZE];
-    signed int done_md4 = -1;
+    unsigned char strongsum[2][MAX_CHECKSUM_SIZE];
+    signed int done_strong = -1;
     int got_blocks = 0;
     register struct rsum r = z->r[0];
 
@@ -258,30 +294,31 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
 
         {
             int ok = 1;
-            signed int check_md4 = 0;
+            signed int check_strong = 0;
 
             /* This block at least must match; we must match at least
              * z->seq_matches-1 others, which could either be trailing stuff,
              * or these could be preceding blocks that we have verified
              * already. */
             do {
-                /* We only calculate the MD4 once we need it; but need not do so twice */
-                if (check_md4 > done_md4) {
-                    rcksum_calc_checksum(&md4sum[check_md4][0],
-                                         data + z->blocksize * check_md4,
-                                         z->blocksize);
-                    done_md4 = check_md4;
+                /* We only calculate the strong hash once we need it; but
+                 * need not do so twice */
+                if (check_strong > done_strong) {
+                    rcksum_calc_checksum(&strongsum[check_strong][0],
+                                         data + z->blocksize * check_strong,
+                                         z->blocksize, z->strong_hash);
+                    done_strong = check_strong;
                     z->stats.checksummed++;
                 }
 
                 /* Now check the strong checksum for this block */
-                if (memcmp(&md4sum[check_md4],
-                     e[check_md4].checksum,
+                if (memcmp(&strongsum[check_strong],
+                     e[check_strong].checksum,
                      z->checksum_bytes))
                     ok = 0;
 
-                check_md4++;
-            } while (ok && !onlyone && check_md4 < z->seq_matches);
+                check_strong++;
+            } while (ok && !onlyone && check_strong < z->seq_matches);
 
             if (ok) {
                 int num_write_blocks;
@@ -291,13 +328,13 @@ static int check_checksums_on_hash_chain(struct rcksum_state *const z,
                  * as ->next_known. */
                 zs_blockid next_known = onlyone ? z->next_known : next_known_block(z, id);
 
-                z->stats.stronghit += check_md4;
+                z->stats.stronghit += check_strong;
 
-                if (next_known > id + check_md4) {
-                    num_write_blocks = check_md4;
+                if (next_known > id + check_strong) {
+                    num_write_blocks = check_strong;
 
                     /* Save state for this run of matches */
-                    z->next_match = &(z->blockhashes[id + check_md4]);
+                    z->next_match = &(z->blockhashes[id + check_strong]);
                     if (!onlyone) z->next_known = next_known;
                 }
                 else {

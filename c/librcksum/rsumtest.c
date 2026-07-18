@@ -75,7 +75,7 @@ void perf_test_fc000000(int n) {
 }
 
 int main(void) {
-    rcksum_crypto_init();
+    rcksum_crypto_init(RCKSUM_MD4);
     test_00000000();
     test_abcde();
     test_fc000000();

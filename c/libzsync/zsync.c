@@ -54,11 +54,21 @@
 #include "librcksum/rcksum.h"
 #include "zsync.h"
 #include <openssl/sha.h>
+#include <openssl/evp.h>
 #include "zmap.h"
 
-/* Probably we really want a table of compression methods here. But I've only
- * implemented SHA1 so this is it for now. */
-static const char ckmeth_sha1[] = { "SHA-1" };
+/* Whole-file checksum algorithm names accepted by zsync_begin. The SHA-1
+ * form is the legacy SHA-1: header (value is bare hex). The spec-0.8 form is
+ * the File-Hash: header whose value is "<alg>:<hex>". */
+static const char ckmeth_sha1[]   = { "SHA-1" };
+static const char ckmeth_sha256[] = { "SHA-256" };
+
+/* Strong (per-block) hash algorithm names accepted by zsync_begin from the
+ * spec-0.8 Strong-Hash-Algorithm: header. MD4 is the default (also the
+ * historical zsync block checksum, used whenever that header is absent). */
+static const char strghash_md4[]   = { "MD4" };
+static const char strghash_md5[]   = { "MD5" };
+static const char strghash_sha224[] = { "SHA-224" };
 
 /* List of options strings for gzip(1) allowed in the .zsync. This is 
  * security against someone specifying arbitrary commands. */
@@ -91,9 +101,15 @@ struct zsync_state {
     int blocks;                 /* Number of blocks in the target */
     size_t blocksize;           /* Blocksize */
 
-    /* Checksum of the entire file, and checksum alg */
+    /* Whole-file checksum (hex string from SHA-1: or File-Hash:) and algorithm
+     * name. checksum_method holds the canonical algorithm name
+     * used by the verifier dispatch ("SHA-1" or "SHA-256"). */
     char *checksum;
     const char *checksum_method;
+
+    /* Per-block strong hash algorithm. */
+    enum rcksum_strong_hash strong_hash;
+    const char *strong_hash_name;
 
     /* URLs to uncompressed versions of the target */
     char **url;
@@ -119,7 +135,7 @@ struct zsync_state {
 static int zsync_read_blocksums(struct zsync_state *zs, FILE * f,
                                 int rsum_bytes, unsigned int checksum_bytes,
                                 int seq_matches);
-static int zsync_sha1(struct zsync_state *zs, int fh);
+static int zsync_verify_file_hash(struct zsync_state *zs, int fh);
 static int zsync_recompress(struct zsync_state *zs);
 static time_t parse_822(const char* ts);
 
@@ -145,6 +161,11 @@ struct zsync_state *zsync_begin(FILE * f) {
      * rcksum_state. These are the defaults from versions of zsync before these
      * were variable. */
     int checksum_bytes = 16, rsum_bytes = 4, seq_matches = 1;
+    /* Set to 1 once we see a Hash-Lengths: header; lets us apply spec-0.8
+     * defaults for strong_hash_length (raw digest size of the chosen strong
+     * hash) when the header is absent. */
+    int hash_lengths_seen = 0;
+    int file_hash_seen = 0;
 
     /* Field names that we can ignore if present and not
      * understood. This allows new headers to be added without breaking
@@ -155,13 +176,13 @@ struct zsync_state *zsync_begin(FILE * f) {
     /* Allocate memory for the object */
     struct zsync_state *zs = calloc(1, sizeof *zs);
 
-    rcksum_crypto_init();
-
     if (!zs)
         return NULL;
 
     /* Any non-zero defaults here. */
     zs->mtime = -1;
+    zs->strong_hash = RCKSUM_MD4;
+    zs->strong_hash_name = strghash_md4;
 
     for (;;) {
         char buf[1024];
@@ -225,11 +246,80 @@ struct zsync_state *zsync_begin(FILE * f) {
                 if (sscanf
                     (p, "%d,%d,%d", &seq_matches, &rsum_bytes,
                      &checksum_bytes) != 3 || rsum_bytes < 1 || rsum_bytes > 4
-                    || checksum_bytes < 3 || checksum_bytes > 16
+                    || checksum_bytes < 1 || checksum_bytes > 32
                     || seq_matches > 2 || seq_matches < 1) {
                     fprintf(stderr, "nonsensical hash lengths line %s\n", p);
                     free(zs);
                     return NULL;
+                }
+                hash_lengths_seen = 1;
+            }
+            else if (!strcmp(buf, "Strong-Hash-Algorithm")) {
+                if (!strcmp(p, strghash_md4)) {
+                    zs->strong_hash = RCKSUM_MD4;
+                    zs->strong_hash_name = strghash_md4;
+                }
+                else if (!strcmp(p, strghash_md5)) {
+                    zs->strong_hash = RCKSUM_MD5;
+                    zs->strong_hash_name = strghash_md5;
+                }
+                else if (!strcmp(p, strghash_sha224)) {
+                    zs->strong_hash = RCKSUM_SHA224;
+                    zs->strong_hash_name = strghash_sha224;
+                }
+                else {
+                    /* Unknown algorithm - keep the spec default (MD4) so we at
+                     * least fail predictably, and warn loudly. */
+                    fprintf(stderr,
+                            "unrecognised Strong-Hash-Algorithm %s.\n", p);
+                    return NULL;
+                }
+            }
+            else if (!strcmp(buf, "File-Hash")) {
+                /* header value should be "<alg>:<hex>". Only the first
+                 * File-Hash line is honoured ; later ones are ignored. */
+                char *colon = strchr(p, ':');
+                if (colon == NULL) {
+                    fprintf(stderr,
+                            "File-Hash header has no algorithm separator: %s\n",
+                            p);
+                }
+                else if (file_hash_seen) {
+                    fprintf(stderr, "ignoring extra File-Hash headers.\n");
+                }
+                else {
+                    const char *alg;
+                    size_t digest_len;
+                    *colon = 0;
+                    if (!strcmp(p, ckmeth_sha1)) {
+                        alg = ckmeth_sha1;
+                        digest_len = SHA_DIGEST_LENGTH;
+                    }
+                    else if (!strcmp(p, ckmeth_sha256)) {
+                        alg = ckmeth_sha256;
+                        digest_len = SHA256_DIGEST_LENGTH;
+                    }
+                    else {
+                        fprintf(stderr,
+                                "unrecognised File-Hash algorithm %s, "
+                                "hash ignored.\n", p);
+                    }
+                    if (alg != NULL) {
+                        const char *hex = colon + 1;
+                        if (strlen(hex) != digest_len * 2) {
+                            fprintf(stderr,
+                                    "%s digest from control file is wrong "
+                                    "length (got %zu, expected %zu)\n",
+                                    alg, strlen(hex), digest_len * 2);
+                        }
+                        else {
+                            /* File-Hash overrides any prior legacy SHA-1:. */
+                            free(zs->checksum);
+                            zs->checksum = strdup(hex);
+                            zs->checksum_method = alg;
+                            file_hash_seen = 1;
+                        }
+                    }
                 }
             }
             else if (zs->blocks && !strcmp(buf, "Z-Map2")) {
@@ -256,7 +346,11 @@ struct zsync_state *zsync_begin(FILE * f) {
                 }
             }
             else if (!strcmp(buf, ckmeth_sha1)) {
-                if (strlen(p) != SHA_DIGEST_LENGTH * 2) {
+                if (zs->checksum != NULL) {
+                    /* Earlier SHA-1: or File-Hash already stored;
+                     * treat later SHA-1: as redundant. */
+                }
+                else if (strlen(p) != SHA_DIGEST_LENGTH * 2) {
                     fprintf(stderr, "SHA-1 digest from control file is wrong length.\n");
                 }
                 else {
@@ -313,6 +407,23 @@ struct zsync_state *zsync_begin(FILE * f) {
         free(zs);
         return NULL;
     }
+
+    /* When Hash-Lengths: was absent, the strong_hash_length default is the raw
+     * digest size of the chosen strong hash algorithm. */
+    if (!hash_lengths_seen) {
+        switch (zs->strong_hash) {
+        case RCKSUM_MD4:
+        case RCKSUM_MD5:
+            checksum_bytes = 16;
+            break;
+        case RCKSUM_SHA224:
+            checksum_bytes = 28;
+            break;
+        }
+    }
+
+    rcksum_crypto_init(zs->strong_hash);
+
     if (zsync_read_blocksums(zs, f, rsum_bytes, checksum_bytes, seq_matches) != 0) {
         free(zs);
         return NULL;
@@ -333,7 +444,8 @@ static int zsync_read_blocksums(struct zsync_state *zs, FILE * f,
                                 int seq_matches) {
     /* Make the rcksum_state first */
     if (!(zs->rs = rcksum_init(zs->blocks, zs->blocksize, rsum_bytes,
-                               checksum_bytes, seq_matches))) {
+                               checksum_bytes, seq_matches,
+                               zs->strong_hash))) {
         return -1;
     }
 
@@ -341,7 +453,7 @@ static int zsync_read_blocksums(struct zsync_state *zs, FILE * f,
     zs_blockid id = 0;
     for (; id < zs->blocks; id++) {
         struct rsum r = { 0, 0 };
-        unsigned char checksum[CHECKSUM_SIZE];
+        unsigned char checksum[MAX_CHECKSUM_SIZE];
 
         /* Read in */
         if (fread(((char *)&r) + 4 - rsum_bytes, rsum_bytes, 1, f) < 1
@@ -579,8 +691,8 @@ int zsync_complete(struct zsync_state *zs) {
     }
 
     /* Do checksum check */
-    if (rc == 0 && zs->checksum && !strcmp(zs->checksum_method, ckmeth_sha1)) {
-        rc = zsync_sha1(zs, fh);
+    if (rc == 0 && zs->checksum && zs->checksum_method != NULL) {
+        rc = zsync_verify_file_hash(zs, fh);
     }
     close(fh);
 
@@ -593,43 +705,94 @@ int zsync_complete(struct zsync_state *zs) {
     return rc;
 }
 
-/* zsync_sha1(self, filedesc)
+/* evp_digest_name(canonical_name)
+ * Map the canonical algorithm name stored on zs (e.g. "SHA-1", "SHA-256") to
+ * the short name accepted by OpenSSL's EVP_get_digestbyname. OpenSSL
+ * registers lowercase short names ("sha1", "sha256"); the human-readable
+ * dashed names are not registered with the EVP lookup. */
+static const char *evp_digest_name(const char *alg) {
+    if (!strcmp(alg, ckmeth_sha1))   return "sha1";
+    if (!strcmp(alg, ckmeth_sha256)) return "sha256";
+    return NULL;
+}
+
+/* zsync_verify_file_hash(self, filedesc)
  * Given the currently-open-and-at-start-of-file complete local copy of the
- * target, read it and compare the SHA1 checksum with the one from the .zsync.
- * Returns -1 or 1 as per zsync_complete.
- */
-static int zsync_sha1(struct zsync_state *zs, int fh) {
-    SHA_CTX shactx;
+ * target, read it and compare its whole-file digest against the one stored
+ * from the .zsync (zs->checksum, which is hex; zs->checksum_method names the
+ * algorithm). Dispatches via OpenSSL's EVP API so SHA-1 and SHA-256 share one
+ * code path.
+ * Returns -1 on I/O or digest mismatch, 1 on verified-ok. */
+static int zsync_verify_file_hash(struct zsync_state *zs, int fh) {
+    EVP_MD_CTX *ctx;
+    const EVP_MD *md;
+    const char *evp_name;
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_len = 0;
+    size_t i;
 
-    {                           /* Do SHA1 of file contents */
+    evp_name = evp_digest_name(zs->checksum_method);
+    if (evp_name == NULL) {
+        fprintf(stderr,
+                "no verifier available for file hash algorithm %s\n",
+                zs->checksum_method);
+        return -1;
+    }
+    md = EVP_get_digestbyname(evp_name);
+    if (md == NULL) {
+        fprintf(stderr, "OpenSSL has no digest named %s\n", evp_name);
+        return -1;
+    }
+    ctx = EVP_MD_CTX_new();
+    if (ctx == NULL) {
+        fprintf(stderr, "out of memory\n");
+        return -1;
+    }
+    if (!EVP_DigestInit_ex(ctx, md, NULL)) {
+        fprintf(stderr, "EVP_DigestInit_ex failed\n");
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+
+    {                           /* Stream the file contents into the digest */
         unsigned char buf[4096];
-        int rc;
-
-        SHA1_Init(&shactx);
+        ssize_t rc;
         while (0 < (rc = read(fh, buf, sizeof buf))) {
-            SHA1_Update(&shactx, buf, rc);
+            if (!EVP_DigestUpdate(ctx, buf, (size_t)rc)) {
+                fprintf(stderr, "EVP_DigestUpdate failed\n");
+                EVP_MD_CTX_free(ctx);
+                return -1;
+            }
         }
         if (rc < 0) {
             perror("read");
+            EVP_MD_CTX_free(ctx);
             return -1;
         }
     }
 
-    {                           /* And compare result of the SHA1 with the one from the .zsync */
-        unsigned char digest[SHA_DIGEST_LENGTH];
-        int i;
-
-        SHA1_Final(digest, &shactx);
-
-        for (i = 0; i < SHA_DIGEST_LENGTH; i++) {
-            int j;
-            sscanf(&(zs->checksum[2 * i]), "%2x", &j);
-            if (j != digest[i]) {
-                return -1;
-            }
-        }
-        return 1; /* Checksum verified okay */
+    if (!EVP_DigestFinal_ex(ctx, digest, &digest_len)) {
+        fprintf(stderr, "EVP_DigestFinal_ex failed\n");
+        EVP_MD_CTX_free(ctx);
+        return -1;
     }
+    EVP_MD_CTX_free(ctx);
+
+    for (i = 0; i < digest_len; i++) {
+        int j;
+        if (!zs->checksum[2*i] || !zs->checksum[2*i+1]) {
+            return -1;
+        }
+        sscanf(&(zs->checksum[2 * i]), "%2x", &j);
+        if (j != digest[i]) {
+            return -1;
+        }
+    }
+    if (zs->checksum[2*digest_len]) {
+        // Target checksum includes trailing data.
+        return -1;
+    }
+    return 1; /* Checksum verified okay */
 }
 
 /* zsync_recompress(self)

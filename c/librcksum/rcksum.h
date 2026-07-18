@@ -1,7 +1,7 @@
 /*
  *   rcksum/lib - library for using the rsync algorithm to determine
  *               which parts of a file you have and which you need.
- *   Copyright (C) 2004,2005,2009 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005,2009,2026 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -27,11 +27,17 @@ struct rsum {
 	unsigned short	b;
 } __attribute__((packed));
 
-#define CHECKSUM_SIZE 16
+#define MAX_CHECKSUM_SIZE 32
+
+/* Strong (per-block) hash algorithms recognised by the zsync 0.8 control
+ * file format (Strong-Hash-Algorithm header). MD4 is the historical zsync
+ * block checksum and remains the default when the header is absent. */
+enum rcksum_strong_hash { RCKSUM_MD4 = 0, RCKSUM_MD5, RCKSUM_SHA224 };
 
 struct rcksum_state *rcksum_init(zs_blockid nblocks, size_t blocksize,
                                  int rsum_butes, unsigned int checksum_bytes,
-                                 int require_consecutive_matches);
+                                 int require_consecutive_matches,
+                                 enum rcksum_strong_hash strong_alg);
 void rcksum_end(struct rcksum_state* z);
 
 /* These transfer out the filename and handle of the file backing the data retrieved.
@@ -59,9 +65,11 @@ zs_blockid* rcksum_needed_block_ranges(const struct rcksum_state* z, int* num, z
 int rcksum_blocks_todo(const struct rcksum_state*);
 
 /* For preparing rcksum control files - in both cases len is the block size. */
-void rcksum_crypto_init();  // Must be called once before rcksum_calc_checksum.
+void rcksum_crypto_init(enum rcksum_strong_hash alg);  /* Must be called once before rcksum_calc_checksum
+                                                          with the algorithm that will be used. */
 struct rsum __attribute__((pure))
 rcksum_calc_rsum_block(const unsigned char *data, size_t len);
 
-void rcksum_calc_checksum(unsigned char *c, const unsigned char* data, size_t len);
+void rcksum_calc_checksum(unsigned char *c, const unsigned char *data,
+                          size_t len, enum rcksum_strong_hash alg);
 

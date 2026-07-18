@@ -1,3 +1,9 @@
+Change in 0.6.6
+- Support and generate zsync 0.8 control files.
+  - Support MD5 and SHA-224 block checksums.
+  - Support SHA-256 file hash.
+- Use OpenSSL for cryptgraphic digests.
+
 Changes in 0.6.5
 - Fix an incompatibility between zsync and the RFC7233 rules for
   multipart/byteranges. zsync was written to RFC2046 a long time ago, now

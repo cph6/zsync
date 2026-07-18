@@ -2,8 +2,11 @@
 
 ${top_builddir-.}/zsyncmake -u foo -f foo ${srcdir-.}/INSTALL
 
-# Note TAB required for Solaris cksum
-x=`perl -pe 's/^(zsync:).*$/$1 XXX/; s/^(MTime:)(.*)$/my ($x, $y) = ($1, $2); $y =~ s![a-zA-Z0-9]!_!g; "$x$y"/e;' foo.zsync | tee foo.tr.zsync | cksum | sed -e 's/[ 	][0-9].*//'`
+# Note TAB required for Solaris cksum. We drop the zsync spec 0.8 lines so this
+# is testing the output that will be used by older clients. Also normalise the
+# volatile zsync version and MTime timestamp lines.
+
+x=`perl -ne 'next if /^(File-Hash:|Strong-Hash-Algorithm:|Safe: File-Hash,Strong-Hash-Algorithm)/; s/^(zsync:).*$/$1 XXX/; if (my ($a,$b)=/^(MTime:)(.*)$/) { $b =~ s![a-zA-Z0-9]!_!g; $_ = "$a$b\n"; } print "$_";' foo.zsync | tee foo.tr.zsync | cksum | sed -e 's/[ 	][0-9].*//'`
 [ $x = 3456223344 ]
 rm foo.zsync
 

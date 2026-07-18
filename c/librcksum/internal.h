@@ -19,13 +19,13 @@
 
 /* Two types of checksum -
  * rsum: rolling Adler-style checksum
- * checksum: hopefully-collision-resistant MD4 checksum of the block
+ * checksum: collision-resistant strong checksum (MD4/MD5/SHA-224) of the block
  */
 
 struct hash_entry {
     struct hash_entry *next;    /* next entry with the same rsum */
     struct rsum r;
-    unsigned char checksum[CHECKSUM_SIZE];
+    unsigned char checksum[MAX_CHECKSUM_SIZE];
 };
 
 /* An rcksum_state contains the set of checksums of the blocks of a target
@@ -43,7 +43,8 @@ struct rcksum_state {
     unsigned short rsum_a_mask; /* The mask to apply to rsum values before looking up */
     unsigned short rsum_bits;   /* # of bits of rsum data in the .zsync for each block */
     unsigned short hash_func_shift; /* Config for the hash function */
-    unsigned int checksum_bytes; /* How many bytes of the MD4 checksum are available */
+    unsigned int checksum_bytes; /* How many bytes of the strong checksum are available */
+    enum rcksum_strong_hash strong_hash; /* Algorithm used for block strong hashes */
     int seq_matches;
     unsigned int context;       /* precalculated blocksize * seq_matches */
 
