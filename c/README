@@ -89,8 +89,7 @@ normally used.
 
 zsync uses OpenSSL (libcrypto) for MD4 and SHA-1 hashing.
 
-The rest of the code (that is, everything not in the zlib
-subdirectory) is
+The rest of the code (that is, everything not in the zlib subdirectory) is
 Copyright (C) 2004,2005,2007,2009,2025,2026 Colin Phipps <cph@moria.org.uk>.
 zsync is made available under the (clarified) Artistic License - see the file
 COPYING for details.

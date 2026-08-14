@@ -1,7 +1,7 @@
 
 /*
  *   zsync - client side rsync over http
- *   Copyright (C) 2004,2005,2007,2009 Colin Phipps <cph@moria.org.uk>
+ *   Copyright (C) 2004,2005,2007,2009,2026 Colin Phipps <cph@moria.org.uk>
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the Artistic License v2 (see the accompanying 
@@ -161,16 +161,16 @@ struct zsync_state *zsync_begin(FILE * f) {
      * rcksum_state. These are the defaults from versions of zsync before these
      * were variable. */
     int checksum_bytes = 16, rsum_bytes = 4, seq_matches = 1;
-    /* Set to 1 once we see a Hash-Lengths: header; lets us apply spec-0.8
+    /* Set to 1 once we see a Hash-Lengths: header; this lets us apply spec-0.8
      * defaults for strong_hash_length (raw digest size of the chosen strong
      * hash) when the header is absent. */
     int hash_lengths_seen = 0;
     int file_hash_seen = 0;
 
-    /* Field names that we can ignore if present and not
-     * understood. This allows new headers to be added without breaking
-     * backwards compatibility, and conversely to add headers that do break
-     * backwards compat and have old clients give meaningful errors. */
+    /* Field names that we can ignore if present and not understood. This
+     * allows new headers to be added without breaking backwards compatibility,
+     * and conversely to add headers that do break backwards compat and have
+     * old clients give meaningful errors. */
     char *safelines = NULL;
 
     /* Allocate memory for the object */
@@ -277,7 +277,7 @@ struct zsync_state *zsync_begin(FILE * f) {
             }
             else if (!strcmp(buf, "File-Hash")) {
                 /* header value should be "<alg>:<hex>". Only the first
-                 * File-Hash line is honoured ; later ones are ignored. */
+                 * File-Hash line is honoured; later ones are ignored. */
                 char *colon = strchr(p, ':');
                 if (colon == NULL) {
                     fprintf(stderr,
